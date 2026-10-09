@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pokeroledex",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-25",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "pokeroledex", "database_id": "local-placeholder", "migrations_dir": "migrations" }
+  ]
+}
