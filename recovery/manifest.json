@@ -1,0 +1,198 @@
+{
+  "capturedAt": "2026-10-09T19:55:11.023020+00:00",
+  "origin": "https://pokeroledex.nl",
+  "frontend": "/assets/index-C5TRZdgt.js",
+  "stylesheet": "/assets/index-B0-BBcjJ.css",
+  "frontendSha256": "12abc6004b13a1e39082493258c75de74b8d896247f0d93904c46ee47a68edee",
+  "endpoints": [
+    {
+      "path": "/pokemon",
+      "method": "POST"
+    },
+    {
+      "path": "/pokemon",
+      "method": "PATCH"
+    },
+    {
+      "path": "/pokemon/generate",
+      "method": "POST"
+    },
+    {
+      "path": "/pokemon/minimal",
+      "method": "GET"
+    },
+    {
+      "path": "/pokemon/{id}",
+      "method": "GET"
+    },
+    {
+      "path": "/pokemon/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/natures",
+      "method": "GET"
+    },
+    {
+      "path": "/abilities",
+      "method": "POST"
+    },
+    {
+      "path": "/abilities",
+      "method": "PATCH"
+    },
+    {
+      "path": "/abilities/all/{id}",
+      "method": "POST"
+    },
+    {
+      "path": "/abilities/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/campaigns",
+      "method": "POST"
+    },
+    {
+      "path": "/campaigns",
+      "method": "GET"
+    },
+    {
+      "path": "/campaigns",
+      "method": "PATCH"
+    },
+    {
+      "path": "/campaigns/{id}",
+      "method": "GET"
+    },
+    {
+      "path": "/campaigns/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/pokemon-templates",
+      "method": "POST"
+    },
+    {
+      "path": "/pokemon-templates",
+      "method": "PATCH"
+    },
+    {
+      "path": "/pokemon-templates/campaigns/minimal",
+      "method": "POST"
+    },
+    {
+      "path": "/pokemon-templates/all/{id}",
+      "method": "POST"
+    },
+    {
+      "path": "/pokemon-templates/filtered",
+      "method": "POST"
+    },
+    {
+      "path": "/pokemon-templates/{id}",
+      "method": "GET"
+    },
+    {
+      "path": "/pokemon-templates/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/pokemon-templates/find-many/{ids}",
+      "method": "GET"
+    },
+    {
+      "path": "/moves",
+      "method": "POST"
+    },
+    {
+      "path": "/moves",
+      "method": "GET"
+    },
+    {
+      "path": "/moves",
+      "method": "PATCH"
+    },
+    {
+      "path": "/moves/campaigns",
+      "method": "POST"
+    },
+    {
+      "path": "/moves/all/{id}",
+      "method": "POST"
+    },
+    {
+      "path": "/moves/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/rankup-attributes/{rank}",
+      "method": "GET"
+    },
+    {
+      "path": "/items",
+      "method": "POST"
+    },
+    {
+      "path": "/items",
+      "method": "GET"
+    },
+    {
+      "path": "/items",
+      "method": "PATCH"
+    },
+    {
+      "path": "/items/generate",
+      "method": "POST"
+    },
+    {
+      "path": "/items/campaigns",
+      "method": "POST"
+    },
+    {
+      "path": "/items/{id}",
+      "method": "GET"
+    },
+    {
+      "path": "/items/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/trainers",
+      "method": "POST"
+    },
+    {
+      "path": "/trainers",
+      "method": "GET"
+    },
+    {
+      "path": "/trainers",
+      "method": "PATCH"
+    },
+    {
+      "path": "/trainers/{id}",
+      "method": "GET"
+    },
+    {
+      "path": "/trainers/{id}",
+      "method": "DELETE"
+    },
+    {
+      "path": "/feedback",
+      "method": "POST"
+    }
+  ],
+  "referenceCounts": {
+    "pokemon-templates": 1196,
+    "moves": 892,
+    "items": 394,
+    "natures": 25,
+    "rankup-attributes": 7,
+    "abilities": 305
+  },
+  "notes": [
+    "Public reference requests only; no hosted accounts or private sheets copied.",
+    "Source-map URL returned HTML; original source files were not available.",
+    "CHAMPION rank-up endpoint returned an empty response; excluded from reference table."
+  ]
+}

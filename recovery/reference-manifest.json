@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-10-09T19:55:37.440360+00:00",
+  "origin": "https://pokeroledex.nl",
+  "counts": {
+    "pokemon-templates": 1196,
+    "moves": 892,
+    "items": 394,
+    "natures": 25,
+    "rankup-attributes": 7,
+    "abilities": 305
+  },
+  "sha256": {
+    "abilities.json": "7a9f28db676bf7ace9ef2fdecd43ea18d58b27746a04818f7d9d0aa16ce59fa9",
+    "items.json": "0b409b0420a3730b38b1c63e583a15c2acf4351c46bd6b26078014e65ebe07a5",
+    "moves.json": "a2123131cf26b197ca020652af3c00cc37592d2f06333cfddeed0106d61c308a",
+    "natures.json": "64994207bf43337be5214f8a56a2c618189b7fe26c8f99f098fd7c571b1f14ab",
+    "pokemon-templates.json": "82ad5a30b19a22cf39d3bebcb3b7aecbee1a16d3520e2106eb38b7707f41e66b",
+    "rankup-attributes.json": "b27dc3fc9ac635f44832ac32b8d2c2b07d2435ca7f94b94ee37e6f26ee3cb629"
+  }
+}

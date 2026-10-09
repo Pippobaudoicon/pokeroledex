@@ -1,0 +1,12 @@
+{
+  "name": "pokeroledex-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local recovery of PokéroleDex for incremental development",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  }
+}

@@ -1,0 +1,109 @@
+/* Compact sizing over the recovered, generated utility stylesheet. */
+.text-xl { font-size: 1.125rem; line-height: 1.3; }
+.text-2xl { font-size: 1.25rem; line-height: 1.25; }
+.text-3xl { font-size: 1.5rem; line-height: 1.2; }
+.text-4xl { font-size: 1.875rem; line-height: 1.2; }
+.text-5xl { font-size: 2.25rem; line-height: 1.1; }
+.rounded-3xl { border-radius: 1rem; }
+.border-8 { border-width: 4px; }
+
+.home-layout {
+  position: relative;
+  min-height: calc(100dvh - 4rem);
+  gap: 1rem;
+  padding: 2rem 1rem;
+}
+.home-title { font-size: clamp(2rem, 4vw, 3.5rem); }
+.home-links {
+  width: 100%;
+  max-width: 640px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 auto;
+}
+.home-tile { height: 112px; }
+.home-tile .text-lg { font-size: 1rem; }
+.catalog-layout > *, .sheet-layout > *,
+.app-layout .grid > *, .app-layout input { min-width: 0; }
+.moves-layout { max-width: 1100px; margin: 0 auto; }
+.detail-artwork { width: 180px; height: 180px; max-width: 100%; }
+[data-slot="scroll-area-viewport"] > div { min-width: 0; }
+.field-label { flex-shrink: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.field-value { min-width: 0; }
+.pokemon-card-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pokemon-card { padding: 8px; }
+.pokemon-card .text-xl { font-size: 1rem; }
+.pokemon-card .w-20 { width: 64px; height: 64px; }
+.pokemon-overview .text-3xl,
+.pokemon-overview .xl\:text-3xl { font-size: 1.25rem; }
+.pokemon-overview .text-lg { font-size: 1rem; line-height: 1.2; }
+.pokemon-stats > .border-8 > .flex {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  width: 100%;
+  max-width: 240px;
+  gap: 2px;
+}
+.pokemon-stats > .border-8 > .flex > * { margin: 0; min-width: 0; }
+.pokemon-stats > .border-8 > .flex .w-5 {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.pokemon-moves .p-3.pt-4 { padding: 8px; }
+
+@media (min-width: 1100px) {
+  .pokemon-detail-header > :first-child { grid-column: span 5; }
+  .pokemon-detail-header > :nth-child(2) { grid-column: span 5; }
+  .pokemon-detail-header > :last-child { grid-column: span 2; }
+  .pokemon-overview { grid-column: span 8; }
+  .pokemon-stats { grid-column: span 4; }
+  .pokemon-overview, .pokemon-stats { align-self: start; }
+}
+
+@media (min-width: 768px) {
+  .home-layout { min-height: 100dvh; padding-bottom: 5rem; }
+  .home-links { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .home-tile { height: 128px; }
+  .desktop-sidebar { position: fixed; height: 100dvh; z-index: 40; }
+  .sidebar-links {
+    top: 56px;
+    bottom: 104px;
+    height: auto;
+    overflow-y: auto;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .sidebar-links > :not([hidden]) ~ :not([hidden]) { margin-top: 0; }
+  .sidebar-links a > div > div:first-child { padding: 12px; }
+  .sidebar-links svg { width: 24px; height: 24px; }
+  .sidebar-links .text-xl { font-size: 1rem; }
+  .xl\:text-3xl, .\32xl\:text-3xl { font-size: 1.5rem; }
+}
+
+@media (max-width: 767px) {
+  .mobile-header { padding-inline: 12px; }
+  .mobile-header .text-3xl { font-size: 1.375rem; }
+  .mobile-header > button { min-width: 44px; min-height: 44px; }
+  .mobile-menu { max-height: calc(100dvh - 4rem); }
+  .mobile-menu[inert] { visibility: hidden; }
+  .mobile-menu a > div { min-height: 44px; padding-inline: 16px; }
+  .app-layout button:not([role="checkbox"]) { min-height: 44px; }
+  .app-layout input, .app-layout select, .app-layout textarea { font-size: 16px; }
+  .catalog-layout, .sheet-layout { gap: 12px; padding: 12px; }
+  .catalog-layout > :first-child, .sheet-layout > :first-child {
+    height: 42dvh;
+    min-height: 240px;
+    max-height: none;
+  }
+  .catalog-layout > :last-child, .sheet-layout > :last-child { height: auto; }
+  .catalog-layout > :first-child:has(button[data-state="open"]) { height: 70dvh; }
+  .detail-artwork { width: 160px; height: 160px; }
+  .catalog-layout > :last-child > .h-full,
+  .sheet-layout > :last-child > .h-full { min-height: 160px; }
+  .catalog-layout > :last-child > .h-full svg,
+  .sheet-layout > :last-child > .h-full svg { max-height: 160px; }
+  .app-layout .flex-row:has(> input) > input { flex: 1; width: 0; }
+  [role="dialog"] { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .app-layout .whitespace-nowrap { white-space: normal; }
+  .pokemon-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

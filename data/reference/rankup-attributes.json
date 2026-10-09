@@ -1,0 +1,51 @@
+{
+  "STARTER": {
+    "rank": "STARTER",
+    "skillPoints": 5,
+    "attributePoints": 0,
+    "socialPoints": 0,
+    "skillLimit": 1
+  },
+  "ROOKIE": {
+    "rank": "ROOKIE",
+    "skillPoints": 5,
+    "attributePoints": 2,
+    "socialPoints": 2,
+    "skillLimit": 2
+  },
+  "STANDARD": {
+    "rank": "STANDARD",
+    "skillPoints": 4,
+    "attributePoints": 2,
+    "socialPoints": 2,
+    "skillLimit": 3
+  },
+  "ADVANCED": {
+    "rank": "ADVANCED",
+    "skillPoints": 3,
+    "attributePoints": 2,
+    "socialPoints": 2,
+    "skillLimit": 4
+  },
+  "EXPERT": {
+    "rank": "EXPERT",
+    "skillPoints": 2,
+    "attributePoints": 2,
+    "socialPoints": 2,
+    "skillLimit": 5
+  },
+  "ACE": {
+    "rank": "ACE",
+    "skillPoints": 1,
+    "attributePoints": 2,
+    "socialPoints": 2,
+    "skillLimit": 5
+  },
+  "MASTER": {
+    "rank": "MASTER",
+    "skillPoints": 2,
+    "attributePoints": 0,
+    "socialPoints": 0,
+    "skillLimit": 5
+  }
+}
