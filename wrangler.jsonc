@@ -4,7 +4,9 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-25",
   "assets": {
-    "not_found_handling": "single-page-application",
+    // Files are served first. Requests that match no file go to the Worker, which
+    // handles the BoxSprites fallback, 404s and the SPA index.html (worker/index.ts).
+    "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
   "d1_databases": [
