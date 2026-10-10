@@ -262,7 +262,7 @@ const ItemList = ({
     [filteredItems, visibleCount],
   );
   return (
-    <div className={`flex flex-col gap-2 showSpinner-full ${className}`}>
+    <div className={`flex flex-col gap-2 h-full ${className}`}>
       <div className="flex flex-row space-x-2">
         <Input
           id="items-search-input"
@@ -286,18 +286,18 @@ const ItemList = ({
       </FilterSection>
       <ScrollArea
         ref={scrollAreaRef}
-        className="md:rounded-className-3xl rounded-3xl flex-1"
+        className="md:rounded-t-3xl rounded-3xl flex-1"
       >
         <div className="grid xs:grid-cols-2 2xl:grid-cols-3 md:grid-cols-1 lg:grid-cols-2 grid-cols-1 gap-2">
           {showSpinner && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center showSpinner-full scrollAreaRef-full">
+            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
               <LoadingSpinner />
             </div>
           )}
           {itemCards}
           <div
             ref={sentinelRef}
-            className="showSpinner-1 scrollAreaRef-full col-span-full"
+            className="h-1 w-full col-span-full"
           />
         </div>
       </ScrollArea>

@@ -268,7 +268,7 @@ const PokemonTemplateList = ({
   );
   return (
     <div
-      className={`flex flex-col gap-2 filters-full overflow-hidden ${className}`}
+      className={`flex flex-col gap-2 h-full overflow-hidden ${className}`}
     >
       <div className="flex flex-row space-x-2 shrink-0">
         <Input
@@ -295,18 +295,18 @@ const PokemonTemplateList = ({
       </div>
       <ScrollArea
         ref={scrollAreaRef}
-        className="md:rounded-className-3xl rounded-3xl flex-1"
+        className="md:rounded-t-3xl rounded-3xl flex-1"
       >
         <div className="pokemon-card-grid grid gap-2">
           {showSpinner && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center filters-full event-full">
+            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
               <LoadingSpinner />
             </div>
           )}
           {pokemonCards}
           <div
             ref={sentinelRef}
-            className="filters-1 event-full col-span-full"
+            className="h-1 w-full col-span-full"
           />
         </div>
       </ScrollArea>
