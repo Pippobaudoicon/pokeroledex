@@ -50,6 +50,7 @@ import { CampaignProvider, useCampaign } from "@/pages/Campaigns/context";
 import { CampaignItems } from "@/pages/Campaigns/Items";
 import { CampaignMoves } from "@/pages/Campaigns/Moves";
 import { CampaignPokemonTemplates } from "@/pages/Campaigns/PokemonTemplates";
+import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 
 // Passing the bare key (not { queryKey }) means react-query v5 invalidates every query.
 const invalidateCampaigns = (queryClient: QueryClient) =>
@@ -490,6 +491,7 @@ const CampaignDetail = () => {
 export const CampaignsPage = () => {
   const { id } = useParams();
   const [selectedId, setSelectedId] = React.useState(id);
+  const detailRef = useScrollToDetail(selectedId);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
     setSelectedId(id);
@@ -503,7 +505,7 @@ export const CampaignsPage = () => {
           setSelectedId(campaignId);
         }}
       />
-      <DetailContainer className="md:col-span-3 col-span-full h-full">
+      <DetailContainer ref={detailRef} className="md:col-span-3 col-span-full h-full">
         {selectedId === undefined ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="md:h-[80%] max-md:w-1/2">

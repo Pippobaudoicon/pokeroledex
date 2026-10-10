@@ -50,6 +50,43 @@
   aspect-ratio: 1;
 }
 .pokemon-moves .p-3.pt-4 { padding: 8px; }
+.sheet-skill-groups { display: flex; flex-direction: column; gap: 12px; }
+
+/* Tablet and desktop: roomier gutters and gaps, same element sizes. */
+@media (min-width: 768px) {
+  .catalog-layout, .sheet-layout, .moves-layout, .generators-layout { padding: 16px 20px 0; }
+  .catalog-layout, .sheet-layout { gap: 20px; }
+  .app-layout .gap-2 { gap: 0.75rem; }
+  .app-layout .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
+  .pokemon-sheet { gap: 1rem; padding-bottom: 1rem; }
+  .sheet-main, .sheet-attributes, .sheet-socials, .sheet-skills { padding: 1rem; }
+  .sheet-attributes, .sheet-socials { grid-column: span 6; }
+  .sheet-skills { grid-column: span 12; }
+  .sheet-skill-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .sheet-artwork img { max-height: 200px; }
+  .pokemon-sheet-header { display: flex; flex-wrap: wrap; column-gap: 2rem; row-gap: 0.75rem; padding: 0.75rem 1rem; }
+  .pokemon-sheet-header > :last-child { margin-left: auto; }
+}
+
+/* Trainer portrait beside its fields until the sheet goes multi-column. */
+@media (min-width: 768px) and (max-width: 1535px) {
+  .trainer-overview { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; padding: 1rem; }
+  .trainer-overview > :first-child { grid-row: span 4; justify-content: center; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sheet-main > * { grid-column: 1 / -1; }
+  .sheet-layout { grid-template-columns: 240px minmax(0, 1fr); }
+  .sheet-layout > * { grid-column: auto; }
+}
+
+/* Only wide screens have room for the overview beside the attributes. */
+@media (min-width: 1800px) {
+  .sheet-main { grid-column: span 7; }
+  .sheet-attributes { grid-column: span 5; }
+  .sheet-socials { grid-column: span 5; }
+  .sheet-skills { grid-column: span 7; }
+}
 
 @media (min-width: 1100px) {
   .pokemon-detail-header > :first-child { grid-column: span 5; }
@@ -91,12 +128,13 @@
   .app-layout input, .app-layout select, .app-layout textarea { font-size: 16px; }
   .catalog-layout, .sheet-layout { gap: 12px; padding: 12px; }
   .catalog-layout > :first-child, .sheet-layout > :first-child {
-    height: 42dvh;
-    min-height: 240px;
+    height: 75dvh;
+    min-height: 320px;
     max-height: none;
   }
-  .catalog-layout > :last-child, .sheet-layout > :last-child { height: auto; }
-  .catalog-layout > :first-child:has(button[data-state="open"]) { height: 70dvh; }
+  /* At least a screen tall, so tapping a card can scroll the detail to the top while it loads. */
+  .catalog-layout > :last-child, .sheet-layout > :last-child { height: auto; min-height: calc(100dvh - 4rem - 24px); scroll-margin-top: 4.75rem; }
+  .catalog-layout > :first-child:has(button[data-state="open"]) { height: 85dvh; }
   .detail-artwork { width: 160px; height: 160px; }
   .catalog-layout > :last-child > .h-full,
   .sheet-layout > :last-child > .h-full { min-height: 160px; }

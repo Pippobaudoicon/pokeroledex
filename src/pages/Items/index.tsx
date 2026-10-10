@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { formatEnumName } from "@/lib/utils";
+import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 const ItemListCard = ({
   name,
   source,
@@ -344,6 +345,7 @@ const ItemDetail = ({ itemId }: { itemId?: string }) => {
 export const ItemsPage = () => {
   const { id } = useParams();
   const [selectedItemId, setSelectedItemId] = React.useState(id);
+  const detailRef = useScrollToDetail(selectedItemId);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
     setSelectedItemId(id);
@@ -355,7 +357,7 @@ export const ItemsPage = () => {
         className="md:col-span-2 col-span-full max-md:min-h-[30vh] max-md:max-h-[50vh] overflow-hidden"
         onClick={setSelectedItemId}
       />
-      <DetailContainer className="md:col-span-3 col-span-full max-md:pb-2 h-full">
+      <DetailContainer ref={detailRef} className="md:col-span-3 col-span-full max-md:pb-2 h-full">
         <ItemDetail itemId={selectedItemId} />
       </DetailContainer>
     </div>

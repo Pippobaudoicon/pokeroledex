@@ -16,7 +16,7 @@ export const PokemonSheetHeader = ({ showButtons }: { showButtons: SheetButtons 
   return (
     <Box
       color="bg-pokerole-black"
-      className="p-2 col-span-full grid grid-cols-12 gap-2 items-center"
+      className="pokemon-sheet-header p-2 col-span-full grid grid-cols-12 gap-2 items-center"
     >
       {isLoading && <Text color="text-white">Loading...</Text>}
       {!isLoading && basePokemon == null && <Text color="text-white">No Pokemon found</Text>}

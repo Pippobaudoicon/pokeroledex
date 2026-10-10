@@ -602,7 +602,7 @@ const SelectedGenerator = () => {
 };
 export const GeneratorsPage = () => (
   <GeneratorContentProvider>
-    <div className="p-2 pb-0 grid lg:h-[calc(100vh-1rem)] grid-cols-12 box-border gap-3">
+    <div className="generators-layout p-2 pb-0 grid lg:h-[calc(100vh-1rem)] grid-cols-12 box-border gap-3">
       <div className="lg:col-span-4 2xl:col-span-3 col-span-full flex flex-col gap-2 max-lg:h-fit h-full overflow-hidden">
         <div className="shrink-0 flex flex-col gap-2">
           <p className="font-move text-sm text-white px-2">

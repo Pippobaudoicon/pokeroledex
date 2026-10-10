@@ -10,6 +10,7 @@ import { PokemonTemplateCard } from "@/components/PokemonTemplateCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 const PokemonList = ({
   className,
   onClick,
@@ -76,6 +77,7 @@ const PokemonList = ({
 export const MyPokemonPage = () => {
   const { id } = useParams();
   const [selectedId, setSelectedId] = React.useState(id);
+  const detailRef = useScrollToDetail(selectedId);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
     if (id === "" || id === undefined) setSelectedId(id);
@@ -89,7 +91,7 @@ export const MyPokemonPage = () => {
           setSelectedId(pokemonId);
         }}
       />
-      <SheetContainer className="md:col-span-3 col-span-full h-full">
+      <SheetContainer ref={detailRef} className="md:col-span-3 col-span-full h-full">
         {selectedId === undefined ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="md:h-[80%] max-md:w-1/2">

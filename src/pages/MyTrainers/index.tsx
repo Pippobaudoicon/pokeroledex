@@ -33,6 +33,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { TrainerProvider } from "@/pages/MyTrainers/context";
 import { TrainerSheet } from "@/pages/MyTrainers/TrainerSheet";
+import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 const TrainerCard = ({
   name,
   gender,
@@ -268,6 +269,7 @@ const TrainerList = ({ className, onClick }: { className?: string; onClick?: (id
 export const MyTrainersPage = () => {
   const { id } = useParams();
   const [selectedId, setSelectedId] = React.useState(id);
+  const detailRef = useScrollToDetail(selectedId);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
     setSelectedId(id);
@@ -281,7 +283,7 @@ export const MyTrainersPage = () => {
           setSelectedId(trainerId);
         }}
       />
-      <SheetContainer className="md:col-span-3 col-span-full h-full">
+      <SheetContainer ref={detailRef} className="md:col-span-3 col-span-full h-full">
         {selectedId === undefined ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="md:h-[80%] max-md:w-1/2">

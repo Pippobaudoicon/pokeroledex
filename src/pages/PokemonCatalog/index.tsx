@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { PokemonDetail } from "@/pages/PokemonCatalog/PokemonDetail";
+import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 
 interface PokemonFilter {
   id: string;
@@ -316,6 +317,7 @@ const PokemonTemplateList = ({
 export const PokemonCatalogPage = () => {
   const { id } = useParams();
   const [selectedTemplateId, setSelectedTemplateId] = React.useState(id);
+  const detailRef = useScrollToDetail(selectedTemplateId);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
     setSelectedTemplateId(id);
@@ -327,7 +329,7 @@ export const PokemonCatalogPage = () => {
         className="md:col-span-2 col-span-full max-md:min-h-[30vh] max-md:max-h-[50vh]"
         onClick={setSelectedTemplateId}
       />
-      <DetailContainer className="md:col-span-3 col-span-full max-md:pb-2 h-full">
+      <DetailContainer ref={detailRef} className="md:col-span-3 col-span-full max-md:pb-2 h-full">
         <PokemonDetail pokemonTemplateId={selectedTemplateId} />
       </DetailContainer>
     </div>

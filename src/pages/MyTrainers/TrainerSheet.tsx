@@ -226,7 +226,7 @@ export const TrainerSheet = () => {
       <TrainerSheetHeader />
       <Box
         color="bg-pokerole-beige"
-        className="p-2 flex flex-col gap-2 2xl:col-span-1 col-span-full"
+        className="trainer-overview p-2 flex flex-col gap-2 2xl:col-span-1 col-span-full"
       >
         <Box
           color="bg-pokerole-beige"

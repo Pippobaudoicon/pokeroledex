@@ -25,16 +25,16 @@ export const PokemonSheet = ({ showButtons = "edit" }: { showButtons?: SheetButt
       <LoadingSpinner />
     </div>
   ) : (
-    <div className="grid grid-flow-row grid-cols-12 gap-2">
+    <div className="pokemon-sheet grid grid-flow-row grid-cols-12 gap-2">
       <PokemonSheetHeader showButtons={showButtons} />
       <Box
-        className="p-2 grid grid-flow-row grid-cols-2 gap-2 xl:col-span-6 2xl:col-span-5 col-span-full"
+        className="sheet-main p-2 grid grid-flow-row grid-cols-2 gap-2 col-span-full"
         color="bg-pokerole-beige"
       >
         <div className="flex flex-col space-y-2 flex-grow md:col-span-1 col-span-full">
           <Box
             color="bg-pokerole-beige"
-            className="p-2 flex flex-col items-center"
+            className="sheet-artwork p-2 flex flex-col items-center"
             withBorder={true}
           >
             <PokemonImage
@@ -114,7 +114,7 @@ export const PokemonSheet = ({ showButtons = "edit" }: { showButtons?: SheetButt
         </div>
       </Box>
       <Box
-        className="p-2 space-y-2 md:col-span-6 2xl:col-span-4 col-span-full"
+        className="sheet-attributes p-2 space-y-2 col-span-full"
         color="bg-pokerole-beige"
       >
         <Text className="text-center">Attributes</Text>
@@ -181,7 +181,7 @@ export const PokemonSheet = ({ showButtons = "edit" }: { showButtons?: SheetButt
       </Box>
       <Box
         color="bg-pokerole-beige"
-        className="p-2 space-y-2 md:col-span-6 2xl:col-span-2 col-span-6"
+        className="sheet-socials p-2 space-y-2 col-span-6"
       >
         <Text className="text-center">Socials</Text>
         <StatBox
@@ -242,31 +242,26 @@ export const PokemonSheet = ({ showButtons = "edit" }: { showButtons?: SheetButt
       </Box>
       <Box
         color="bg-pokerole-red"
-        className="p-2 flex flex-col flex-shrink md:col-span-6 2xl:col-span-1 col-span-6"
+        className="sheet-skills p-2 flex flex-col flex-shrink col-span-6"
       >
         <Text className="text-center" size="text-xl">
           Skills
         </Text>
-        <div className="space-y-1 p-2">
-          {POKEMON_SKILLS.map((skill, index) => (
-            <div key={index} className="flex flex-col items-center">
-              <Text color="text-pokerole-black" size="text-base">
-                {capitalize(skill)}
-              </Text>
-              <PokemonStatPips
-                stat={skill}
-                type="skill"
-                pipClassName="w-4 h-4 max-xs:w-3 max-xs:h-3"
-              />
-              {(index + 1) % 4 === 0 &&
-                index !== 0 &&
-                index !== POKEMON_SKILLS.length - 1 && (
-                  <div
-                    style={{
-                      margin: "6px",
-                    }}
+        <div className="sheet-skill-groups p-2">
+          {[0, 4, 8].map((start) => (
+            <div key={start} className="space-y-1">
+              {POKEMON_SKILLS.slice(start, start + 4).map((skill) => (
+                <div key={skill} className="flex flex-col items-center">
+                  <Text color="text-pokerole-black" size="text-base">
+                    {capitalize(skill)}
+                  </Text>
+                  <PokemonStatPips
+                    stat={skill}
+                    type="skill"
+                    pipClassName="w-4 h-4 max-xs:w-3 max-xs:h-3"
                   />
-                )}
+                </div>
+              ))}
             </div>
           ))}
         </div>
