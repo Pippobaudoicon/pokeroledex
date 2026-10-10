@@ -312,6 +312,25 @@ export interface GenerateItemsBody extends SelectionBody {
   pockets?: ItemPocket[];
 }
 
+export interface GenerateEncounterBody extends SelectionBody {
+  seed?: number;
+  numberToGenerate?: number;
+  name?: string;
+  types?: PokemonType[];
+  generations?: number[];
+  habitats?: Habitat[];
+  ranks?: Rank[];
+  rankOrBelow?: boolean;
+  includeLegendary?: LegendaryFilter;
+  includeMythical?: boolean;
+  excludeForms?: boolean;
+  allowDuplicates?: boolean;
+  excludeStarters?: boolean;
+  fossils?: 'ALL' | 'NONE' | 'ONLY';
+  excludedTemplateIds?: string[];
+  rankUpMethod?: RankUpMethod;
+}
+
 export type CreatePokemonBody = Partial<Omit<PokemonRecord, 'stats'>> & { pokemonTemplateId: string; stats?: Partial<Stats> };
 export type UpdatePokemonBody = Partial<PokemonRecord> & { id: string };
 export type CreateTrainerBody = Partial<Omit<TrainerRecord, 'stats'>> & { stats?: Partial<Stats> };

@@ -18,7 +18,7 @@ import { StatBox } from "@/components/StatBox";
 import { Text } from "@/components/Text";
 import { POKEMON_SKILLS, getTotalStat } from "@/lib/stats";
 import { capitalize } from "@/lib/utils";
-export const PokemonSheet = ({ showButtons = "edit" }: { showButtons?: SheetButtons }) => {
+export const PokemonSheet = ({ showButtons = "edit", showMovePools = false }: { showButtons?: SheetButtons; showMovePools?: boolean }) => {
   const { updatedPokemon: pokemon, editingMode, updatePokemon } = usePokemon();
   return pokemon === undefined ? (
     <div className="flex flex-row flex-grow justify-center items-center h-full">
@@ -274,8 +274,9 @@ export const PokemonSheet = ({ showButtons = "edit" }: { showButtons?: SheetButt
           >
             <MoveCard
               move={move}
-              initialOpen={true}
-              disableToggle={true}
+              pokemon={showMovePools ? pokemon : undefined}
+              initialOpen={!showMovePools}
+              disableToggle={!showMovePools}
               showDelete={editingMode === "edit" || editingMode === "rankUp"}
               onDelete={() => {
                 updatePokemon({

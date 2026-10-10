@@ -52,6 +52,16 @@
 .pokemon-moves .p-3.pt-4 { padding: 8px; }
 .sheet-skill-groups { display: flex; flex-direction: column; gap: 12px; }
 
+.encounter-controls fieldset { min-width: 0; }
+.encounter-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.encounter-card { min-width: 0; align-self: start; }
+.encounter-expanded { grid-column: 1 / -1; }
+.encounter-shiny { box-shadow: inset 0 0 0 3px #d5a528; }
+.encounter-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.encounter-card-actions button { gap: 4px; }
+.encounter-history-list { display: flex; flex-direction: column; gap: 8px; max-height: 55dvh; overflow-y: auto; }
+.encounter-results { scroll-margin-top: 4.75rem; }
+
 /* Tablet and desktop: roomier gutters and gaps, same element sizes. */
 @media (min-width: 768px) {
   .catalog-layout, .sheet-layout, .moves-layout, .generators-layout { padding: 16px 20px 0; }

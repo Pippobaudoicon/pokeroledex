@@ -2,7 +2,8 @@
 // email (migrations/, worker/access.ts). Each request loads the owner's records,
 // works on them in memory and writes back only the records it changed.
 import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
-import type { Pokemon, Rank, Stats, Trainer } from '../shared/types.ts';
+import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
+import { matchesEncounterFilters } from '../shared/encounters.ts';
 import type { Env } from './index.ts';
 import { fetchOldData } from './import.ts';
 import { loadReference, type Reference } from './reference.ts';
@@ -170,16 +171,19 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       };
     }
 
-    function generate(name: string, body: Json) {
+    function generate(name: string, body: Json, isEncounter = false) {
       const random = randomSource(body.seed ?? Date.now());
       const choose = <T>(list: T[]) => list[Math.floor(random() * list.length)];
       const count = Number(body.numberToGenerate ?? 1);
-      if (!Number.isInteger(count) || count < 1 || count > 100) fail(400, 'Generate between 1 and 100 at a time.');
+      const maximum = isEncounter ? 12 : 100;
+      if (!Number.isInteger(count) || count < 1 || count > maximum) fail(400, `Generate between 1 and ${maximum} at a time.`);
       let candidates = selected(name === 'pokemon' ? 'pokemon-templates' : 'items', body);
       const ranks: readonly string[] = RANKS;
       if (name === 'items') {
         candidates = candidates.filter(item => (!body.categories?.length || body.categories.includes(item.category)) &&
           (!body.pockets?.length || body.pockets.includes(item.pocket)));
+      } else if (isEncounter) {
+        candidates = candidates.filter(entry => matchesEncounterFilters(entry as PokemonTemplate, body as GenerateEncounterBody));
       } else {
         if (!ranks.includes(body.rank)) fail(400, 'Choose a valid rank.');
         candidates = candidates.filter(p => body.pokemonTemplateId ? p.id === body.pokemonTemplateId :
@@ -187,16 +191,23 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           (body.includeLegendary === 'ALL' || (body.includeLegendary === 'ONLY' ? p.legendary : !p.legendary)) &&
           (body.rankOrBelow ? ranks.indexOf(p.recommendedRank) <= ranks.indexOf(body.rank) : p.recommendedRank === body.rank));
       }
-      if (!candidates.length) fail(400, 'No entries match these filters.');
-      return Array.from({ length: count }, () => {
-        const entry = choose(candidates);
+      if (!candidates.length) {
+        if (isEncounter) return [];
+        fail(400, 'No entries match these filters.');
+      }
+      const resultCount = isEncounter && body.allowDuplicates === false ? Math.min(count, candidates.length) : count;
+      return Array.from({ length: resultCount }, () => {
+        const entry = isEncounter && body.allowDuplicates === false
+          ? candidates.splice(Math.floor(random() * candidates.length), 1)[0]
+          : choose(candidates);
         if (name === 'items') return entry;
+        const generatedRank = isEncounter ? entry.recommendedRank : body.rank;
         const stats = blankStats();
         const allocate = (keys: readonly (keyof Stats)[], points: number, limit: (key: keyof Stats) => number) => {
           for (let n = 0; n < points; n++) {
             let available = keys.filter(key => stats[key] < limit(key));
             if (!available.length) break;
-            if (body.rankUpMethod !== 'RANDOM' && keys === ATTRIBUTES) {
+            if ((body.rankUpMethod ?? (isEncounter ? 'RANDOM' : undefined)) !== 'RANDOM' && keys === ATTRIBUTES) {
               available.sort((a, b) => entry.baseStats[b] - entry.baseStats[a]);
               if (body.rankUpMethod === 'MIN_MAX') available = available.slice(0, 1);
               else available = available.slice(0, 2);
@@ -204,20 +215,22 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
             stats[choose(available)]++;
           }
         };
-        for (const rank of RANKS.slice(1, ranks.indexOf(body.rank) + 1)) {
+        for (const rank of RANKS.slice(1, ranks.indexOf(generatedRank) + 1)) {
           const budget = reference.rankAttributes[rank];
           if (!budget?.rank) continue;
           allocate(ATTRIBUTES, budget.attributePoints, key => entry.maxStats[key] - entry.baseStats[key]);
           allocate(SOCIALS, budget.socialPoints, () => 4);
           allocate(SKILLS, budget.skillPoints, () => budget.skillLimit);
         }
-        const availableMoves: string[] = [...new Set<string>(entry.possibleMoves.filter((move: Row) => ranks.indexOf(move.rank) <= ranks.indexOf(body.rank)).map((move: Row) => move.move.id))];
-        const moveIds: string[] = [];
-        while (availableMoves.length && moveIds.length < entry.baseStats.insight + stats.insight + 3) {
+        const moveRank = isEncounter && generatedRank === 'UNRANKED' ? 'STARTER' : generatedRank;
+        const availableMoves: string[] = [...new Set<string>(entry.possibleMoves.filter((move: Row) =>
+          (!isEncounter || ranks.includes(move.rank)) && ranks.indexOf(move.rank) <= ranks.indexOf(moveRank)).map((move: Row) => move.move.id))];
+        const moveIds: string[] = isEncounter ? availableMoves : [];
+        while (!isEncounter && availableMoves.length && moveIds.length < entry.baseStats.insight + stats.insight + 3) {
           moveIds.push(availableMoves.splice(Math.floor(random() * availableMoves.length), 1)[0]);
         }
         const abilities = [entry.abilityOne, entry.abilityTwo].filter(Boolean);
-        return pokemon(newPokemon({ pokemonTemplateId: entry.id, rank: body.rank, stats, moveIds,
+        return pokemon(newPokemon({ pokemonTemplateId: entry.id, rank: generatedRank, stats, moveIds,
           abilityId: choose(abilities)?.id, natureId: choose(reference.natures).id,
           gender: ['M', 'F', 'N'].includes(entry.genderType) ? entry.genderType : choose(['M', 'F']),
         }));
@@ -225,6 +238,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
 
     if (method === 'POST' && action === 'generate' && ['pokemon', 'items'].includes(name)) return reply(generate(name, body));
+    if (method === 'POST' && name === 'pokemon' && action === 'encounter') return reply(generate(name, body, true));
     if (referenceNames.includes(name)) {
       if (method === 'POST' && ['filtered', 'campaigns', 'all'].includes(action!)) {
         const result = selected(name, action === 'all' ? { ...body, campaignIds: [id] } : body);

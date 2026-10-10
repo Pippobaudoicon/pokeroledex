@@ -224,6 +224,9 @@ export const AddToMyPokemon = () => {
       abilityId: updatedPokemon?.ability?.id ?? "",
       natureId: updatedPokemon?.nature?.id ?? "",
       stats: updatedPokemon?.stats,
+      gender: updatedPokemon?.gender,
+      currentHp: updatedPokemon?.currentHp,
+      currentWill: updatedPokemon?.currentWill,
     };
     mutate({
       body,

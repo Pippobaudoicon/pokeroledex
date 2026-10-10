@@ -38,6 +38,8 @@ import {
   GeneratorContentProvider,
   useGeneratorContent,
 } from "@/pages/Generators/context";
+import { EncounterGenerator, EncounterProvider, GeneratedEncounterList } from "./Encounters";
+import { habitatNames, SeedInput } from "./fields";
 
 type PokemonSettings = Required<
   Omit<T.GeneratePokemonBody, keyof T.SelectionBody | "pokemonTemplateId">
@@ -199,68 +201,9 @@ const GeneratorPanel = () => {
   const panels: Record<string, React.ReactNode> = {
     pokemon: <GeneratedPokemonList />,
     items: <GeneratedItemList />,
+    encounters: <GeneratedEncounterList />,
   };
   return <>{panels[generator]}</>;
-};
-const SeedInput = ({
-  value,
-  onChange,
-  useRandomSeed,
-  setUseRandomSeed,
-}: {
-  value: number;
-  onChange: (value: string) => void;
-  useRandomSeed: boolean;
-  setUseRandomSeed: (useRandomSeed: boolean) => void;
-}) => (
-  <>
-    <Text font="font-move" size="text-xl">
-      Seed
-    </Text>
-    <Input
-      type="number"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      disabled={useRandomSeed}
-    />
-    <Text font="font-move" size="text-sm">
-      Random Seed
-    </Text>
-    <Checkbox
-      checked={useRandomSeed}
-      onCheckedChange={(checked) => {
-        if (typeof checked == "boolean") setUseRandomSeed(checked);
-      }}
-    />
-  </>
-);
-const habitatNames: Record<Habitat, string> = {
-  CITIES: "Cities",
-  TEMPERATE_DECIDUOUS_FORESTS: "Temperate Deciduous Forests",
-  BADLANDS_SCRUBLANDS_AND_WASTELANDS: "Badlands, Scrublands, and Wastelands",
-  ELECTROMAGNETICALLY_ACTIVE_AREAS: "Electromagnetically Active Areas",
-  WOODLANDS: "Woodlands",
-  TROPICAL_JUNGLES: "Tropical Jungles",
-  CAVES: "Caves",
-  FIELDS_AND_MEADOWS: "Fields and Meadows",
-  SWAMPS_BOGS_AND_MARSHES: "Swamps, Bogs, and Marshes",
-  GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES:
-    "Grasslands, Savannas, Plains, and Prairies",
-  MOUNTAINS: "Mountains",
-  RUINS_AND_CEMETERIES: "Ruins and Cemeteries",
-  TUNDRAS_AND_BOREAL_FORESTS: "Tundras and Boreal Forests",
-  LAKESIDES_AND_RIVERSIDES: "Lakesides and Riversides",
-  GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES: "Glaciers, Mountain Peaks, and Icy Caves",
-  VOLCANOES: "Volcanoes",
-  LAKES: "Lakes",
-  BEACHES: "Beaches",
-  PONDS: "Ponds",
-  STREAMS_AND_RIVERS: "Streams and Rivers",
-  OCEANIC_ABYSSES: "Oceanic Abysses",
-  POLAR_SEAS: "Polar Seas",
-  TROPICAL_SEAS_AND_CORAL_REEFS: "Tropical Seas and Coral Reefs",
-  OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF: "Open Ocean and the Continental Shelf",
-  DESERTS: "Deserts",
 };
 const PokemonGenerator = () => {
   const { setContent } = useGeneratorContent();
@@ -597,36 +540,44 @@ const SelectedGenerator = () => {
   const generators: Record<string, React.ReactNode> = {
     pokemon: <PokemonGenerator />,
     items: <ItemGenerator />,
+    encounters: <EncounterGenerator />,
   };
   return <>{generators[generator]}</>;
 };
 export const GeneratorsPage = () => (
   <GeneratorContentProvider>
-    <div className="generators-layout p-2 pb-0 grid lg:h-[calc(100vh-1rem)] grid-cols-12 box-border gap-3">
-      <div className="lg:col-span-4 2xl:col-span-3 col-span-full flex flex-col gap-2 max-lg:h-fit h-full overflow-hidden">
-        <div className="shrink-0 flex flex-col gap-2">
-          <p className="font-move text-sm text-white px-2">
-            Local generator: recovered data; generation rules may differ from
-            the original.
-          </p>
-          <GeneratorLink
-            name="Pokemon"
-            icon={<TbPokeball />}
-            description="Generate Pokemon"
-          />
-          <GeneratorLink
-            name="Items"
-            icon={<GiBottledBolt />}
-            description="Generate Items"
-          />
+    <EncounterProvider>
+      <div className="generators-layout p-2 pb-0 grid lg:h-[calc(100vh-1rem)] grid-cols-12 box-border gap-3">
+        <div className="lg:col-span-4 2xl:col-span-3 col-span-full flex flex-col gap-2 max-lg:h-fit h-full overflow-hidden">
+          <div className="shrink-0 flex flex-col gap-2">
+            <p className="font-move text-sm text-white px-2">
+              Local generator: recovered data; generation rules may differ from
+              the original.
+            </p>
+            <GeneratorLink
+              name="Encounters"
+              icon={<TbPokeball />}
+              description="Build encounters for your game"
+            />
+            <GeneratorLink
+              name="Pokemon"
+              icon={<TbPokeball />}
+              description="Generate Pokemon"
+            />
+            <GeneratorLink
+              name="Items"
+              icon={<GiBottledBolt />}
+              description="Generate Items"
+            />
+          </div>
+          <ScrollArea className="flex-1 lg:mt-2">
+            <SelectedGenerator />
+          </ScrollArea>
         </div>
-        <ScrollArea className="flex-1 lg:mt-2">
-          <SelectedGenerator />
-        </ScrollArea>
+        <div className="lg:col-span-8 2xl:col-span-9 col-span-full h-full overflow-hidden">
+          <GeneratorPanel />
+        </div>
       </div>
-      <div className="lg:col-span-8 2xl:col-span-9 col-span-full h-full overflow-hidden">
-        <GeneratorPanel />
-      </div>
-    </div>
+    </EncounterProvider>
   </GeneratorContentProvider>
 );

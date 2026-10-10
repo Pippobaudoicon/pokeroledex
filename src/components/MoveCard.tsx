@@ -3,13 +3,15 @@ import type * as React from "react";
 import { FaXmark } from "react-icons/fa6";
 import { CollapsableButton } from "@/components/CollapsableButton";
 import { MoveCategoryBadge } from "@/components/MoveCategory";
+import { RankIcon } from "@/components/RankIcon";
 import { Text } from "@/components/Text";
 import { TypeIcon } from "@/components/TypeBadge";
 import { Separator } from "@/components/ui/separator";
 import { getContrastTextColor } from "@/lib/colors";
+import { encounterMovePools } from "@/lib/encounter-moves";
 import { abbreviateStat } from "@/lib/stats";
 import { capitalize } from "@/lib/utils";
-import type { Move } from "../../shared/types";
+import type { Move, Pokemon } from "../../shared/types";
 import type { MoveTarget } from "@/api/schemas";
 const MoveTargetIcon = ({ target, size = 24 }: { target: MoveTarget; size?: number }) => (
   <div
@@ -29,6 +31,7 @@ const MoveTargetIcon = ({ target, size = 24 }: { target: MoveTarget; size?: numb
 );
 export interface MoveCardProps {
   move: Move;
+  pokemon?: Pokemon;
   initialOpen?: boolean;
   disableToggle?: boolean;
   className?: string;
@@ -39,6 +42,7 @@ export interface MoveCardProps {
 /** Move summary that expands on click to show its full details. */
 export const MoveCard = ({
   move,
+  pokemon,
   initialOpen = false,
   disableToggle = false,
   className,
@@ -49,6 +53,8 @@ export const MoveCard = ({
   const textColor = getContrastTextColor(background);
   const lightTextColor = getContrastTextColor(background + "-light");
   const [open, toggle] = useToggle(initialOpen);
+  const pools = pokemon ? encounterMovePools(move, pokemon) : undefined;
+  const learnedRank = pokemon?.pokemonTemplate.possibleMoves.find((possible) => possible.move.id === move.id)?.rank;
   return (
     <div
       className={`flex flex-col flex-grow rounded-3xl overflow-hidden ${background} justify-center ${className}`}
@@ -66,6 +72,7 @@ export const MoveCard = ({
             />
             {move.name}
           </span>
+          {learnedRank && <span className="flex items-center gap-1 text-sm"><RankIcon rank={learnedRank} size="sm" />{learnedRank}</span>}
         </Text>
         <div className="flex flex-row flex-wrap justify-center items-center gap-1">
           <Text
@@ -73,10 +80,12 @@ export const MoveCard = ({
             size="text-base"
             className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white bg-opacity-20 transition-all duration-500 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
           >
-            A: {move.accuracy1.length > 0 ? abbreviateStat(move.accuracy1) : "-"}
+            A: {pools ? pools.accuracy : (<>
+              {move.accuracy1.length > 0 ? abbreviateStat(move.accuracy1) : "-"}
             {move.accuracy2 === undefined
               ? ""
               : ` + ${abbreviateStat(move.accuracy2)}`}
+            </>)}
           </Text>
           <Text
             color={textColor}
@@ -84,6 +93,7 @@ export const MoveCard = ({
             className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white bg-opacity-20 transition-all duration-300 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
           >
             D:{" "}
+            {pools ? pools.damage : (<>
             {move.damage1 === undefined || move.damage1 === null || move.damage1 === ""
               ? "-"
               : abbreviateStat(move.damage1)}
@@ -95,6 +105,7 @@ export const MoveCard = ({
             move.damagePower === "0"
               ? ""
               : ` + ${move.damagePower}`}
+            </>)}
           </Text>
         </div>
         <div className="flex flex-row gap-2">
@@ -120,13 +131,16 @@ export const MoveCard = ({
             <Text size="text-base" color={lightTextColor}>
               Accuracy:{" "}
               <span className="font-move">
+                {pools ? pools.accuracy : (<>
                 {move.accuracy1 ?? "-"}
                 {move.accuracy2 === undefined ? "" : ` + ${move.accuracy2}`}
+                </>)}
               </span>
             </Text>
             <Text size="text-base" color={lightTextColor}>
               Damage:{" "}
               <span className="font-move">
+                {pools ? pools.damage : (<>
                 {move.damage1 ?? "-"}
                 {move.damage2 === undefined ||
                 move.damage2 === null ||
@@ -138,6 +152,7 @@ export const MoveCard = ({
                 move.damagePower === "0"
                   ? ""
                   : ` + ${move.damagePower}`}
+                </>)}
               </span>
             </Text>
             <div className="flex flex-row space-x-2">

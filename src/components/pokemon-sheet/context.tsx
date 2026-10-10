@@ -216,16 +216,18 @@ export const PokemonProvider = ({
   return <PokemonContext.Provider value={value}>{children}</PokemonContext.Provider>;
 };
 
-/** Read-only provider for a Pokemon that isn't saved (e.g. a generated one). */
+/** Provider for an unsaved Pokemon. Encounters can update their local sheet. */
 export const StaticPokemonProvider = ({
   pokemon,
   isLocked,
   lockedPressed,
+  onChange,
   children,
 }: {
   pokemon: T.Pokemon;
   isLocked?: boolean;
   lockedPressed?: () => void;
+  onChange?: (changes: Partial<T.Pokemon>) => void;
   children: React.ReactNode;
 }) => {
   const value: PokemonContextValue = {
@@ -234,7 +236,7 @@ export const StaticPokemonProvider = ({
     isLoading: false,
     isError: false,
     setPokemon: () => {},
-    updatePokemon: () => {},
+    updatePokemon: onChange ?? (() => {}),
     savePokemon: () => {},
     cancelEdit: () => {},
     editingMode: "view",

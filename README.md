@@ -65,6 +65,12 @@ The **Import** page (`/import`) copies the logged-in person's Pokémon sheets, t
 
 The Pokémon and item generators are local approximations: the original server's selection algorithm could not be recovered. Rank-up point tables are captured data, but Unranked and Champion had no table response.
 
+### DM encounters
+
+**Generators → Encounters** (`/generators/encounters`) integrates the functions of [pokerol-encounter](https://github.com/malagonius/pokerol-encounter) into the existing interface. Generate 1–12 Pokémon using name, type, generation, habitat, rank, legendary/mythical, fossil, starter-family and form filters. Encounters use the active campaign selection and local reference data; no PokeAPI or GitHub requests are needed during generation.
+
+Cards support locking across rolls, removal, two-d20 shiny rolls, HP tracking, full sheets and all rank-eligible moves with calculated dice pools. History holds the last encounter's unique templates and excludes them from the next roll; remove individual entries or clear history to allow them again. Copy exports the current encounter. Results, HP, shiny status and history last until you leave the generator screen or reload. A fixed seed reproduces species and stats with the same filters, campaign selection and history exclusions; shiny rolls remain independent.
+
 ## What was recovered
 
 The original source code, server and source maps were not available. The frontend was rebuilt from the deployed production bundle: bundled libraries were replaced by npm packages pinned to the versions found in it, and the application code was split into modules, renamed and typed. Every screen was compared against the original with screenshots and smoke flows. The original's own bugs were kept, not fixed: for example, the item generator crashes when it shows results, a new trainer does not save the chosen nature, and error toasts never show the server's message. Comments in the code mark these quirks.
