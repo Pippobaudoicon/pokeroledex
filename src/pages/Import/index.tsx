@@ -99,27 +99,42 @@ export const ImportPage = () => {
     <div className="flex flex-col gap-4 p-5 max-w-3xl">
       <Text color="text-white">Import from pokeroledex.nl</Text>
       <Box color="bg-pokerole-beige" className="p-5 flex flex-col gap-3">
-        <Text size="text-xl">1. Add the bookmark</Text>
-        <Text size="text-base" font="font-move">
-          Drag this button to your bookmarks bar. On a phone, copy the code, bookmark any page and replace the bookmark's
-          address with the code. On a computer you can instead paste the code into the developer-tools console on
-          pokeroledex.nl.
-        </Text>
+        <Text size="text-xl">On a computer (easiest)</Text>
+        {[
+          "1. Show your bookmarks bar: press Ctrl+Shift+B (Cmd+Shift+B on a Mac).",
+          "2. Drag the red button below onto the bookmarks bar.",
+          "3. Open pokeroledex.nl in this same browser and log in there.",
+          "4. Click the new bookmark. You come back to this page and the import starts by itself.",
+        ].map((step) => (
+          <Text key={step} size="text-base" font="font-move">
+            {step}
+          </Text>
+        ))}
         <div className="flex flex-wrap gap-2">
           <a ref={link} className={buttonVariants({ variant: "red" })}>
             Grab my pokeroledex.nl data
           </a>
+        </div>
+        <Text size="text-xl">On a phone</Text>
+        {[
+          "1. Tap Copy code below.",
+          "2. Bookmark this page, then edit that bookmark and replace its address with the copied code.",
+          "3. Open pokeroledex.nl in this same browser and log in there.",
+          "4. Open the bookmark from your bookmarks (in Chrome, type its name in the address bar and tap it).",
+        ].map((step) => (
+          <Text key={step} size="text-base" font="font-move">
+            {step}
+          </Text>
+        ))}
+        <div className="flex flex-wrap gap-2">
           {/* Decoded, the code also runs when pasted into the developer-tools console:
               the leading "javascript:" reads as a statement label there. */}
           <Button variant="white" onClick={() => navigator.clipboard.writeText(decodeURIComponent(code))}>
             Copy code
           </Button>
         </div>
-        <Text size="text-xl">2. Use it on pokeroledex.nl</Text>
         <Text size="text-base" font="font-move">
-          Log in at pokeroledex.nl and open the bookmark. It brings you back here and copies your Pokémon, trainers and
-          campaigns into your account. Importing again updates them instead of making copies. If you had to log in here
-          first, open the bookmark on pokeroledex.nl once more.
+          Importing again updates your Pokémon, trainers and campaigns instead of making copies.
         </Text>
       </Box>
       <Box color="bg-pokerole-beige" className="p-5 flex flex-col gap-3">
