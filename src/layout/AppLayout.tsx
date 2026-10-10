@@ -2,6 +2,7 @@ import { useMediaQuery, useToggle } from "@uidotdev/usehooks";
 import * as React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { IssueButton } from "@/layout/IssueButton";
 import { LocalNotes } from "@/layout/LocalNotes";
 import { MobileNav } from "@/layout/MobileNav";
 import { Sidebar } from "@/layout/Sidebar";
@@ -57,6 +58,7 @@ export const AppLayout = () => {
         </ScrollContainer>
         <div className="hidden md:flex fixed bottom-6 right-6 z-50 space-x-3 items-end">
           <SupportButton />
+          <IssueButton />
           <LocalNotes />
         </div>
       </div>

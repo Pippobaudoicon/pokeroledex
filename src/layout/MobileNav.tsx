@@ -2,6 +2,7 @@ import { RxCross1, RxHamburgerMenu } from "react-icons/rx";
 import { TbPokeball } from "react-icons/tb";
 import { Link } from "react-router-dom";
 import { Text } from "@/components/Text";
+import { IssueButton } from "@/layout/IssueButton";
 import { LocalNotes } from "@/layout/LocalNotes";
 import {
   AccountButton,
@@ -63,6 +64,9 @@ export const MobileNav = ({
             <div id="mobile-nav-feedback-button">
               <LocalNotes />
             </div>
+          </div>
+          <div className="flex justify-center">
+            <IssueButton />
           </div>
         </div>
       </div>
