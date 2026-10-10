@@ -11,7 +11,7 @@
     "run_worker_first": ["/api/*"]
   },
   // Cloudflare Access login in front of the site (worker/access.ts, README "Logins").
-  "vars": { "ACCESS_TEAM_DOMAIN": "", "ACCESS_AUD": "" },
+  "vars": { "ACCESS_TEAM_DOMAIN": "lopiparo.cloudflareaccess.com", "ACCESS_AUD": "5fc1b34303394c0b49f06f3cef919a5c7eab1bb4a036d943f0dc6f43ae6bec7f" },
   "d1_databases": [
     { "binding": "DB", "database_name": "pokeroledex", "database_id": "a7adefee-6890-46f2-bc0c-bcdada772e0e", "migrations_dir": "migrations" }
   ]
