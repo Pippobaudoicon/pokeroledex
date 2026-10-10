@@ -51,6 +51,19 @@ Static files are served directly. Requests that match no file reach the Worker, 
 - **Reference data** (1,196 Pokémon forms, 892 moves, 394 items, 305 abilities, 25 natures, rank-up tables) lives in `data/reference/` and is published read-only as `/reference/*.json`.
 - **Your data** (Pokémon sheets, trainers, campaigns, custom entries, notes) is stored in D1, in one `records` table. Back it up with `pnpm exec wrangler d1 export pokeroledex --remote --output backup.sql` (or `--local`).
 
+### Import your data from pokeroledex.nl
+
+1. Log in at [pokeroledex.nl](https://pokeroledex.nl), open the browser's developer tools on the Network tab and open My Pokémon.
+2. Click a request to `pokeroledex.nl/api/...` and copy the value of its `Authorization` request header. The token expires after about a day.
+3. Run:
+
+   ```sh
+   POKEROLEDEX_TOKEN='<copied value>' node scripts/import-pokeroledex.ts
+   pnpm exec wrangler d1 execute pokeroledex --remote --file .wrangler/import.sql
+   ```
+
+This copies your Pokémon sheets, trainers (team and inventory), campaigns, and the moves, abilities, items and Pokémon templates in those campaigns. Records keep their ids, so running it again updates them instead of duplicating them. Use `--local` instead of `--remote` to try it on the local database first.
+
 The Pokémon and item generators are local approximations: the original server's selection algorithm could not be recovered. Rank-up point tables are captured data, but Unranked and Champion had no table response.
 
 ## What was recovered
