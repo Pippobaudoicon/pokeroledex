@@ -1,7 +1,5 @@
 node_modules/
 .DS_Store
-data/local.json
-data/local.json.tmp
 artifacts/
 __pycache__/
 *.pyc
