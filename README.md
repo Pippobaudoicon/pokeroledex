@@ -54,6 +54,8 @@ Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/re
 
 Static files are served directly. Requests that match no file reach the Worker, which serves `/api/*`, falls back from a missing `BoxSprites` image to the matching `BookSprites` image, returns 404 for missing images, fonts and assets, and serves `index.html` for app routes.
 
+The app is an installable PWA: `/sw.js` caches the shell and static files, and keeps the last answer to each `/api` read so Pokémon, trainers, moves and items already opened stay readable offline (read-only; changes need a connection). Logging out clears those saved answers.
+
 ## Data
 
 - **Reference data** (1,196 Pokémon forms, 892 moves, 394 items, 305 abilities, 25 natures, rank-up tables) lives in `data/reference/` and is published read-only as `/reference/*.json`.
