@@ -26,11 +26,7 @@ export interface FormMove {
 }
 
 /** An evolution row as edited: its comboboxes yield "" when re-picked and speed is free text. */
-export type FormEvolution = Omit<T.Evolution, "type" | "kind" | "speed"> & {
-  type: EvolutionDirection | "";
-  kind: EvolutionKind | "";
-  speed?: string;
-};
+export type FormEvolution = T.EvolutionBody;
 
 /** Optional ids and texts are "" while unset. */
 export interface TemplateFormData {

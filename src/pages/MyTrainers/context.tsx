@@ -20,11 +20,6 @@ export type StatChanges = Record<TrainerStatKey, number>;
 /** Entries added in the sheet have no id until saved; custom drafts carry a partial item. */
 export type InventoryRow = { id: string | undefined; item: T.Item; quantity: number };
 export type EditableTrainer = Omit<T.Trainer, "inventory"> & { inventory: InventoryRow[] };
-/** shared UpdateTrainerBody's Omit<InventoryEntry, "id"> drops the union's item fields, so spell the DTO out. */
-type InventoryEntryDto = { id?: string; quantity: number } & (
-  | { itemId: string }
-  | Pick<T.Item, "name" | "source" | "category" | "pocket" | "description" | "oneUse" | "PMD" | "trainerPrice" | "pmdPrice" | "image">
-);
 
 export interface TrainerContextValue {
   updatedTrainer: EditableTrainer | undefined;
@@ -46,7 +41,7 @@ const TRAINER_STATS = [...TRAINER_ATTRIBUTES, ...SOCIALS, ...TRAINER_SKILLS];
 function isCustomItem(item: T.Item) {
   return item.id === undefined || item.id === "" ? true : item.id.startsWith("custom-");
 }
-function toInventoryItemDto(entry: InventoryRow): InventoryEntryDto {
+function toInventoryItemDto(entry: InventoryRow): NonNullable<T.UpdateTrainerBody["inventory"]>[number] {
   const id = entry.id === "" ? undefined : entry.id;
   return isCustomItem(entry.item)
     ? {

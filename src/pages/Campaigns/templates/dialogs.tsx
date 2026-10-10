@@ -11,7 +11,6 @@ import {
   usePokemonTemplatesControllerRemove,
   usePokemonTemplatesControllerUpdate,
 } from "@/api/components";
-import type { PokemonType } from "@/api/schemas";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,25 +25,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useCampaign } from "@/pages/Campaigns/context";
 import {
   emptyTemplateForm,
-  type FormEvolution,
   PokemonTemplateForm,
   type TemplateFormData,
   validationError,
 } from "@/pages/Campaigns/templates/PokemonTemplateForm";
-
-/**
- * The body the form actually sends. T.CustomPokemonTemplateBody is stricter: it wants `campaign`,
- * a non-empty genderType and description, no TYPELESS/VARIES types and typed evolution fields.
- */
-type TemplateBody = Omit<
-  T.CustomPokemonTemplateBody,
-  "campaign" | "types" | "genderType" | "description" | "evolutions"
-> & {
-  types: PokemonType[];
-  genderType?: T.GenderType;
-  description?: string;
-  evolutions: FormEvolution[];
-};
 
 const invalidateTemplateQueries = (queryClient: QueryClient) => {
   void queryClient.invalidateQueries({
@@ -142,7 +126,7 @@ export const CreatePokemonTemplateDialog = ({ trigger }: { trigger: React.ReactN
       toast({ title: "Validation Error", description: error, variant: "destructive" });
       return;
     }
-    const body: TemplateBody = {
+    const body: T.CustomPokemonTemplateBody = {
       id: v4(),
       campaignId: campaign.id,
       name: formData.name,
@@ -171,7 +155,7 @@ export const CreatePokemonTemplateDialog = ({ trigger }: { trigger: React.ReactN
       evolutions: formData.evolutions,
       description: formData.description !== "" ? formData.description : undefined,
     };
-    createTemplate({ body: body as T.CustomPokemonTemplateBody });
+    createTemplate({ body });
   };
 
   return (
@@ -292,7 +276,7 @@ export const EditPokemonTemplateDialog = ({
       return;
     }
     const saved = toFormData(pokemonTemplate);
-    const changes: Partial<TemplateBody> & { id: string } = { id: pokemonTemplate.id };
+    const changes: Partial<T.CustomPokemonTemplateBody> & { id: string } = { id: pokemonTemplate.id };
     if (formData.name !== saved.name) changes.name = formData.name;
     if (formData.number !== saved.number) changes.number = formData.number;
     const dexID = formData.dexID !== "" ? formData.dexID : formData.number.toString().padStart(4, "0");
@@ -333,7 +317,7 @@ export const EditPokemonTemplateDialog = ({
           return { rank: move.rank, moveId: move.moveId, ...(savedMove ? { id: savedMove.id } : {}) };
         });
     }
-    updateTemplate({ body: changes as Partial<T.CustomPokemonTemplateBody> & { id: string } });
+    updateTemplate({ body: changes });
   };
 
   return (

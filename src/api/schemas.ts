@@ -95,7 +95,7 @@ export const MoveTarget = {
   BATTLEFIELD: "BATTLEFIELD",
   SELF: "SELF",
   ALLY: "ALLY",
-} as const; // superset of T.MoveTarget: the UI also offers USER_AND_ALLIES
+} as const satisfies Record<string, T.MoveTarget>;
 export type MoveTarget = (typeof MoveTarget)[keyof typeof MoveTarget];
 
 export const EvolutionDirection = {

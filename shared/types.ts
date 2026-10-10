@@ -26,7 +26,7 @@ export type MoveType = PokemonType | 'VARIES' | 'TYPELESS';
 export type MoveCategory = 'PHYSICAL' | 'SPECIAL' | 'SUPPORT' | 'PHYSICAL_SPECIAL' | 'SUPPORT_PHYSICAL_SPECIAL';
 export type MoveTarget =
   | 'FOE' | 'ALL_FOES' | 'RANDOM_FOE' | 'ALLY' | 'ALL_ALLIES' | 'SELF' | 'AREA'
-  | 'BATTLEFIELD' | 'ALLYS_BATTLEFIELD' | 'FOES_BATTLEFIELD';
+  | 'BATTLEFIELD' | 'ALLYS_BATTLEFIELD' | 'FOES_BATTLEFIELD' | 'USER_AND_ALLIES';
 export type ItemPocket = 'HELD_ITEMS' | 'MEDICINE' | 'TRAINER_ITEMS' | 'EVOLUTION_ITEM' | 'POKEBALLS' | 'TECHNICAL_MACHINE';
 export type ItemCategory =
   | 'TYPE_BOOSTING' | 'BATTLE_ITEM' | 'MEGA_STONE' | 'STATUS' | 'BERRY' | 'MON_BOOSTING'
@@ -247,6 +247,8 @@ export interface PokemonMinimal {
 }
 
 /** Inventory entries reference an item, or carry a custom item's fields inline. */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 export type InventoryEntry = { id: string; quantity: number } & (
   | { itemId: string }
   | Pick<Item, 'name' | 'source' | 'category' | 'pocket' | 'description' | 'oneUse' | 'PMD' | 'trainerPrice' | 'pmdPrice' | 'image'>
@@ -316,18 +318,30 @@ export type CreateTrainerBody = Partial<Omit<TrainerRecord, 'stats'>> & { stats?
 export type UpdateTrainerBody = Partial<Omit<TrainerRecord, 'inventory'>> & {
   id: string;
   pokemonIds?: string[];
-  inventory?: (Omit<InventoryEntry, 'id'> & { id?: string })[];
+  inventory?: (DistributiveOmit<InventoryEntry, 'id'> & { id?: string })[];
 };
 export type CampaignBody = Partial<Campaign> & { name: string };
 export type FeedbackBody = Pick<Feedback, 'name' | 'email' | 'message'>;
-/** Custom templates reference abilities and moves by id. */
+/** What the template form sends: evolution rows can still be blank and `speed` is free text. */
+export type EvolutionBody = Omit<Evolution, 'type' | 'kind' | 'speed'> & {
+  type: Evolution['type'] | '';
+  kind: Evolution['kind'] | '';
+  speed?: string;
+};
+/** Custom templates reference abilities and moves by id; the form can send TYPELESS/VARIES types. */
 export type CustomPokemonTemplateBody =
-  Omit<CompactPokemonTemplate, 'hash' | 'possibleMoves' | 'abilityTwoId' | 'hiddenAbilityId' | 'eventAbilityId'> & {
+  Omit<CompactPokemonTemplate,
+    'hash' | 'campaign' | 'types' | 'genderType' | 'description' | 'evolutions' | 'possibleMoves'
+    | 'abilityTwoId' | 'hiddenAbilityId' | 'eventAbilityId'> & {
     campaignId: string;
+    types: MoveType[];
+    genderType?: GenderType;
+    description?: string;
+    evolutions: EvolutionBody[];
     abilityTwoId?: string;
     hiddenAbilityId?: string;
     eventAbilityId?: string;
-    possibleMoves: { rank: Rank; moveId: string }[];
+    possibleMoves: { id?: string; rank: Rank; moveId: string }[];
   };
 
 export interface ApiError {
