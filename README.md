@@ -35,6 +35,15 @@ Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/re
 
 `pnpm dev` has no Access in front of it and uses a single local user. Records made before logins existed belong to `local-user`; give them to someone with `pnpm exec wrangler d1 execute pokeroledex --remote --command "UPDATE records SET owner = 'you@example.com' WHERE owner = 'local-user'"`.
 
+## Issue reports
+
+The **Suggest a feature** button opens a form; the Worker turns it into a GitHub issue (`worker/github.ts`), so people need no GitHub account. The token stays a Worker secret and never reaches the browser. Each person can send 5 reports a day; their email is kept with the report in D1 but not published on GitHub. Issues get the `from-app` label.
+
+1. Create a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new): *Only select repositories* → this repository, permission **Issues: Read and write**, nothing else, with an expiry date.
+2. `pnpm exec wrangler secret put GITHUB_TOKEN` and paste it. To try it locally, put `GITHUB_TOKEN=...` in `.dev.vars` (git-ignored).
+
+`GITHUB_REPO` in `wrangler.jsonc` sets the target repository. Without a token the form answers that reports are not set up.
+
 ## Layout
 
 | Path | Purpose |

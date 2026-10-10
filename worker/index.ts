@@ -8,6 +8,10 @@ export interface Env {
   ACCESS_TEAM_DOMAIN: string;
   /** Application Audience (AUD) tag of the Access application in front of the site. */
   ACCESS_AUD: string;
+  /** owner/name of the repository issue reports go to (worker/github.ts). */
+  GITHUB_REPO?: string;
+  /** Secret token allowed to create issues in GITHUB_REPO; unset disables reports. */
+  GITHUB_TOKEN?: string;
 }
 
 // Static assets are served before this Worker runs (wrangler.jsonc), so apart from

@@ -605,3 +605,16 @@ export const useFeedbackControllerCreate = (options?: MutationOptions<T.Feedback
     ...options,
   });
 };
+
+export type IssuesControllerCreateVariables = { body: T.IssueReportBody } & FetcherExtraProps;
+
+const fetchIssuesControllerCreate = (variables: IssuesControllerCreateVariables, signal?: AbortSignal) =>
+  apiFetch<T.IssueReport>({ url: "/issues", method: "post", ...variables, signal });
+
+export const useIssuesControllerCreate = (options?: MutationOptions<T.IssueReport, IssuesControllerCreateVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<T.IssueReport, ApiFetchError, IssuesControllerCreateVariables>({
+    mutationFn: (variables) => fetchIssuesControllerCreate({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};

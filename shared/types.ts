@@ -287,6 +287,16 @@ export interface Feedback {
   createdAt: string;
 }
 
+/** A report the Worker opened as a GitHub issue (worker/github.ts). */
+export interface IssueReport {
+  id: string;
+  userId: string;
+  title: string;
+  number: number;
+  url: string;
+  createdAt: string;
+}
+
 // Request bodies.
 
 export interface SelectionBody {
@@ -341,6 +351,13 @@ export type UpdateTrainerBody = Partial<Omit<TrainerRecord, 'inventory'>> & {
 };
 export type CampaignBody = Partial<Campaign> & { name: string };
 export type FeedbackBody = Pick<Feedback, 'name' | 'email' | 'message'>;
+/** Longest title and description an issue report may have. */
+export const ISSUE_TITLE_LIMIT = 120;
+export const ISSUE_DESCRIPTION_LIMIT = 5000;
+export interface IssueReportBody {
+  title: string;
+  description: string;
+}
 /** What the template form sends: evolution rows can still be blank and `speed` is free text. */
 export type EvolutionBody = Omit<Evolution, 'type' | 'kind' | 'speed'> & {
   type: Evolution['type'] | '';

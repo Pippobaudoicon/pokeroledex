@@ -5,6 +5,7 @@ import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/ty
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import type { Env } from './index.ts';
+import { IssueError, openIssue } from './github.ts';
 import { fetchOldData } from './import.ts';
 import { loadReference, type Reference } from './reference.ts';
 
@@ -14,7 +15,7 @@ type Row = Json & { id: string };
 type Collections = Record<string, Row[]>;
 
 const referenceNames = ['pokemon-templates', 'moves', 'items', 'abilities', 'natures'];
-const collectionNames = ['pokemon', 'trainers', 'campaigns', 'feedback', ...referenceNames];
+const collectionNames = ['pokemon', 'trainers', 'campaigns', 'feedback', 'issues', ...referenceNames];
 const blankStats = () => Object.fromEntries([...ATTRIBUTES, ...SOCIALS, ...SKILLS, ...TRAINER_SKILLS, 'happiness', 'loyalty', 'will'].map(key => [key, 0])) as Stats;
 
 class HttpError extends Error {
@@ -74,6 +75,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         ON CONFLICT (owner, collection, id) DO UPDATE SET data = excluded.data`).bind(owner, JSON.stringify(rows)).run();
       return reply({ counts: Object.fromEntries(Object.entries(collections).map(([name, records]) => [name, records.length])), missing, skipped });
     }
+    if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
     const db: Collections = Object.fromEntries(collectionNames.map(name => [name, []]));
     const { results } = await env.DB.prepare('SELECT collection, data FROM records WHERE owner = ? ORDER BY seq').bind(owner).all<{ collection: string; data: string }>();
@@ -83,7 +85,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     if (writes.length) await env.DB.batch(writes);
     return response;
   } catch (error) {
-    const status = error instanceof HttpError ? error.status : 500;
+    const status = error instanceof HttpError || error instanceof IssueError ? error.status : 500;
     return reply({ status, payload: (error as Error).message }, status);
   }
 
