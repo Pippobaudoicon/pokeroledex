@@ -1,7 +1,7 @@
-// @ts-nocheck
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { FaPenToSquare, FaPlus, FaTrash } from "react-icons/fa6";
+import type * as T from "../../../shared/types";
 import {
   fetchAbilitiesControllerFindAllByCampaign,
   useAbilitiesControllerCreate,
@@ -34,17 +34,44 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCampaign } from "@/pages/Campaigns/context";
-const emptyAbility = () => ({
+
+interface AbilityFormData {
+  name: string;
+  description: string;
+  effect: string;
+}
+
+const emptyAbility = (): AbilityFormData => ({
   name: "",
   description: "",
   effect: "",
 });
-const AbilityForm = ({ formData: e, onChange: t }) => {
-  const n = (r, o) => {
-    t({
-      ...e,
-      [r]: o,
-    });
+
+/** The first required field that is blank, if any. */
+const missingField = (form: AbilityFormData) => {
+  if (form.name.trim() === "") return "Name";
+  if (form.description.trim() === "") return "Description";
+  if (form.effect.trim() === "") return "Effect";
+  return undefined;
+};
+
+const invalidateAbilities = (queryClient: QueryClient) =>
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey[0];
+      return typeof key === "string" && key.includes("abilities");
+    },
+  });
+
+const AbilityForm = ({
+  formData,
+  onChange,
+}: {
+  formData: AbilityFormData;
+  onChange: (formData: AbilityFormData) => void;
+}) => {
+  const setField = (key: keyof AbilityFormData, value: string) => {
+    onChange({ ...formData, [key]: value });
   };
   return (
     <ScrollArea className="max-h-[70vh] pr-4">
@@ -55,9 +82,9 @@ const AbilityForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Input
             placeholder="Enter ability name"
-            value={e.name}
-            onChange={(r) => {
-              n("name", r.target.value);
+            value={formData.name}
+            onChange={(event) => {
+              setField("name", event.target.value);
             }}
           />
         </div>
@@ -67,9 +94,9 @@ const AbilityForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Textarea
             placeholder="Enter ability description"
-            value={e.description}
-            onChange={(r) => {
-              n("description", r.target.value);
+            value={formData.description}
+            onChange={(event) => {
+              setField("description", event.target.value);
             }}
             rows={3}
           />
@@ -80,9 +107,9 @@ const AbilityForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Textarea
             placeholder="Enter ability effect"
-            value={e.effect}
-            onChange={(r) => {
-              n("effect", r.target.value);
+            value={formData.effect}
+            onChange={(event) => {
+              setField("effect", event.target.value);
             }}
             rows={4}
           />
@@ -91,85 +118,59 @@ const AbilityForm = ({ formData: e, onChange: t }) => {
     </ScrollArea>
   );
 };
-const CreateAbilityDialog = ({ trigger: e }) => {
-  const [t, n] = React.useState(false),
-    [r, o] = React.useState(emptyAbility()),
-    { campaign: s } = useCampaign(),
-    { toast: i } = useToast(),
-    l = useQueryClient(),
-    { mutate: c, isPending: u } = useAbilitiesControllerCreate({
-      onSuccess: () => {
-        i({
-          title: "Ability Created",
-          description: `${r.name} has been created successfully.`,
-        }),
-          l.invalidateQueries({
-            predicate: (m) => {
-              var v, g;
-              return (
-                ((g = (v = m.queryKey[0]) == null ? undefined : v.includes) ==
-                null
-                  ? undefined
-                  : g.call(v, "abilities")) ?? false
-              );
-            },
-          }),
-          n(false),
-          o(emptyAbility());
-      },
-      onError: (m) => {
-        i({
-          title: "Failed to create Ability",
-          description:
-            (m == null ? undefined : m.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    f = !!u,
-    p = () => {
-      if (s !== undefined) {
-        if (r.name.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Name is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        if (r.description.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Description is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        if (r.effect.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Effect is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        c({
-          body: {
-            campaignId: s.id,
-            name: r.name.trim(),
-            description: r.description.trim(),
-            effect: r.effect.trim(),
-          },
-        });
-      }
+
+const CreateAbilityDialog = ({ trigger }: { trigger: React.ReactNode }) => {
+  const [open, setOpen] = React.useState(false);
+  const [formData, setFormData] = React.useState(emptyAbility());
+  const { campaign } = useCampaign();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: createAbility, isPending } = useAbilitiesControllerCreate({
+    onSuccess: () => {
+      toast({
+        title: "Ability Created",
+        description: `${formData.name} has been created successfully.`,
+      });
+      invalidateAbilities(queryClient);
+      setOpen(false);
+      setFormData(emptyAbility());
     },
-    h =
-      r.name.trim() !== "" &&
-      r.description.trim() !== "" &&
-      r.effect.trim() !== "";
+    onError: (error) => {
+      toast({
+        title: "Failed to create Ability",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+  const isValid = missingField(formData) === undefined;
+
+  const handleCreate = () => {
+    if (campaign === undefined) return;
+    const missing = missingField(formData);
+    if (missing !== undefined) {
+      toast({
+        title: "Validation Error",
+        description: `${missing} is required.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    createAbility({
+      body: {
+        campaignId: campaign.id,
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        effect: formData.effect.trim(),
+      },
+    });
+  };
+
   return (
-    <Dialog open={t} onOpenChange={n}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add Ability</DialogTitle>
@@ -177,228 +178,204 @@ const CreateAbilityDialog = ({ trigger: e }) => {
             Create a new custom ability for this campaign.
           </DialogDescription>
         </DialogHeader>
-        <AbilityForm formData={r} onChange={o} />
+        <AbilityForm formData={formData} onChange={setFormData} />
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              n(false);
+              setOpen(false);
             }}
-            disabled={u}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button variant="green" onClick={p} disabled={f || !h}>
-            {f ? "Creating..." : "Create"}
+          <Button
+            variant="green"
+            onClick={handleCreate}
+            disabled={isPending || !isValid}
+          >
+            {isPending ? "Creating..." : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-const EditAbilityDialog = ({ trigger: e, ability: t }) => {
-  const [n, r] = React.useState(false),
-    [o, s] = React.useState({
-      name: "",
-      description: "",
-      effect: "",
-    }),
-    { toast: i } = useToast(),
-    l = useQueryClient(),
-    { mutate: c, isPending: u } = useAbilitiesControllerUpdate({
-      onSuccess: () => {
-        i({
-          title: "Ability Updated",
-          description: `${o.name} updated successfully.`,
-        }),
-          l.invalidateQueries({
-            predicate: (h) => {
-              var m, v;
-              return (
-                ((v = (m = h.queryKey[0]) == null ? undefined : m.includes) ==
-                null
-                  ? undefined
-                  : v.call(m, "abilities")) ?? false
-              );
-            },
-          }),
-          r(false);
-      },
-      onError: (h) => {
-        i({
-          title: "Failed to update Ability",
-          description:
-            (h == null ? undefined : h.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    });
-  React.useEffect(() => {
-    n &&
-      s({
-        name: t.name ?? "",
-        description: t.description ?? "",
-        effect: t.effect ?? "",
+
+const EditAbilityDialog = ({
+  trigger,
+  ability,
+}: {
+  trigger: React.ReactNode;
+  ability: T.Ability;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [formData, setFormData] = React.useState(emptyAbility());
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: updateAbility, isPending } = useAbilitiesControllerUpdate({
+    onSuccess: () => {
+      toast({
+        title: "Ability Updated",
+        description: `${formData.name} updated successfully.`,
       });
-  }, [n, t]);
-  const f = () => {
-      if (o.name.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Name is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (o.description.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Description is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (o.effect.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Effect is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      c({
-        body: {
-          id: t.id,
-          name: o.name.trim(),
-          description: o.description.trim(),
-          effect: o.effect.trim(),
-        },
+      invalidateAbilities(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update Ability",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
       });
     },
-    p =
-      o.name.trim() !== "" &&
-      o.description.trim() !== "" &&
-      o.effect.trim() !== "";
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    setFormData({
+      name: ability.name ?? "",
+      description: ability.description ?? "",
+      effect: ability.effect ?? "",
+    });
+  }, [open, ability]);
+
+  const handleUpdate = () => {
+    const missing = missingField(formData);
+    if (missing !== undefined) {
+      toast({
+        title: "Validation Error",
+        description: `${missing} is required.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    updateAbility({
+      body: {
+        id: ability.id,
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        effect: formData.effect.trim(),
+      },
+    });
+  };
+  const isValid = missingField(formData) === undefined;
+
   return (
-    <Dialog open={n} onOpenChange={r}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit Ability</DialogTitle>
           <DialogDescription>Update the ability details.</DialogDescription>
         </DialogHeader>
-        <AbilityForm formData={o} onChange={s} />
+        <AbilityForm formData={formData} onChange={setFormData} />
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              r(false);
+              setOpen(false);
             }}
-            disabled={u}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button variant="green" onClick={f} disabled={u === true || !p}>
-            {u === true ? "Updating..." : "Update"}
+          <Button
+            variant="green"
+            onClick={handleUpdate}
+            disabled={isPending || !isValid}
+          >
+            {isPending ? "Updating..." : "Update"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-const DeleteAbilityDialog = ({ children: e, ability: t }) => {
-  const [n, r] = React.useState(false),
-    { toast: o } = useToast(),
-    s = useQueryClient(),
-    { mutate: i, isPending: l } = useAbilitiesControllerRemove({
-      onSuccess: () => {
-        o({
-          title: "Ability deleted",
-          description: `${t.name} has been deleted.`,
-        }),
-          s.invalidateQueries({
-            predicate: (u) => {
-              var f, p;
-              return (
-                ((p = (f = u.queryKey[0]) == null ? undefined : f.includes) ==
-                null
-                  ? undefined
-                  : p.call(f, "abilities")) ?? false
-              );
-            },
-          }),
-          r(false);
-      },
-      onError: (u) => {
-        o({
-          title: "Failed to delete Ability",
-          description:
-            (u == null ? undefined : u.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    c = () => {
-      i({
-        pathParams: {
-          id: t.id,
-        },
+
+const DeleteAbilityDialog = ({
+  children,
+  ability,
+}: {
+  children: React.ReactNode;
+  ability: T.Ability;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: removeAbility, isPending } = useAbilitiesControllerRemove({
+    onSuccess: () => {
+      toast({
+        title: "Ability deleted",
+        description: `${ability.name} has been deleted.`,
       });
-    };
+      invalidateAbilities(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to delete Ability",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
-    <Dialog open={n} onOpenChange={r}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
             {"Are you sure you want to delete "}
-            {t.name}?
+            {ability.name}?
           </DialogTitle>
           <DialogDescription>This action cannot be undone.</DialogDescription>
         </DialogHeader>
-        <Button variant="red" onClick={c} disabled={l}>
-          {l ? "Deleting..." : "Delete"}
+        <Button
+          variant="red"
+          onClick={() => {
+            removeAbility({ pathParams: { id: ability.id } });
+          }}
+          disabled={isPending}
+        >
+          {isPending ? "Deleting..." : "Delete"}
         </Button>
       </DialogContent>
     </Dialog>
   );
 };
+
 export const CampaignAbilities = () => {
-  const { campaign: e } = useCampaign(),
-    { fetcherOptions: t } = useApiContext(),
-    n = [
-      "abilities",
-      "all",
-      (e == null ? undefined : e.id) ?? "",
-      {
-        includeCore: false,
-      },
-    ],
-    { data: r, isLoading: o } = useQuery({
-      queryKey: n,
-      queryFn: () =>
-        fetchAbilitiesControllerFindAllByCampaign(
-          {
-            ...t,
-            pathParams: {
-              id: (e == null ? undefined : e.id) ?? "",
-            },
-            body: {
-              includeCore: false,
-            },
-          },
-          undefined,
-        ),
-      enabled: !!(e != null && e.id),
-    });
-  if (e === undefined) return <div>No campaign selected</div>;
-  if (o)
+  const { campaign } = useCampaign();
+  const { fetcherOptions } = useApiContext();
+  const campaignId = campaign?.id ?? "";
+  const { data: abilities, isLoading } = useQuery({
+    queryKey: ["abilities", "all", campaignId, { includeCore: false }],
+    queryFn: () =>
+      fetchAbilitiesControllerFindAllByCampaign({
+        ...fetcherOptions,
+        pathParams: { id: campaignId },
+        body: { includeCore: false },
+      }),
+    enabled: !!campaign?.id,
+  });
+
+  if (campaign === undefined) return <div>No campaign selected</div>;
+  if (isLoading)
     return (
       <div className="flex justify-center py-8">
         <LoadingSpinner />
       </div>
     );
-  const s = (r ?? []).slice().sort((i, l) => i.name.localeCompare(l.name));
+
+  const sortedAbilities = (abilities ?? [])
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="flex flex-col gap-2 mt-2">
       <div className="flex flex-row items-center justify-between">
@@ -425,7 +402,7 @@ export const CampaignAbilities = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {s.length === 0 ? (
+            {sortedAbilities.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-8">
                   <Text color="text-pokerole-black-light">
@@ -434,14 +411,14 @@ export const CampaignAbilities = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              s.map((i) => (
-                <TableRow key={i.id}>
-                  <TableCell>{i.name}</TableCell>
+              sortedAbilities.map((ability) => (
+                <TableRow key={ability.id}>
+                  <TableCell>{ability.name}</TableCell>
                   <TableCell className="max-w-xs truncate">
-                    {i.description}
+                    {ability.description}
                   </TableCell>
                   <TableCell className="max-w-xs truncate">
-                    {i.effect}
+                    {ability.effect}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-row justify-end">
@@ -451,9 +428,9 @@ export const CampaignAbilities = () => {
                             <FaPenToSquare size={16} />
                           </Button>
                         }
-                        ability={i}
+                        ability={ability}
                       />
-                      <DeleteAbilityDialog ability={i}>
+                      <DeleteAbilityDialog ability={ability}>
                         <Button variant="ghost" size="icon">
                           <FaTrash size={16} />
                         </Button>

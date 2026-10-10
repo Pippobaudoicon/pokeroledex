@@ -1,7 +1,7 @@
-// @ts-nocheck
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { FaPenToSquare, FaPlus, FaTrash } from "react-icons/fa6";
+import type * as T from "../../../shared/types";
 import {
   useItemsControllerCreate,
   useItemsControllerFindAll,
@@ -38,7 +38,20 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCampaign } from "@/pages/Campaigns/context";
-const emptyItem = () => ({
+
+interface ItemFormData {
+  name: string;
+  category: ItemCategory;
+  pocket: ItemPocket;
+  description: string;
+  oneUse: boolean;
+  pmd: boolean;
+  trainerPrice: string;
+  pmdPrice: string;
+  image: string;
+}
+
+const emptyItem = (): ItemFormData => ({
   name: "",
   category: ItemCategory.BATTLE_ITEM,
   pocket: ItemPocket.HELD_ITEMS,
@@ -49,21 +62,38 @@ const emptyItem = () => ({
   pmdPrice: "",
   image: "",
 });
-const ItemForm = ({ formData: e, onChange: t }) => {
-  const n = (s, i) => {
-      t({
-        ...e,
-        [s]: i,
-      });
+
+const invalidateItems = (queryClient: QueryClient) =>
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey[0];
+      return typeof key === "string" && key.includes("items");
     },
-    r = Object.values(ItemCategory).map((s) => ({
-      label: s.replace(/_/g, " "),
-      value: s.toLowerCase(),
-    })),
-    o = Object.values(ItemPocket).map((s) => ({
-      label: s.replace(/_/g, " "),
-      value: s.toLowerCase(),
-    }));
+  });
+
+const categoryItems = Object.values(ItemCategory).map((category) => ({
+  label: category.replace(/_/g, " "),
+  value: category.toLowerCase(),
+}));
+const pocketItems = Object.values(ItemPocket).map((pocket) => ({
+  label: pocket.replace(/_/g, " "),
+  value: pocket.toLowerCase(),
+}));
+
+const ItemForm = ({
+  formData,
+  onChange,
+}: {
+  formData: ItemFormData;
+  onChange: (formData: ItemFormData) => void;
+}) => {
+  const setField = <K extends keyof ItemFormData>(
+    key: K,
+    value: ItemFormData[K],
+  ) => {
+    onChange({ ...formData, [key]: value });
+  };
+  // The Combobox reports "" when the current value is picked again; that "" is stored as-is.
   return (
     <ScrollArea className="max-h-[70vh] pr-4">
       <div className="flex flex-col gap-4 p-1">
@@ -73,9 +103,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Input
             placeholder="Enter item name"
-            value={e.name}
-            onChange={(s) => {
-              n("name", s.target.value);
+            value={formData.name}
+            onChange={(event) => {
+              setField("name", event.target.value);
             }}
           />
         </div>
@@ -85,10 +115,10 @@ const ItemForm = ({ formData: e, onChange: t }) => {
               Category *
             </Text>
             <Combobox
-              items={r}
-              value={e.category.toLowerCase()}
-              onChange={(s) => {
-                n("category", s.toUpperCase());
+              items={categoryItems}
+              value={formData.category.toLowerCase()}
+              onChange={(value) => {
+                setField("category", value.toUpperCase() as ItemCategory);
               }}
               placeholder="Select category"
             />
@@ -98,10 +128,10 @@ const ItemForm = ({ formData: e, onChange: t }) => {
               Pocket *
             </Text>
             <Combobox
-              items={o}
-              value={e.pocket.toLowerCase()}
-              onChange={(s) => {
-                n("pocket", s.toUpperCase());
+              items={pocketItems}
+              value={formData.pocket.toLowerCase()}
+              onChange={(value) => {
+                setField("pocket", value.toUpperCase() as ItemPocket);
               }}
               placeholder="Select pocket"
             />
@@ -113,9 +143,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Textarea
             placeholder="Enter item description"
-            value={e.description}
-            onChange={(s) => {
-              n("description", s.target.value);
+            value={formData.description}
+            onChange={(event) => {
+              setField("description", event.target.value);
             }}
             rows={4}
           />
@@ -128,9 +158,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
             <Input
               type="number"
               placeholder="0"
-              value={e.trainerPrice}
-              onChange={(s) => {
-                n("trainerPrice", s.target.value);
+              value={formData.trainerPrice}
+              onChange={(event) => {
+                setField("trainerPrice", event.target.value);
               }}
             />
           </div>
@@ -141,9 +171,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
             <Input
               type="number"
               placeholder="0"
-              value={e.pmdPrice}
-              onChange={(s) => {
-                n("pmdPrice", s.target.value);
+              value={formData.pmdPrice}
+              onChange={(event) => {
+                setField("pmdPrice", event.target.value);
               }}
             />
           </div>
@@ -154,9 +184,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Input
             placeholder="Enter image URL (optional)"
-            value={e.image}
-            onChange={(s) => {
-              n("image", s.target.value);
+            value={formData.image}
+            onChange={(event) => {
+              setField("image", event.target.value);
             }}
           />
         </div>
@@ -164,9 +194,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
           <div className="flex items-center space-x-2">
             <Checkbox
               id="oneUse"
-              checked={e.oneUse}
-              onCheckedChange={(s) => {
-                n("oneUse", s === true);
+              checked={formData.oneUse}
+              onCheckedChange={(checked) => {
+                setField("oneUse", checked === true);
               }}
             />
             <label
@@ -179,9 +209,9 @@ const ItemForm = ({ formData: e, onChange: t }) => {
           <div className="flex items-center space-x-2">
             <Checkbox
               id="pmd"
-              checked={e.pmd}
-              onCheckedChange={(s) => {
-                n("pmd", s === true);
+              checked={formData.pmd}
+              onCheckedChange={(checked) => {
+                setField("pmd", checked === true);
               }}
             />
             <label
@@ -196,73 +226,68 @@ const ItemForm = ({ formData: e, onChange: t }) => {
     </ScrollArea>
   );
 };
-const CreateItemDialog = ({ trigger: e }) => {
-  const [t, n] = React.useState(false),
-    [r, o] = React.useState(emptyItem()),
-    { campaign: s } = useCampaign(),
-    { toast: i } = useToast(),
-    l = useQueryClient(),
-    { mutate: c, isPending: u } = useItemsControllerCreate({
-      onSuccess: () => {
-        i({
-          title: "Item Created",
-          description: `${r.name} has been created successfully.`,
-        }),
-          l.invalidateQueries({
-            predicate: (m) => {
-              var v, g;
-              return (
-                ((g = (v = m.queryKey[0]) == null ? undefined : v.includes) ==
-                null
-                  ? undefined
-                  : g.call(v, "items")) ?? false
-              );
-            },
-          }),
-          n(false),
-          o(emptyItem());
-      },
-      onError: (m) => {
-        i({
-          title: "Failed to create Item",
-          description:
-            (m == null ? undefined : m.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    f = !!u,
-    p = () => {
-      if (s !== undefined) {
-        if (r.name.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Name is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        c({
-          body: {
-            name: r.name.trim(),
-            campaignId: s.id,
-            category: r.category,
-            pocket: r.pocket,
-            source: "custom",
-            description: r.description.trim(),
-            oneUse: r.oneUse,
-            PMD: r.pmd,
-            trainerPrice: r.trainerPrice !== "" ? Number(r.trainerPrice) : 0,
-            PMDPrice: r.pmdPrice !== "" ? Number(r.pmdPrice) : 0,
-            image: r.image.trim(),
-          },
-        });
-      }
+
+const CreateItemDialog = ({ trigger }: { trigger: React.ReactNode }) => {
+  const [open, setOpen] = React.useState(false);
+  const [formData, setFormData] = React.useState(emptyItem());
+  const { campaign } = useCampaign();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: createItem, isPending } = useItemsControllerCreate({
+    onSuccess: () => {
+      toast({
+        title: "Item Created",
+        description: `${formData.name} has been created successfully.`,
+      });
+      invalidateItems(queryClient);
+      setOpen(false);
+      setFormData(emptyItem());
     },
-    h = r.name.trim() !== "";
+    onError: (error) => {
+      toast({
+        title: "Failed to create Item",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+  const isValid = formData.name.trim() !== "";
+
+  const handleCreate = () => {
+    if (campaign === undefined) return;
+    if (formData.name.trim() === "") {
+      toast({
+        title: "Validation Error",
+        description: "Name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Sent exactly as the hosted build did: capitalised `PMDPrice` (the Worker
+    // maps it to `pmdPrice`). A non-literal body skips TypeScript's
+    // excess-property check for that key.
+    const body = {
+      name: formData.name.trim(),
+      campaignId: campaign.id,
+      category: formData.category,
+      pocket: formData.pocket,
+      source: "custom",
+      description: formData.description.trim(),
+      oneUse: formData.oneUse,
+      PMD: formData.pmd,
+      trainerPrice:
+        formData.trainerPrice !== "" ? Number(formData.trainerPrice) : 0,
+      PMDPrice: formData.pmdPrice !== "" ? Number(formData.pmdPrice) : 0,
+      image: formData.image.trim(),
+    };
+    createItem({ body });
+  };
+
   return (
-    <Dialog open={t} onOpenChange={n}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Add Item</DialogTitle>
@@ -270,219 +295,219 @@ const CreateItemDialog = ({ trigger: e }) => {
             Create a new custom item for this campaign.
           </DialogDescription>
         </DialogHeader>
-        <ItemForm formData={r} onChange={o} />
+        <ItemForm formData={formData} onChange={setFormData} />
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              n(false);
+              setOpen(false);
             }}
-            disabled={u}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button variant="green" onClick={p} disabled={f || !h}>
-            {f ? "Creating..." : "Create"}
+          <Button
+            variant="green"
+            onClick={handleCreate}
+            disabled={isPending || !isValid}
+          >
+            {isPending ? "Creating..." : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-const EditItemDialog = ({ trigger: e, item: t }) => {
-  const [n, r] = React.useState(false),
-    [o, s] = React.useState({
-      name: "",
-      category: ItemCategory.BATTLE_ITEM,
-      pocket: ItemPocket.HELD_ITEMS,
-      description: "",
-      oneUse: false,
-      pmd: false,
-      trainerPrice: "",
-      pmdPrice: "",
-      image: "",
-    }),
-    { toast: i } = useToast(),
-    l = useQueryClient(),
-    { mutate: c, isPending: u } = useItemsControllerUpdate({
-      onSuccess: () => {
-        i({
-          title: "Item Updated",
-          description: `${o.name} updated successfully.`,
-        }),
-          l.invalidateQueries({
-            predicate: (m) => {
-              var v, g;
-              return (
-                ((g = (v = m.queryKey[0]) == null ? undefined : v.includes) ==
-                null
-                  ? undefined
-                  : g.call(v, "items")) ?? false
-              );
-            },
-          }),
-          r(false);
-      },
-      onError: (m) => {
-        i({
-          title: "Failed to update Item",
-          description:
-            (m == null ? undefined : m.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    f = !!u;
-  React.useEffect(() => {
-    n &&
-      s({
-        name: t.name,
-        category: t.category ?? ItemCategory.BATTLE_ITEM,
-        pocket: t.pocket ?? ItemPocket.HELD_ITEMS,
-        description: t.description ?? "",
-        oneUse: t.oneUse ?? false,
-        pmd: t.PMD ?? false,
-        trainerPrice:
-          t.trainerPrice !== undefined ? t.trainerPrice.toString() : "",
-        pmdPrice: t.pmdPrice !== undefined ? t.pmdPrice.toString() : "",
-        image: t.image ?? "",
+
+const EditItemDialog = ({
+  trigger,
+  item,
+}: {
+  trigger: React.ReactNode;
+  item: T.Item;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [formData, setFormData] = React.useState(emptyItem());
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: updateItem, isPending } = useItemsControllerUpdate({
+    onSuccess: () => {
+      toast({
+        title: "Item Updated",
+        description: `${formData.name} updated successfully.`,
       });
-  }, [n, t]);
-  const p = () => {
-      if (o.name.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Name is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      c({
-        body: {
-          id: t.id,
-          name: o.name.trim(),
-          category: o.category,
-          pocket: o.pocket,
-          description: o.description.trim(),
-          oneUse: o.oneUse,
-          PMD: o.pmd,
-          trainerPrice: o.trainerPrice !== "" ? Number(o.trainerPrice) : 0,
-          pmdPrice: o.pmdPrice !== "" ? Number(o.pmdPrice) : 0,
-          image: o.image.trim(),
-        },
+      invalidateItems(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update Item",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
       });
     },
-    h = o.name.trim() !== "";
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    setFormData({
+      name: item.name,
+      category: item.category ?? ItemCategory.BATTLE_ITEM,
+      pocket: item.pocket ?? ItemPocket.HELD_ITEMS,
+      description: item.description ?? "",
+      oneUse: item.oneUse ?? false,
+      pmd: item.PMD ?? false,
+      // Only `undefined` is checked: a null price throws here, as in the original.
+      trainerPrice:
+        item.trainerPrice !== undefined ? item.trainerPrice!.toString() : "",
+      pmdPrice: item.pmdPrice !== undefined ? item.pmdPrice!.toString() : "",
+      image: item.image ?? "",
+    });
+  }, [open, item]);
+
+  const handleUpdate = () => {
+    if (formData.name.trim() === "") {
+      toast({
+        title: "Validation Error",
+        description: "Name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updateItem({
+      body: {
+        id: item.id,
+        name: formData.name.trim(),
+        category: formData.category,
+        pocket: formData.pocket,
+        description: formData.description.trim(),
+        oneUse: formData.oneUse,
+        PMD: formData.pmd,
+        trainerPrice:
+          formData.trainerPrice !== "" ? Number(formData.trainerPrice) : 0,
+        pmdPrice: formData.pmdPrice !== "" ? Number(formData.pmdPrice) : 0,
+        image: formData.image.trim(),
+      },
+    });
+  };
+  const isValid = formData.name.trim() !== "";
+
   return (
-    <Dialog open={n} onOpenChange={r}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit Item</DialogTitle>
           <DialogDescription>Update the item details.</DialogDescription>
         </DialogHeader>
-        <ItemForm formData={o} onChange={s} />
+        <ItemForm formData={formData} onChange={setFormData} />
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              r(false);
+              setOpen(false);
             }}
-            disabled={f}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button variant="green" onClick={p} disabled={f || !h}>
-            {f ? "Updating..." : "Update"}
+          <Button
+            variant="green"
+            onClick={handleUpdate}
+            disabled={isPending || !isValid}
+          >
+            {isPending ? "Updating..." : "Update"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-const DeleteItemDialog = ({ children: e, item: t }) => {
-  const [n, r] = React.useState(false),
-    { toast: o } = useToast(),
-    s = useQueryClient(),
-    { mutate: i, isPending: l } = useItemsControllerRemove({
-      onSuccess: () => {
-        o({
-          title: "Item deleted",
-          description: `${t.name} has been deleted.`,
-        }),
-          s.invalidateQueries({
-            predicate: (u) => {
-              var f, p;
-              return (
-                ((p = (f = u.queryKey[0]) == null ? undefined : f.includes) ==
-                null
-                  ? undefined
-                  : p.call(f, "items")) ?? false
-              );
-            },
-          }),
-          r(false);
-      },
-      onError: (u) => {
-        o({
-          title: "Failed to delete Item",
-          description:
-            (u == null ? undefined : u.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    c = () => {
-      i({
-        pathParams: {
-          id: t.id,
-        },
+
+const DeleteItemDialog = ({
+  children,
+  item,
+}: {
+  children: React.ReactNode;
+  item: T.Item;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: removeItem, isPending } = useItemsControllerRemove({
+    onSuccess: () => {
+      toast({
+        title: "Item deleted",
+        description: `${item.name} has been deleted.`,
       });
-    };
+      invalidateItems(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to delete Item",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
-    <Dialog open={n} onOpenChange={r}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
             {"Are you sure you want to delete "}
-            {t.name}?
+            {item.name}?
           </DialogTitle>
           <DialogDescription>This action cannot be undone.</DialogDescription>
         </DialogHeader>
-        <Button variant="red" onClick={c} disabled={l}>
-          {l ? "Deleting..." : "Delete"}
+        <Button
+          variant="red"
+          onClick={() => {
+            removeItem({ pathParams: { id: item.id } });
+          }}
+          disabled={isPending}
+        >
+          {isPending ? "Deleting..." : "Delete"}
         </Button>
       </DialogContent>
     </Dialog>
   );
 };
+
 export const CampaignItems = () => {
-  const { campaign: e } = useCampaign(),
-    { fetcherOptions: t } = useApiContext(),
-    { data: n, isLoading: r } = useItemsControllerFindAll(t, {
-      enabled: !!(e != null && e.id),
-    }),
-    o = React.useMemo(
-      () =>
-        e === undefined
-          ? []
-          : (n ?? [])
-              .filter((s) => {
-                var i;
-                return ((i = s.campaign) == null ? undefined : i.id) === e.id;
-              })
-              .slice()
-              .sort((s, i) => s.name.localeCompare(i.name)),
-      [n, e == null ? undefined : e.id],
+  const { campaign } = useCampaign();
+  const { fetcherOptions } = useApiContext();
+  // Fetches every item (fetcher options passed as the variables) and filters client-side.
+  const { data: items, isLoading } = useItemsControllerFindAll(fetcherOptions, {
+    enabled: !!campaign?.id,
+  });
+  const campaignItems = React.useMemo(
+    () =>
+      campaign === undefined
+        ? []
+        : (items ?? [])
+            .filter((item) => item.campaign?.id === campaign.id)
+            .slice()
+            .sort((a, b) => a.name.localeCompare(b.name)),
+    [items, campaign?.id],
+  );
+
+  if (campaign === undefined) return <div>No campaign selected</div>;
+  if (isLoading)
+    return (
+      <div className="flex justify-center py-8">
+        <LoadingSpinner />
+      </div>
     );
-  return e === undefined ? (
-    <div>No campaign selected</div>
-  ) : r ? (
-    <div className="flex justify-center py-8">
-      <LoadingSpinner />
-    </div>
-  ) : (
+
+  return (
     <div className="flex flex-col gap-2 mt-2">
       <div className="flex flex-row items-center justify-between">
         <Text size="text-2xl" className="font-bold">
@@ -509,7 +534,7 @@ export const CampaignItems = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {o.length === 0 ? (
+            {campaignItems.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8">
                   <Text color="text-pokerole-black-light">
@@ -518,25 +543,28 @@ export const CampaignItems = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              o.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.name}</TableCell>
+              campaignItems.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>{item.name}</TableCell>
                   <TableCell>
-                    {s.category !== undefined && (
+                    {/* Only `undefined` is checked: a null category throws, as in the original. */}
+                    {item.category !== undefined && (
                       <Badge variant="outline">
-                        {s.category.replace(/_/g, " ")}
+                        {item.category!.replace(/_/g, " ")}
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell>
-                    {s.pocket !== undefined && (
+                    {item.pocket !== undefined && (
                       <Badge variant="outline">
-                        {s.pocket.replace(/_/g, " ")}
+                        {item.pocket.replace(/_/g, " ")}
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell>
-                    {s.trainerPrice !== undefined ? `$${s.trainerPrice}` : "-"}
+                    {item.trainerPrice !== undefined
+                      ? `$${item.trainerPrice}`
+                      : "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-row justify-end">
@@ -546,9 +574,9 @@ export const CampaignItems = () => {
                             <FaPenToSquare size={16} />
                           </Button>
                         }
-                        item={s}
+                        item={item}
                       />
-                      <DeleteItemDialog item={s}>
+                      <DeleteItemDialog item={item}>
                         <Button variant="ghost" size="icon">
                           <FaTrash size={16} />
                         </Button>

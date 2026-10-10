@@ -1,8 +1,8 @@
-// @ts-nocheck
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { FaPenToSquare, FaPlus, FaTrash } from "react-icons/fa6";
 import { v4 } from "uuid";
+import type * as T from "../../../shared/types";
 import {
   fetchMovesControllerFindAllByCampaign,
   useMovesControllerCreate,
@@ -39,7 +39,22 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCampaign } from "@/pages/Campaigns/context";
-const emptyMove = () => ({
+
+interface MoveFormData {
+  name: string;
+  type: PokemonType;
+  category: MoveCategory;
+  target: MoveTarget;
+  damage1: string;
+  damage2: string;
+  damagePower: string;
+  accuracy1: string;
+  accuracy2: string;
+  effect: string;
+  description: string;
+}
+
+const emptyMove = (): MoveFormData => ({
   name: "",
   type: PokemonType.NORMAL,
   category: MoveCategory.PHYSICAL,
@@ -52,25 +67,50 @@ const emptyMove = () => ({
   effect: "",
   description: "",
 });
-const MoveForm = ({ formData: e, onChange: t }) => {
-  const n = (i, l) => {
-      t({
-        ...e,
-        [i]: l,
-      });
+
+/** The first required field that is blank, if any. */
+const missingField = (form: MoveFormData) => {
+  if (form.name.trim() === "") return "Name";
+  if (form.description.trim() === "") return "Description";
+  if (form.effect.trim() === "") return "Effect";
+  return undefined;
+};
+
+const invalidateMoves = (queryClient: QueryClient) =>
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const key = query.queryKey[0];
+      return typeof key === "string" && key.includes("moves");
     },
-    r = Object.values(PokemonType).map((i) => ({
-      label: i,
-      value: i.toLowerCase(),
-    })),
-    o = Object.values(MoveCategory).map((i) => ({
-      label: i,
-      value: i.toLowerCase(),
-    })),
-    s = Object.values(MoveTarget).map((i) => ({
-      label: i.replace(/_/g, " "),
-      value: i.toLowerCase(),
-    }));
+  });
+
+const typeItems = Object.values(PokemonType).map((type) => ({
+  label: type,
+  value: type.toLowerCase(),
+}));
+const categoryItems = Object.values(MoveCategory).map((category) => ({
+  label: category,
+  value: category.toLowerCase(),
+}));
+const targetItems = Object.values(MoveTarget).map((target) => ({
+  label: target.replace(/_/g, " "),
+  value: target.toLowerCase(),
+}));
+
+const MoveForm = ({
+  formData,
+  onChange,
+}: {
+  formData: MoveFormData;
+  onChange: (formData: MoveFormData) => void;
+}) => {
+  const setField = <K extends keyof MoveFormData>(
+    key: K,
+    value: MoveFormData[K],
+  ) => {
+    onChange({ ...formData, [key]: value });
+  };
+  // The Combobox reports "" when the current value is picked again; that "" is stored as-is.
   return (
     <ScrollArea className="max-h-[70vh] pr-4">
       <div className="flex flex-col gap-4 p-1">
@@ -80,9 +120,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Input
             placeholder="Enter move name"
-            value={e.name}
-            onChange={(i) => {
-              n("name", i.target.value);
+            value={formData.name}
+            onChange={(event) => {
+              setField("name", event.target.value);
             }}
           />
         </div>
@@ -92,10 +132,10 @@ const MoveForm = ({ formData: e, onChange: t }) => {
               Type *
             </Text>
             <Combobox
-              items={r}
-              value={e.type.toLowerCase()}
-              onChange={(i) => {
-                n("type", i.toUpperCase());
+              items={typeItems}
+              value={formData.type.toLowerCase()}
+              onChange={(value) => {
+                setField("type", value.toUpperCase() as PokemonType);
               }}
               placeholder="Select type"
             />
@@ -105,10 +145,10 @@ const MoveForm = ({ formData: e, onChange: t }) => {
               Category *
             </Text>
             <Combobox
-              items={o}
-              value={e.category.toLowerCase()}
-              onChange={(i) => {
-                n("category", i.toUpperCase());
+              items={categoryItems}
+              value={formData.category.toLowerCase()}
+              onChange={(value) => {
+                setField("category", value.toUpperCase() as MoveCategory);
               }}
               placeholder="Select category"
             />
@@ -119,10 +159,10 @@ const MoveForm = ({ formData: e, onChange: t }) => {
             Target *
           </Text>
           <Combobox
-            items={s}
-            value={e.target.toLowerCase()}
-            onChange={(i) => {
-              n("target", i.toUpperCase());
+            items={targetItems}
+            value={formData.target.toLowerCase()}
+            onChange={(value) => {
+              setField("target", value.toUpperCase() as MoveTarget);
             }}
             placeholder="Select target"
           />
@@ -133,9 +173,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Input
             placeholder="0"
-            value={e.damagePower}
-            onChange={(i) => {
-              n("damagePower", i.target.value);
+            value={formData.damagePower}
+            onChange={(event) => {
+              setField("damagePower", event.target.value);
             }}
           />
         </div>
@@ -146,9 +186,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
             </Text>
             <Input
               placeholder="e.g., Strength"
-              value={e.damage1}
-              onChange={(i) => {
-                n("damage1", i.target.value);
+              value={formData.damage1}
+              onChange={(event) => {
+                setField("damage1", event.target.value);
               }}
             />
           </div>
@@ -158,9 +198,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
             </Text>
             <Input
               placeholder="E.g., Brawl"
-              value={e.damage2}
-              onChange={(i) => {
-                n("damage2", i.target.value);
+              value={formData.damage2}
+              onChange={(event) => {
+                setField("damage2", event.target.value);
               }}
             />
           </div>
@@ -172,9 +212,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
             </Text>
             <Input
               placeholder="e.g., Dexterity"
-              value={e.accuracy1}
-              onChange={(i) => {
-                n("accuracy1", i.target.value);
+              value={formData.accuracy1}
+              onChange={(event) => {
+                setField("accuracy1", event.target.value);
               }}
             />
           </div>
@@ -184,9 +224,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
             </Text>
             <Input
               placeholder="e.g., Brawl"
-              value={e.accuracy2}
-              onChange={(i) => {
-                n("accuracy2", i.target.value);
+              value={formData.accuracy2}
+              onChange={(event) => {
+                setField("accuracy2", event.target.value);
               }}
             />
           </div>
@@ -197,9 +237,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Textarea
             placeholder="Enter move description"
-            value={e.description}
-            onChange={(i) => {
-              n("description", i.target.value);
+            value={formData.description}
+            onChange={(event) => {
+              setField("description", event.target.value);
             }}
             rows={3}
           />
@@ -210,9 +250,9 @@ const MoveForm = ({ formData: e, onChange: t }) => {
           </Text>
           <Textarea
             placeholder="Enter move effect"
-            value={e.effect}
-            onChange={(i) => {
-              n("effect", i.target.value);
+            value={formData.effect}
+            onChange={(event) => {
+              setField("effect", event.target.value);
             }}
             rows={4}
           />
@@ -221,96 +261,72 @@ const MoveForm = ({ formData: e, onChange: t }) => {
     </ScrollArea>
   );
 };
-const CreateMoveDialog = ({ trigger: e }) => {
-  const [t, n] = React.useState(false),
-    [r, o] = React.useState(emptyMove()),
-    { campaign: s } = useCampaign(),
-    { toast: i } = useToast(),
-    l = useQueryClient(),
-    { mutate: c, isPending: u } = useMovesControllerCreate({
-      onSuccess: () => {
-        i({
-          title: "Move Created",
-          description: `${r.name} has been created successfully.`,
-        }),
-          l.invalidateQueries({
-            predicate: (m) => {
-              var v, g;
-              return (
-                ((g = (v = m.queryKey[0]) == null ? undefined : v.includes) ==
-                null
-                  ? undefined
-                  : g.call(v, "moves")) ?? false
-              );
-            },
-          }),
-          n(false),
-          o(emptyMove());
-      },
-      onError: (m) => {
-        i({
-          title: "Failed to create Move",
-          description:
-            (m == null ? undefined : m.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    f = !!u,
-    p = () => {
-      if (s !== undefined) {
-        if (r.name.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Name is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        if (r.description.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Description is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        if (r.effect.trim() === "") {
-          i({
-            title: "Validation Error",
-            description: "Effect is required.",
-            variant: "destructive",
-          });
-          return;
-        }
-        c({
-          body: {
-            _id: v4(),
-            campaignId: s.id,
-            name: r.name.trim(),
-            type: r.type,
-            Category: r.category,
-            target: r.target,
-            damage1: r.damage1.trim(),
-            damage2: r.damage2.trim(),
-            damagePower: r.damagePower.trim(),
-            accuracy1: r.accuracy1.trim(),
-            accuracy2: r.accuracy2.trim(),
-            effect: r.effect.trim(),
-            description: r.description.trim(),
-            attributes: {},
-            addedEffects: {},
-          },
-        });
-      }
+
+const CreateMoveDialog = ({ trigger }: { trigger: React.ReactNode }) => {
+  const [open, setOpen] = React.useState(false);
+  const [formData, setFormData] = React.useState(emptyMove());
+  const { campaign } = useCampaign();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: createMove, isPending } = useMovesControllerCreate({
+    onSuccess: () => {
+      toast({
+        title: "Move Created",
+        description: `${formData.name} has been created successfully.`,
+      });
+      invalidateMoves(queryClient);
+      setOpen(false);
+      setFormData(emptyMove());
     },
-    h =
-      r.name.trim() !== "" &&
-      r.description.trim() !== "" &&
-      r.effect.trim() !== "";
+    onError: (error) => {
+      toast({
+        title: "Failed to create Move",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+  const isValid = missingField(formData) === undefined;
+
+  const handleCreate = () => {
+    if (campaign === undefined) return;
+    const missing = missingField(formData);
+    if (missing !== undefined) {
+      toast({
+        title: "Validation Error",
+        description: `${missing} is required.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // Sent exactly as the hosted build did: `_id` and capitalised `Category`
+    // (the Worker maps `Category` to `category`). A non-literal body skips
+    // TypeScript's excess-property check for those two keys.
+    const body = {
+      _id: v4(),
+      campaignId: campaign.id,
+      name: formData.name.trim(),
+      type: formData.type,
+      Category: formData.category,
+      target: formData.target as T.MoveTarget,
+      damage1: formData.damage1.trim(),
+      damage2: formData.damage2.trim(),
+      damagePower: formData.damagePower.trim(),
+      accuracy1: formData.accuracy1.trim(),
+      accuracy2: formData.accuracy2.trim(),
+      effect: formData.effect.trim(),
+      description: formData.description.trim(),
+      attributes: {},
+      addedEffects: {},
+    };
+    createMove({ body });
+  };
+
   return (
-    <Dialog open={t} onOpenChange={n}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Add Move</DialogTitle>
@@ -318,255 +334,220 @@ const CreateMoveDialog = ({ trigger: e }) => {
             Create a new custom move for this campaign.
           </DialogDescription>
         </DialogHeader>
-        <MoveForm formData={r} onChange={o} />
+        <MoveForm formData={formData} onChange={setFormData} />
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              n(false);
+              setOpen(false);
             }}
-            disabled={u}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button variant="green" onClick={p} disabled={f || !h}>
-            {f ? "Creating..." : "Create"}
+          <Button
+            variant="green"
+            onClick={handleCreate}
+            disabled={isPending || !isValid}
+          >
+            {isPending ? "Creating..." : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-const EditMoveDialog = ({ trigger: e, move: t }) => {
-  const [n, r] = React.useState(false),
-    [o, s] = React.useState({
-      name: "",
-      type: PokemonType.NORMAL,
-      category: MoveCategory.PHYSICAL,
-      target: MoveTarget.FOE,
-      damage1: "",
-      damage2: "",
-      damagePower: "0",
-      accuracy1: "",
-      accuracy2: "",
-      effect: "",
-      description: "",
-    }),
-    { toast: i } = useToast(),
-    l = useQueryClient(),
-    { mutate: c, isPending: u } = useMovesControllerUpdate({
-      onSuccess: () => {
-        i({
-          title: "Move Updated",
-          description: `${o.name} updated successfully.`,
-        }),
-          l.invalidateQueries({
-            predicate: (m) => {
-              var v, g;
-              return (
-                ((g = (v = m.queryKey[0]) == null ? undefined : v.includes) ==
-                null
-                  ? undefined
-                  : g.call(v, "moves")) ?? false
-              );
-            },
-          }),
-          r(false);
-      },
-      onError: (m) => {
-        i({
-          title: "Failed to update Move",
-          description:
-            (m == null ? undefined : m.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    f = !!u;
-  React.useEffect(() => {
-    var m;
-    n &&
-      s({
-        name: t.name,
-        type: t.type,
-        category: t.category,
-        target: t.target,
-        damage1: t.damage1,
-        damage2: t.damage2,
-        damagePower:
-          ((m = t.damagePower) == null ? undefined : m.toString()) ?? "0",
-        accuracy1: t.accuracy1,
-        accuracy2: t.accuracy2,
-        effect: t.effect,
-        description: t.description,
+
+const EditMoveDialog = ({
+  trigger,
+  move,
+}: {
+  trigger: React.ReactNode;
+  move: T.Move;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [formData, setFormData] = React.useState(emptyMove());
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: updateMove, isPending } = useMovesControllerUpdate({
+    onSuccess: () => {
+      toast({
+        title: "Move Updated",
+        description: `${formData.name} updated successfully.`,
       });
-  }, [n, t]);
-  const p = () => {
-      if (o.name.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Name is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (o.description.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Description is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (o.effect.trim() === "") {
-        i({
-          title: "Validation Error",
-          description: "Effect is required.",
-          variant: "destructive",
-        });
-        return;
-      }
-      c({
-        body: {
-          id: t.id,
-          name: o.name.trim(),
-          type: o.type,
-          category: o.category,
-          target: o.target,
-          damage1: o.damage1.trim(),
-          damage2: o.damage2.trim(),
-          damagePower: o.damagePower.trim(),
-          accuracy1: o.accuracy1.trim(),
-          accuracy2: o.accuracy2.trim(),
-          effect: o.effect.trim(),
-          description: o.description.trim(),
-        },
+      invalidateMoves(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update Move",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
       });
     },
-    h =
-      o.name.trim() !== "" &&
-      o.description.trim() !== "" &&
-      o.effect.trim() !== "";
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    setFormData({
+      name: move.name,
+      type: move.type,
+      category: move.category,
+      target: move.target,
+      damage1: move.damage1,
+      damage2: move.damage2,
+      damagePower: move.damagePower?.toString() ?? "0",
+      accuracy1: move.accuracy1,
+      accuracy2: move.accuracy2,
+      effect: move.effect,
+      description: move.description,
+    });
+  }, [open, move]);
+
+  const handleUpdate = () => {
+    const missing = missingField(formData);
+    if (missing !== undefined) {
+      toast({
+        title: "Validation Error",
+        description: `${missing} is required.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    updateMove({
+      body: {
+        id: move.id,
+        name: formData.name.trim(),
+        type: formData.type,
+        category: formData.category,
+        target: formData.target as T.MoveTarget,
+        damage1: formData.damage1.trim(),
+        damage2: formData.damage2.trim(),
+        damagePower: formData.damagePower.trim(),
+        accuracy1: formData.accuracy1.trim(),
+        accuracy2: formData.accuracy2.trim(),
+        effect: formData.effect.trim(),
+        description: formData.description.trim(),
+      },
+    });
+  };
+  const isValid = missingField(formData) === undefined;
+
   return (
-    <Dialog open={n} onOpenChange={r}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit Move</DialogTitle>
           <DialogDescription>Update the move details.</DialogDescription>
         </DialogHeader>
-        <MoveForm formData={o} onChange={s} />
+        <MoveForm formData={formData} onChange={setFormData} />
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => {
-              r(false);
+              setOpen(false);
             }}
-            disabled={f}
+            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button variant="green" onClick={p} disabled={f || !h}>
-            {f ? "Updating..." : "Update"}
+          <Button
+            variant="green"
+            onClick={handleUpdate}
+            disabled={isPending || !isValid}
+          >
+            {isPending ? "Updating..." : "Update"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-const DeleteMoveDialog = ({ children: e, move: t }) => {
-  const [n, r] = React.useState(false),
-    { toast: o } = useToast(),
-    s = useQueryClient(),
-    { mutate: i, isPending: l } = useMovesControllerRemove({
-      onSuccess: () => {
-        o({
-          title: "Move deleted",
-          description: `${t.name} has been deleted.`,
-        }),
-          s.invalidateQueries({
-            predicate: (u) => {
-              var f, p;
-              return (
-                ((p = (f = u.queryKey[0]) == null ? undefined : f.includes) ==
-                null
-                  ? undefined
-                  : p.call(f, "moves")) ?? false
-              );
-            },
-          }),
-          r(false);
-      },
-      onError: (u) => {
-        o({
-          title: "Failed to delete Move",
-          description:
-            (u == null ? undefined : u.payload) ?? "An error occurred",
-          variant: "destructive",
-        });
-      },
-    }),
-    c = () => {
-      i({
-        pathParams: {
-          id: t.id,
-        },
+
+const DeleteMoveDialog = ({
+  children,
+  move,
+}: {
+  children: React.ReactNode;
+  move: T.Move;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { mutate: removeMove, isPending } = useMovesControllerRemove({
+    onSuccess: () => {
+      toast({
+        title: "Move deleted",
+        description: `${move.name} has been deleted.`,
       });
-    };
+      invalidateMoves(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to delete Move",
+        // apiFetch errors carry no payload, so this always falls back.
+        description:
+          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
-    <Dialog open={n} onOpenChange={r}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
             {"Are you sure you want to delete "}
-            {t.name}?
+            {move.name}?
           </DialogTitle>
           <DialogDescription>This action cannot be undone.</DialogDescription>
         </DialogHeader>
-        <Button variant="red" onClick={c} disabled={l}>
-          {l ? "Deleting..." : "Delete"}
+        <Button
+          variant="red"
+          onClick={() => {
+            removeMove({ pathParams: { id: move.id } });
+          }}
+          disabled={isPending}
+        >
+          {isPending ? "Deleting..." : "Delete"}
         </Button>
       </DialogContent>
     </Dialog>
   );
 };
+
 export const CampaignMoves = () => {
-  const { campaign: e } = useCampaign(),
-    { fetcherOptions: t } = useApiContext(),
-    n = [
-      "moves",
-      "all",
-      (e == null ? undefined : e.id) ?? "",
-      {
-        includeCore: false,
-      },
-    ],
-    { data: r, isLoading: o } = useQuery({
-      queryKey: n,
-      queryFn: () =>
-        fetchMovesControllerFindAllByCampaign(
-          {
-            ...t,
-            pathParams: {
-              id: (e == null ? undefined : e.id) ?? "",
-            },
-            body: {
-              includeCore: false,
-            },
-          },
-          undefined,
-        ),
-      enabled: !!(e != null && e.id),
-    });
-  if (e === undefined) return <div>No campaign selected</div>;
-  if (o)
+  const { campaign } = useCampaign();
+  const { fetcherOptions } = useApiContext();
+  const campaignId = campaign?.id ?? "";
+  const { data: moves, isLoading } = useQuery({
+    queryKey: ["moves", "all", campaignId, { includeCore: false }],
+    queryFn: () =>
+      fetchMovesControllerFindAllByCampaign({
+        ...fetcherOptions,
+        pathParams: { id: campaignId },
+        body: { includeCore: false },
+      }),
+    enabled: !!campaign?.id,
+  });
+
+  if (campaign === undefined) return <div>No campaign selected</div>;
+  if (isLoading)
     return (
       <div className="flex justify-center py-8">
         <LoadingSpinner />
       </div>
     );
-  const s = (r ?? []).slice().sort((i, l) => i.name.localeCompare(l.name));
+
+  const sortedMoves = (moves ?? [])
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="flex flex-col gap-2 mt-2">
       <div className="flex flex-row items-center justify-between">
@@ -595,7 +576,7 @@ export const CampaignMoves = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {s.length === 0 ? (
+            {sortedMoves.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8">
                   <Text color="text-pokerole-black-light">
@@ -604,22 +585,22 @@ export const CampaignMoves = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              s.map((i) => (
-                <TableRow key={i.id}>
-                  <TableCell>{i.name}</TableCell>
+              sortedMoves.map((move) => (
+                <TableRow key={move.id}>
+                  <TableCell>{move.name}</TableCell>
                   <TableCell>
-                    <TypeBadge type={i.type} />
+                    <TypeBadge type={move.type} />
                   </TableCell>
                   <TableCell>
-                    <MoveCategoryBadge category={i.category} />
+                    <MoveCategoryBadge category={move.category} />
                   </TableCell>
                   <TableCell>
-                    {i.damage1}
-                    {i.damage2 !== "" ? ` / ${i.damage2}` : ""}
+                    {move.damage1}
+                    {move.damage2 !== "" ? ` / ${move.damage2}` : ""}
                   </TableCell>
                   <TableCell>
-                    {i.accuracy1}
-                    {i.accuracy2 !== "" ? ` / ${i.accuracy2}` : ""}
+                    {move.accuracy1}
+                    {move.accuracy2 !== "" ? ` / ${move.accuracy2}` : ""}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-row justify-end">
@@ -629,9 +610,9 @@ export const CampaignMoves = () => {
                             <FaPenToSquare size={16} />
                           </Button>
                         }
-                        move={i}
+                        move={move}
                       />
-                      <DeleteMoveDialog move={i}>
+                      <DeleteMoveDialog move={move}>
                         <Button variant="ghost" size="icon">
                           <FaTrash size={16} />
                         </Button>

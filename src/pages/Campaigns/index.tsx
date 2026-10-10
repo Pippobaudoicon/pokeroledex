@@ -1,5 +1,8 @@
-// @ts-nocheck
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  type InvalidateQueryFilters,
+  type QueryClient,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useMediaQuery } from "@uidotdev/usehooks";
 import * as React from "react";
 import {
@@ -11,6 +14,7 @@ import {
 } from "react-icons/fa6";
 import { MdStar } from "react-icons/md";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type * as T from "../../../shared/types";
 import { useAuth } from "@/api/client";
 import {
   useCampaignsControllerCreate,
@@ -46,72 +50,90 @@ import { CampaignProvider, useCampaign } from "@/pages/Campaigns/context";
 import { CampaignItems } from "@/pages/Campaigns/Items";
 import { CampaignMoves } from "@/pages/Campaigns/Moves";
 import { CampaignPokemonTemplates } from "@/pages/Campaigns/PokemonTemplates";
-const CampaignCard = ({ name: e, isCore: t, className: n, onClick: r }) => (
+
+// Passing the bare key (not { queryKey }) means react-query v5 invalidates every query.
+const invalidateCampaigns = (queryClient: QueryClient) =>
+  queryClient.invalidateQueries(
+    queryKeyFn({
+      path: "/campaigns",
+      operationId: "campaignsControllerFindAll",
+      variables: {},
+    }) as InvalidateQueryFilters,
+  );
+
+const CampaignCard = ({
+  name,
+  isCore,
+  className,
+  onClick,
+}: {
+  name: string;
+  isCore: boolean;
+  className?: string;
+  onClick?: () => void;
+}) => (
   <Box
     color="bg-type-grass"
-    className={`${n} flex flex-col items-center justify-center space-y-2 p-3 bg-gradient-to-br from-type-grass-light ${r != null ? "hover:bg-type-grass-light hover:from-type-grass-light" : ""}`}
-    onClick={r}
+    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-gradient-to-br from-type-grass-light ${onClick != null ? "hover:bg-type-grass-light hover:from-type-grass-light" : ""}`}
+    onClick={onClick}
   >
     <div className="flex flex-row items-center gap-2">
       <FaCompass size={24} className="text-white" />
       <Text size="text-3xl" color="text-white">
-        {e}
+        {name}
       </Text>
-      {t && (
+      {isCore && (
         <MdStar size={20} className="text-yellow-400" title="Core Campaign" />
       )}
     </div>
   </Box>
 );
-const CreateCampaignDialog = ({ trigger: e }) => {
-  const [t, n] = React.useState(false),
-    { toast: r } = useToast(),
-    o = useQueryClient(),
-    { user: s } = useAuth(),
-    [i, l] = React.useState({
-      name: "",
-      userId: (s == null ? undefined : s.sub) ?? "",
-    }),
-    { mutate: c } = useCampaignsControllerCreate({
-      onSuccess: () => {
-        r({
-          title: "Campaign created",
-          description: (
-            <>
-              <span>Your campaign has been created.</span>
-            </>
-          ),
-        }),
-          o.invalidateQueries(
-            queryKeyFn({
-              path: "/campaigns",
-              variables: {},
-            }),
-          ),
-          n(false);
-      },
-      onError: (f) => {
-        r({
-          title: "Failed to create campaign",
-          description: f == null ? undefined : f.payload,
-        });
-      },
-    }),
-    u = () => {
-      if (i.name === "") {
-        r({
-          title: "Failed to create campaign",
-          description: "Name is required.",
-        });
-        return;
-      }
-      c({
-        body: i,
+
+const CreateCampaignDialog = ({ trigger }: { trigger: React.ReactNode }) => {
+  const [open, setOpen] = React.useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [formData, setFormData] = React.useState({
+    name: "",
+    userId: user.sub,
+  });
+  const { mutate: createCampaign } = useCampaignsControllerCreate({
+    onSuccess: () => {
+      toast({
+        title: "Campaign created",
+        description: (
+          <>
+            <span>Your campaign has been created.</span>
+          </>
+        ),
       });
-    };
+      invalidateCampaigns(queryClient);
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to create campaign",
+        // apiFetch errors carry no payload, so this is always undefined.
+        description: (error as Partial<T.ApiError>)?.payload,
+      });
+    },
+  });
+
+  const handleCreate = () => {
+    if (formData.name === "") {
+      toast({
+        title: "Failed to create campaign",
+        description: "Name is required.",
+      });
+      return;
+    }
+    createCampaign({ body: formData });
+  };
+
   return (
-    <Dialog open={t} onOpenChange={n}>
-      <DialogTrigger asChild={true}>{e}</DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create Campaign</DialogTitle>
@@ -123,12 +145,9 @@ const CreateCampaignDialog = ({ trigger: e }) => {
             <Text className="text-xl flex-grow min-w-20">Name:</Text>
             <Input
               placeholder="Campaign name"
-              value={i.name}
-              onChange={(f) => {
-                l({
-                  ...i,
-                  name: f.target.value,
-                });
+              value={formData.name}
+              onChange={(event) => {
+                setFormData({ ...formData, name: event.target.value });
               }}
             />
           </div>
@@ -137,7 +156,7 @@ const CreateCampaignDialog = ({ trigger: e }) => {
           <Button
             variant="green"
             onClick={() => {
-              u();
+              handleCreate();
             }}
             className="flex-grow"
           >
@@ -148,41 +167,42 @@ const CreateCampaignDialog = ({ trigger: e }) => {
     </Dialog>
   );
 };
-const CampaignFilterSelect = ({ className: e }) => {
-  const { data: t } = useCampaignsControllerFindAll({}),
-    { state: n, setCampaignIds: r, setIncludeCore: o } = useCampaignFilter(),
-    [s, i] = React.useState([]);
+
+const CampaignFilterSelect = ({ className }: { className?: string }) => {
+  const { data: campaigns } = useCampaignsControllerFindAll({});
+  const { state, setCampaignIds, setIncludeCore } = useCampaignFilter();
+  const [options, setOptions] = React.useState<
+    { label: string; value: string }[]
+  >([]);
   React.useEffect(() => {
-    if (!t) {
-      i([]);
+    if (!campaigns) {
+      setOptions([]);
       return;
     }
-    const c = t
-      .slice()
-      .sort((u, f) => u.name.localeCompare(f.name))
-      .map((u) => ({
-        label: u.name,
-        value: u.id,
-      }));
-    i(c);
-  }, [t]);
-  const l = n.campaignIds || [];
+    setOptions(
+      campaigns
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((campaign) => ({ label: campaign.name, value: campaign.id })),
+    );
+  }, [campaigns]);
+  const selected = state.campaignIds || [];
   return (
-    <div className={e}>
+    <div className={className}>
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <MultiSelect
-            options={s}
-            selected={l}
-            onChange={(c) => r(c)}
+            options={options}
+            selected={selected}
+            onChange={(campaignIds) => setCampaignIds(campaignIds)}
             placeholder="Select campaigns..."
           />
         </div>
         <div className="flex items-center">
           <Checkbox
             id="include-core-toggle"
-            checked={n.includeCore}
-            onCheckedChange={(c) => o(c === true)}
+            checked={state.includeCore}
+            onCheckedChange={(checked) => setIncludeCore(checked === true)}
           />
           <Text className="ml-2" size="text-sm">
             Show Core
@@ -192,62 +212,67 @@ const CampaignFilterSelect = ({ className: e }) => {
     </div>
   );
 };
-const CampaignList = ({ className: e, onClick: t }) => {
-  const { data: n, isFetching: r } = useCampaignsControllerFindAll({}),
-    o = r && n == null,
-    [s, i] = React.useState(""),
-    l = React.useMemo(
-      () =>
-        n == null
-          ? undefined
-          : n
-              .sort((u, f) => u.name.localeCompare(f.name))
-              .filter((u) => u.name.toLowerCase().includes(s.toLowerCase())),
-      [n, s],
-    ),
-    c = React.useMemo(
-      () =>
-        l == null
-          ? undefined
-          : l.map((u) => (
-              <Link
-                key={u.id}
-                to={`/campaigns/${u.id}`}
-                className="flex flex-col"
-              >
-                <CampaignCard
-                  key={u.id}
-                  name={u.name}
-                  isCore={u.isCore}
-                  onClick={() => (t == null ? undefined : t(u.id))}
-                  className="flex-grow"
-                />
-              </Link>
-            )),
-      [l, t],
-    );
+
+const CampaignList = ({
+  className,
+  onClick,
+}: {
+  className?: string;
+  onClick?: (id: string) => void;
+}) => {
+  const { data: campaigns, isFetching } = useCampaignsControllerFindAll({});
+  const isInitialLoading = isFetching && campaigns == null;
+  const [search, setSearch] = React.useState("");
+  const filteredCampaigns = React.useMemo(
+    () =>
+      // Sorts the cached query data in place, as the original did.
+      campaigns
+        ?.sort((a, b) => a.name.localeCompare(b.name))
+        .filter((campaign) =>
+          campaign.name.toLowerCase().includes(search.toLowerCase()),
+        ),
+    [campaigns, search],
+  );
+  const campaignLinks = React.useMemo(
+    () =>
+      filteredCampaigns?.map((campaign) => (
+        <Link
+          key={campaign.id}
+          to={`/campaigns/${campaign.id}`}
+          className="flex flex-col"
+        >
+          <CampaignCard
+            name={campaign.name}
+            isCore={campaign.isCore}
+            onClick={() => onClick?.(campaign.id)}
+            className="flex-grow"
+          />
+        </Link>
+      )),
+    [filteredCampaigns, onClick],
+  );
   return (
-    <div className={`flex flex-col h-full overflow-hidden ${e}`}>
+    <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       <div className="flex flex-row space-x-2 shrink-0 mb-2">
         <Input
           className="rounded-3xl"
           placeholder="Search..."
-          value={s}
-          onChange={(u) => {
-            i(u.target.value);
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
           }}
         />
         <Button className="rounded-3xl">Search</Button>
       </div>
       <ScrollArea className="rounded-t-3xl flex-1">
         <div className="grid grid-cols-2 md:grid-cols-1 2xl:grid-cols-2 gap-2">
-          {!!o && (
+          {isInitialLoading && (
             <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
               <LoadingSpinner />
             </div>
           )}
-          {c}
-          {!o && (
+          {campaignLinks}
+          {!isInitialLoading && (
             <div id="create-campaign-button" className="flex">
               <CreateCampaignDialog
                 trigger={
@@ -275,44 +300,39 @@ const CampaignList = ({ className: e, onClick: t }) => {
     </div>
   );
 };
+
 const DeleteCampaignButton = () => {
-  const [e, t] = React.useState(false),
-    { toast: n } = useToast(),
-    { campaign: r } = useCampaign(),
-    o = useNavigate(),
-    s = useQueryClient(),
-    { mutate: i } = useCampaignsControllerRemove({
-      onSuccess: () => {
-        n({
-          title: "Campaign deleted",
-          description: "Your campaign has been deleted.",
-        }),
-          s.invalidateQueries(
-            queryKeyFn({
-              path: "/campaigns",
-              variables: {},
-            }),
-          ),
-          o("/campaigns"),
-          t(false);
-      },
-      onError: (c) => {
-        n({
-          title: "Failed to delete campaign",
-          description: c == null ? undefined : c.payload,
-        });
-      },
-    }),
-    l = () => {
-      r !== undefined &&
-        i({
-          pathParams: {
-            id: r.id,
-          },
-        });
-    };
+  const [open, setOpen] = React.useState(false);
+  const { toast } = useToast();
+  const { campaign } = useCampaign();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { mutate: removeCampaign } = useCampaignsControllerRemove({
+    onSuccess: () => {
+      toast({
+        title: "Campaign deleted",
+        description: "Your campaign has been deleted.",
+      });
+      invalidateCampaigns(queryClient);
+      navigate("/campaigns");
+      setOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to delete campaign",
+        // apiFetch errors carry no payload, so this is always undefined.
+        description: (error as Partial<T.ApiError>)?.payload,
+      });
+    },
+  });
+
+  const handleDelete = () => {
+    if (campaign === undefined) return;
+    removeCampaign({ pathParams: { id: campaign.id } });
+  };
+
   return (
-    <Dialog open={e} onOpenChange={t}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild={true}>
         <CollapsableButton
           variant="red"
@@ -325,7 +345,7 @@ const DeleteCampaignButton = () => {
           <DialogTitle>Delete Campaign</DialogTitle>
           <DialogDescription>
             {'Are you sure you want to delete "'}
-            {r == null ? undefined : r.name}
+            {campaign?.name}
             {
               '"? This action cannot be undone. All Pokemon templates, moves, items, and abilities in this campaign will be deleted.'
             }
@@ -335,12 +355,12 @@ const DeleteCampaignButton = () => {
           <Button
             variant="outline"
             onClick={() => {
-              t(false);
+              setOpen(false);
             }}
           >
             Cancel
           </Button>
-          <Button variant="destructive" onClick={l}>
+          <Button variant="destructive" onClick={handleDelete}>
             Delete Campaign
           </Button>
         </DialogFooter>
@@ -348,20 +368,22 @@ const DeleteCampaignButton = () => {
     </Dialog>
   );
 };
+
 const CampaignHeader = () => {
-  const { campaign: e, updateCampaign: t } = useCampaign(),
-    [n, r] = React.useState(false),
-    [o, s] = React.useState((e == null ? undefined : e.name) ?? "");
-  if (e === undefined) return <div>No campaign selected</div>;
-  const i = () => {
-      t({
-        name: o,
-      }),
-        r(false);
-    },
-    l = () => {
-      s(e.name), r(false);
-    };
+  const { campaign, updateCampaign } = useCampaign();
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draftName, setDraftName] = React.useState(campaign?.name ?? "");
+  if (campaign === undefined) return <div>No campaign selected</div>;
+
+  const confirmEdit = () => {
+    updateCampaign({ name: draftName });
+    setIsEditing(false);
+  };
+  const cancelEdit = () => {
+    setDraftName(campaign.name);
+    setIsEditing(false);
+  };
+
   return (
     <Box
       color="bg-type-grass"
@@ -369,32 +391,33 @@ const CampaignHeader = () => {
     >
       <div className="flex flex-row items-center justify-between gap-4">
         <div className="flex flex-row items-center gap-2 flex-grow">
-          {n ? (
+          {isEditing ? (
             <>
               <Input
-                value={o}
-                onChange={(c) => {
-                  s(c.target.value);
+                value={draftName}
+                onChange={(event) => {
+                  setDraftName(event.target.value);
                 }}
                 className="text-2xl font-bold max-w-xs"
               />
-              <Button variant="ghost" size="icon" onClick={i}>
+              <Button variant="ghost" size="icon" onClick={confirmEdit}>
                 <FaCheck size={20} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={l}>
+              <Button variant="ghost" size="icon" onClick={cancelEdit}>
                 <FaXmark size={20} />
               </Button>
             </>
           ) : (
             <>
               <Text size="text-3xl" color="text-white" className="font-bold">
-                {e.name}
+                {campaign.name}
               </Text>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  s(e.name), r(true);
+                  setDraftName(campaign.name);
+                  setIsEditing(true);
                 }}
               >
                 <FaPenToSquare size={20} className="text-white" />
@@ -403,7 +426,7 @@ const CampaignHeader = () => {
           )}
         </div>
         <div className="flex flex-row items-center gap-2">
-          {e.isCore && (
+          {campaign.isCore && (
             <Text
               size="text-sm"
               color="text-white"
@@ -418,17 +441,22 @@ const CampaignHeader = () => {
     </Box>
   );
 };
+
 const CampaignDetail = () => {
-  const { campaign: e, isLoading: t, isError: n } = useCampaign();
-  return t ? (
-    <div className="flex items-center justify-center h-full">
-      <LoadingSpinner />
-    </div>
-  ) : n || e === undefined ? (
-    <div className="flex items-center justify-center h-full">
-      Error loading campaign
-    </div>
-  ) : (
+  const { campaign, isLoading, isError } = useCampaign();
+  if (isLoading)
+    return (
+      <div className="flex items-center justify-center h-full">
+        <LoadingSpinner />
+      </div>
+    );
+  if (isError || campaign === undefined)
+    return (
+      <div className="flex items-center justify-center h-full">
+        Error loading campaign
+      </div>
+    );
+  return (
     <Box color="bg-pokerole-beige" className="p-3 h-full">
       <ScrollArea className="md:h-[calc(100vh-1.5rem)] h-full">
         <div className="flex flex-col gap-3">
@@ -458,35 +486,36 @@ const CampaignDetail = () => {
     </Box>
   );
 };
+
 export const CampaignsPage = () => {
-  const { id: e } = useParams(),
-    [t, n] = React.useState(e),
-    r = useMediaQuery("(min-width: 768px)");
+  const { id } = useParams();
+  const [selectedId, setSelectedId] = React.useState(id);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
-    n(e);
-  }, [e]);
-  const OComponent = r ? ScrollArea : "div";
+    setSelectedId(id);
+  }, [id]);
+  const DetailContainer = isDesktop ? ScrollArea : "div";
   return (
     <div className="sheet-layout grid grid-cols-4 gap-4 pl-2 pt-2 pr-2 md:h-[calc(100vh-1rem)] md:grid-rows-1">
       <CampaignList
         className="md:col-span-1 col-span-full max-md:min-h-[15vh] max-md:max-h-[35vh]"
-        onClick={(s) => {
-          n(s);
+        onClick={(campaignId) => {
+          setSelectedId(campaignId);
         }}
       />
-      <OComponent className="md:col-span-3 col-span-full h-full">
-        {t === undefined ? (
+      <DetailContainer className="md:col-span-3 col-span-full h-full">
+        {selectedId === undefined ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="md:h-[80%] max-md:w-1/2">
               <FaCompass size="100%" color="#5f5c54" />
             </div>
           </div>
         ) : (
-          <CampaignProvider id={t}>
+          <CampaignProvider id={selectedId}>
             <CampaignDetail />
           </CampaignProvider>
         )}
-      </OComponent>
+      </DetailContainer>
     </div>
   );
 };
