@@ -299,6 +299,8 @@ export const Tutorial = ({
       return;
     }
     if (stepIndex !== 0 || isStarting.current) return;
+    // Friends arrive at the import page from pokeroledex.nl; start the tour after it.
+    if (location.pathname === "/import") return;
     const firstStep = steps[0];
     if (firstStep == null) return;
     const route = firstStep.route;

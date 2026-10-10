@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Text } from "@/components/Text";
 import { LocalNotes } from "@/layout/LocalNotes";
 import {
-  LocalModeBadge,
+  AccountButton,
   LocalWorkspaceLabel,
   SessionIndicator,
 } from "@/layout/SessionIndicator";
@@ -53,7 +53,7 @@ export const MobileNav = ({
           <div className="flex flex-row justify-around items-center gap-2">
             <SessionIndicator displayText={true} />
             <div id="mobile-nav-login-button">
-              <LocalModeBadge />
+              <AccountButton />
             </div>
           </div>
           <div className="flex flex-row justify-center items-center gap-2">

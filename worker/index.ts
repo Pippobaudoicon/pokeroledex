@@ -1,8 +1,13 @@
+import { userEmail } from './access.ts';
 import { handleApi } from './api.ts';
 
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** Cloudflare Access team domain, e.g. pokeroledex.cloudflareaccess.com. */
+  ACCESS_TEAM_DOMAIN: string;
+  /** Application Audience (AUD) tag of the Access application in front of the site. */
+  ACCESS_AUD: string;
 }
 
 // Static assets are served before this Worker runs (wrangler.jsonc), so apart from
@@ -12,12 +17,14 @@ export default {
     const url = new URL(request.url);
     url.pathname = url.pathname.replace(/\/{2,}/g, '/');
     if (url.pathname.startsWith('/api/')) {
-      // There is no login, so only this site's own pages may change data.
+      // The Access login is a cookie, so only this site's own pages may change data.
       const origin = request.headers.get('Origin');
       if (request.method !== 'GET' && request.method !== 'HEAD' && origin && origin !== url.origin) {
         return new Response('Same-origin requests only', { status: 403 });
       }
-      return handleApi(request, env, url);
+      const owner = await userEmail(request, env);
+      if (!owner) return Response.json({ payload: 'Log in again.' }, { status: 401 });
+      return handleApi(request, env, url, owner);
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
     if (url.pathname.startsWith('/images/pokemon/BoxSprites/')) {

@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { FaFistRaised, FaHome, FaUserFriends } from "react-icons/fa";
+import { FaFileImport, FaFistRaised, FaHome, FaUserFriends } from "react-icons/fa";
 import { FaCompass } from "react-icons/fa6";
 import { GiBigGear, GiBottledBolt } from "react-icons/gi";
 import { MdCatchingPokemon } from "react-icons/md";
@@ -7,6 +7,7 @@ import { TbPokeball } from "react-icons/tb";
 import { CampaignsPage } from "@/pages/Campaigns";
 import { GeneratorsPage } from "@/pages/Generators";
 import { HomePage } from "@/pages/Home";
+import { ImportPage } from "@/pages/Import";
 import { ItemsPage } from "@/pages/Items";
 import { MovesPage } from "@/pages/Moves";
 import { MyPokemonPage } from "@/pages/MyPokemon";
@@ -118,5 +119,11 @@ export const appRoutes: AppRoute[] = [
     icon: <FaCompass />,
     page: <CampaignsPage />,
     ignoreLink: true,
+  },
+  {
+    path: "/import",
+    name: "Import",
+    icon: <FaFileImport />,
+    page: <ImportPage />,
   },
 ];

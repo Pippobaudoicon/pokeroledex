@@ -4,7 +4,7 @@ import { RxCross1, RxHamburgerMenu } from "react-icons/rx";
 import { TbPokeball } from "react-icons/tb";
 import { Link } from "react-router-dom";
 import { Text } from "@/components/Text";
-import { LocalModeBadge, SessionIndicator } from "@/layout/SessionIndicator";
+import { AccountButton, SessionIndicator } from "@/layout/SessionIndicator";
 import { type AppRoute, appRoutes } from "@/routes";
 export const Sidebar = ({
   drawerOpened,
@@ -66,7 +66,7 @@ export const Sidebar = ({
         >
           <SessionIndicator displayText={drawerOpened} />
           <div id="nav-login-button" className="flex justify-center">
-            <LocalModeBadge className="text-wrap p-1" />
+            <AccountButton className="text-wrap p-1" />
           </div>
         </div>
       </div>

@@ -18,25 +18,33 @@ Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/re
 | `pnpm dev` | Local development (frontend + Worker + local D1) |
 | `pnpm typecheck` | Strict type check of the app, the Worker and the build scripts |
 | `pnpm build` | Production build into `dist/` |
-| `pnpm preview` | Serve the production build locally |
+| `pnpm preview` | Serve the production build locally (its API needs the Access login, see below) |
 | `pnpm deploy` | Build, apply migrations to the remote D1 database, deploy |
 
 ## Deploy
 
 `pnpm deploy` builds, applies migrations to the remote D1 database and deploys to https://pokeroledex.tommasolopiparo.com. `wrangler.jsonc` points at the existing `pokeroledex` database; to deploy to another Cloudflare account, run `pnpm exec wrangler d1 create pokeroledex` there and put the returned `database_id` into `wrangler.jsonc` first.
 
-There is no login: the app has one built-in user, and anyone who can reach the URL can read and change its data. Non-GET API calls must come from the same origin. Put a deployment behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) if it should be private.
+## Logins
+
+[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/) sits in front of the whole site: people log in with a one-time code sent to their email, and everyone's Pokémon, trainers and campaigns are kept apart by that email. The Worker checks the token Access signs every request with (`worker/access.ts`) and answers 401 without it, so the API stays closed until Access is set up:
+
+1. In the Cloudflare dashboard open **Zero Trust** (pick a team name and the Free plan the first time).
+2. **Access → Applications → Add an application → Self-hosted**: domain `pokeroledex.tommasolopiparo.com`, a policy that allows *Everyone* (or a list of emails), and the **One-time PIN** login method.
+3. Put the team domain (`<team>.cloudflareaccess.com`) and the application's **Application Audience (AUD) tag** into `vars` in `wrangler.jsonc`, then `pnpm deploy`.
+
+`pnpm dev` has no Access in front of it and uses a single local user. Records made before logins existed belong to `local-user`; give them to someone with `pnpm exec wrangler d1 execute pokeroledex --remote --command "UPDATE records SET owner = 'you@example.com' WHERE owner = 'local-user'"`.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `src/pages/<Page>/` | One folder per screen: Home, PokemonCatalog, Moves, Items, MyPokemon, MyTrainers, Campaigns, Generators |
+| `src/pages/<Page>/` | One folder per screen: Home, PokemonCatalog, Moves, Items, MyPokemon, MyTrainers, Campaigns, Generators, Import |
 | `src/components/` | Shared app components; `ui/` holds the shadcn/ui primitives, `pokemon-sheet/` the Pokémon sheet |
 | `src/layout/` | App shell: sidebar, mobile nav, guided tour, notes panel |
 | `src/api/` | API client and typed react-query hooks |
 | `src/lib/`, `src/hooks/` | Utilities (stats, type chart, colours) and shared hooks |
-| `worker/` | Cloudflare Worker: `/api/*` routes, reference-data loader, static-file fallbacks |
+| `worker/` | Cloudflare Worker: `/api/*` routes, Access login check, pokeroledex.nl import, reference-data loader, static-file fallbacks |
 | `shared/types.ts` | Domain and API types used by both the frontend and the Worker |
 | `migrations/` | D1 schema |
 | `scripts/build-reference.ts` | Compacts `data/reference/` into static JSON the Worker loads |
@@ -49,20 +57,11 @@ Static files are served directly. Requests that match no file reach the Worker, 
 ## Data
 
 - **Reference data** (1,196 Pokémon forms, 892 moves, 394 items, 305 abilities, 25 natures, rank-up tables) lives in `data/reference/` and is published read-only as `/reference/*.json`.
-- **Your data** (Pokémon sheets, trainers, campaigns, custom entries, notes) is stored in D1, in one `records` table. Back it up with `pnpm exec wrangler d1 export pokeroledex --remote --output backup.sql` (or `--local`).
+- **Your data** (Pokémon sheets, trainers, campaigns, custom entries, notes) is stored in D1, in one `records` table, under the owner's email. Back it up with `pnpm exec wrangler d1 export pokeroledex --remote --output backup.sql` (or `--local`).
 
-### Import your data from pokeroledex.nl
+### Import from pokeroledex.nl
 
-1. Log in at [pokeroledex.nl](https://pokeroledex.nl), open the browser's developer tools on the Network tab and open My Pokémon.
-2. Click a request to `pokeroledex.nl/api/...` and copy the value of its `Authorization` request header. The token expires after about a day.
-3. Run:
-
-   ```sh
-   POKEROLEDEX_TOKEN='<copied value>' node scripts/import-pokeroledex.ts
-   pnpm exec wrangler d1 execute pokeroledex --remote --file .wrangler/import.sql
-   ```
-
-This copies your Pokémon sheets, trainers (team and inventory), campaigns, and the moves, abilities, items and Pokémon templates in those campaigns. Records keep their ids, so running it again updates them instead of duplicating them. Use `--local` instead of `--remote` to try it on the local database first.
+The **Import** page (`/import`) copies the logged-in person's Pokémon sheets, trainers (team and inventory), campaigns, and the moves, abilities, items and Pokémon templates in those campaigns from pokeroledex.nl. It needs their pokeroledex.nl login token: a bookmark on the page grabs it while they are logged in there and brings them back, or they paste it from the browser's developer tools. The Worker fetches the data (`worker/import.ts`), because pokeroledex.nl only allows its own pages to call its API. Records keep their ids, so importing again updates them instead of duplicating them.
 
 The Pokémon and item generators are local approximations: the original server's selection algorithm could not be recovered. Rank-up point tables are captured data, but Unranked and Champion had no table response.
 

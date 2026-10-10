@@ -1,9 +1,10 @@
-// JSON API for the single built-in user. Reference data is read-only; user records
-// live in D1 (migrations/0001_init.sql). Each request loads the user's records,
+// JSON API. Reference data is read-only; user records live in D1 under the owner's
+// email (migrations/, worker/access.ts). Each request loads the owner's records,
 // works on them in memory and writes back only the records it changed.
 import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import type { Pokemon, Rank, Stats, Trainer } from '../shared/types.ts';
 import type { Env } from './index.ts';
+import { fetchOldData } from './import.ts';
 import { loadReference, type Reference } from './reference.ts';
 
 // Stored and reference records are handled generically by collection name.
@@ -51,7 +52,7 @@ function reply(value: unknown, status = 200) {
   });
 }
 
-export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
+export async function handleApi(request: Request, env: Env, url: URL, owner: string): Promise<Response> {
   try {
     const [name, action, id] = url.pathname.replace(/^\/api\/*/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const method = request.method;
@@ -61,9 +62,20 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       const budget = reference.rankAttributes[action as Rank];
       return reply(budget?.rank ? budget : null);
     }
+    if (name === 'me' && method === 'GET') return reply({ email: owner });
+    if (name === 'import' && method === 'POST') {
+      if (typeof body.token !== 'string' || !body.token.trim()) fail(400, 'Paste the login token from pokeroledex.nl.');
+      const { collections, missing, skipped } = await fetchOldData(body.token.trim().replace(/^bearer\s+/i, ''), owner, reference);
+      // One statement however many records there are; D1 limits queries per request.
+      const rows = Object.entries(collections).flatMap(([collection, records]) => records.map(record => ({ collection, id: record.id, data: JSON.stringify(record) })));
+      await env.DB.prepare(`INSERT INTO records (owner, collection, id, data)
+        SELECT ?, value ->> 'collection', value ->> 'id', value ->> 'data' FROM json_each(?) WHERE true
+        ON CONFLICT (owner, collection, id) DO UPDATE SET data = excluded.data`).bind(owner, JSON.stringify(rows)).run();
+      return reply({ counts: Object.fromEntries(Object.entries(collections).map(([name, records]) => [name, records.length])), missing, skipped });
+    }
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
     const db: Collections = Object.fromEntries(collectionNames.map(name => [name, []]));
-    const { results } = await env.DB.prepare('SELECT collection, data FROM records ORDER BY seq').all<{ collection: string; data: string }>();
+    const { results } = await env.DB.prepare('SELECT collection, data FROM records WHERE owner = ? ORDER BY seq').bind(owner).all<{ collection: string; data: string }>();
     for (const row of results) db[row.collection].push(JSON.parse(row.data));
     const writes: D1PreparedStatement[] = [];
     const response = route(db, reference, writes, method, name, action, id, body);
@@ -74,17 +86,21 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     return reply({ status, payload: (error as Error).message }, status);
   }
 
+  function upsert(name: string, record: Row) {
+    return env.DB.prepare('INSERT INTO records (owner, collection, id, data) VALUES (?, ?, ?, ?) ON CONFLICT (owner, collection, id) DO UPDATE SET data = excluded.data')
+      .bind(owner, name, record.id, JSON.stringify(record));
+  }
+
   function route(db: Collections, reference: Reference, writes: D1PreparedStatement[],
     method: string, name: string, action: string | undefined, id: string | undefined, body: Json): Response {
     const referenceRows = reference as unknown as Collections;
 
     function put(name: string, record: Row) {
-      writes.push(env.DB.prepare('INSERT INTO records (collection, id, data) VALUES (?, ?, ?) ON CONFLICT (collection, id) DO UPDATE SET data = excluded.data')
-        .bind(name, record.id, JSON.stringify(record)));
+      writes.push(upsert(name, record));
     }
 
     function drop(name: string, id: string) {
-      writes.push(env.DB.prepare('DELETE FROM records WHERE collection = ? AND id = ?').bind(name, id));
+      writes.push(env.DB.prepare('DELETE FROM records WHERE owner = ? AND collection = ? AND id = ?').bind(owner, name, id));
     }
 
     function find(name: string, id: unknown): Row | null {
@@ -145,7 +161,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       const species = find('pokemon-templates', body.pokemonTemplateId);
       if (!species) fail(400, 'Choose a valid Pokemon template.');
       const stats = { ...blankStats(), ...body.stats };
-      return { id: crypto.randomUUID(), userId: 'local-user', rank: 'UNRANKED', gender: 'N',
+      return { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', gender: 'N',
         noOfBattles: 0, trainingPoints: 0, moveIds: [], abilityId: species.abilityOne?.id ?? species.abilityOneId,
         natureId: null, heldItemId: null, trainerId: null,
         ...body, stats,
@@ -234,7 +250,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return reply(hydrate(name, record));
     }
     if (method === 'POST' && !action) {
-      let record: Row = { ...body, id: body.id ?? body._id ?? crypto.randomUUID(), userId: 'local-user' };
+      let record: Row = { ...body, id: body.id ?? body._id ?? crypto.randomUUID(), userId: owner };
       if (name === 'pokemon') record = newPokemon(record);
       if (name === 'trainers') record = { rank: 'UNRANKED', name: '', age: 0, gender: 'N', money: 0,
         natureId: null, inventory: [], ...record, stats: { ...blankStats(), ...body.stats }, currentHp: 5, currentWill: 4 };
