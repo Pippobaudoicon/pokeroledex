@@ -1,6 +1,6 @@
-// @ts-nocheck
-import { useQueryClient } from "@tanstack/react-query";
+import { type InvalidateQueryFilters, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
+import type * as T from "../../../shared/types";
 import {
   useRankupAttributesControllerFindOne,
   useTrainersControllerFindOne,
@@ -8,231 +8,225 @@ import {
 } from "@/api/components";
 import { queryKeyFn } from "@/api/context";
 import { Rank } from "@/api/schemas";
-function isCustomItem(e) {
-  return e.id === undefined || e.id === "" ? true : e.id.startsWith("custom-");
+import { SOCIALS, TRAINER_ATTRIBUTES, TRAINER_SKILLS } from "@/lib/stats";
+
+export type EditingMode = "view" | "edit" | "rankUp";
+export type TrainerStatKey =
+  | (typeof TRAINER_ATTRIBUTES)[number]
+  | (typeof SOCIALS)[number]
+  | (typeof TRAINER_SKILLS)[number];
+/** updatedTrainer.stats minus baseTrainer.stats, per stat. */
+export type StatChanges = Record<TrainerStatKey, number>;
+/** Entries added in the sheet have no id until saved; custom drafts carry a partial item. */
+export type InventoryRow = { id: string | undefined; item: T.Item; quantity: number };
+export type EditableTrainer = Omit<T.Trainer, "inventory"> & { inventory: InventoryRow[] };
+/** shared UpdateTrainerBody's Omit<InventoryEntry, "id"> drops the union's item fields, so spell the DTO out. */
+type InventoryEntryDto = { id?: string; quantity: number } & (
+  | { itemId: string }
+  | Pick<T.Item, "name" | "source" | "category" | "pocket" | "description" | "oneUse" | "PMD" | "trainerPrice" | "pmdPrice" | "image">
+);
+
+export interface TrainerContextValue {
+  updatedTrainer: EditableTrainer | undefined;
+  baseTrainer: EditableTrainer | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  updateTrainer: (changes: Partial<EditableTrainer>) => void;
+  saveTrainer: () => void;
+  cancelEdit: () => void;
+  editingMode: EditingMode;
+  setEditingMode: (mode: EditingMode) => void;
+  /** Point budget for ranking up to the next rank. */
+  rankUpAttributes: T.RankUpAttributes | undefined;
+  statChanges: StatChanges | undefined;
 }
-function toInventoryItemDto(e) {
-  const t = e.id === "" ? undefined : e.id;
-  return isCustomItem(e.item)
+
+const TRAINER_STATS = [...TRAINER_ATTRIBUTES, ...SOCIALS, ...TRAINER_SKILLS];
+
+function isCustomItem(item: T.Item) {
+  return item.id === undefined || item.id === "" ? true : item.id.startsWith("custom-");
+}
+function toInventoryItemDto(entry: InventoryRow): InventoryEntryDto {
+  const id = entry.id === "" ? undefined : entry.id;
+  return isCustomItem(entry.item)
     ? {
-        id: t,
-        quantity: e.quantity,
-        name: e.item.name,
-        source: e.item.source,
-        category: e.item.category,
-        pocket: e.item.pocket,
-        description: e.item.description,
-        oneUse: e.item.oneUse,
-        PMD: e.item.PMD,
-        trainerPrice: e.item.trainerPrice,
-        pmdPrice: e.item.pmdPrice,
-        image: e.item.image,
+        id,
+        quantity: entry.quantity,
+        name: entry.item.name,
+        source: entry.item.source,
+        category: entry.item.category,
+        pocket: entry.item.pocket,
+        description: entry.item.description,
+        oneUse: entry.item.oneUse,
+        PMD: entry.item.PMD,
+        trainerPrice: entry.item.trainerPrice,
+        pmdPrice: entry.item.pmdPrice,
+        image: entry.item.image,
       }
     : {
-        id: t,
-        itemId: e.item.id,
-        quantity: e.quantity,
+        id,
+        itemId: entry.item.id,
+        quantity: entry.quantity,
       };
 }
-function diffTrainer(e, t) {
-  var r, o, s;
-  const n = {
-    id: t.id,
+/** The PATCH body holding only what changed between `base` and `updated`. */
+function diffTrainer(base: EditableTrainer, updated: EditableTrainer): T.UpdateTrainerBody {
+  const body: T.UpdateTrainerBody = {
+    id: updated.id,
   };
-  return (
-    e.rank !== t.rank && (n.rank = t.rank),
-    e.gender !== t.gender && (n.gender = t.gender),
-    e.name !== t.name && (n.name = t.name),
-    e.age !== t.age && (n.age = t.age),
-    e.money !== t.money && (n.money = t.money),
-    e.currentHp !== t.currentHp && (n.currentHp = t.currentHp),
-    e.currentWill !== t.currentWill && (n.currentWill = t.currentWill),
-    ((r = e.nature) == null ? undefined : r.id) !==
-      ((o = t.nature) == null ? undefined : o.id) &&
-      (n.natureId = (s = t.nature) == null ? undefined : s.id),
-    hasObjectChanges(e.stats, t.stats) &&
-      (n.stats = {
-        ...t.stats,
-      }),
-    hasInventoryChanges(e.inventory, t.inventory) &&
-      (n.inventory = t.inventory.map(toInventoryItemDto)),
-    hasListChanges(e.pokemon, t.pokemon) &&
-      (n.pokemonIds = t.pokemon.map((i) => i.id)),
-    n
-  );
+  if (base.rank !== updated.rank) body.rank = updated.rank;
+  if (base.gender !== updated.gender) body.gender = updated.gender;
+  if (base.name !== updated.name) body.name = updated.name;
+  if (base.age !== updated.age) body.age = updated.age;
+  if (base.money !== updated.money) body.money = updated.money;
+  if (base.currentHp !== updated.currentHp) body.currentHp = updated.currentHp;
+  if (base.currentWill !== updated.currentWill) body.currentWill = updated.currentWill;
+  if (base.nature?.id !== updated.nature?.id) body.natureId = updated.nature?.id;
+  if (hasObjectChanges(base.stats, updated.stats))
+    body.stats = {
+      ...updated.stats,
+    };
+  if (hasInventoryChanges(base.inventory, updated.inventory))
+    body.inventory = updated.inventory.map(toInventoryItemDto);
+  if (hasListChanges(base.pokemon, updated.pokemon)) body.pokemonIds = updated.pokemon.map((pokemon) => pokemon.id);
+  return body;
 }
-function hasObjectChanges(e, t) {
-  return Object.keys(e).some((r) => e[r] !== t[r]);
+function hasObjectChanges(base: T.Stats, updated: T.Stats) {
+  return (Object.keys(base) as T.StatKey[]).some((key) => base[key] !== updated[key]);
 }
-function hasInventoryChanges(e, t) {
-  if (e.length !== t.length) return true;
-  for (let n = 0; n < e.length; n++) {
-    const r = e[n],
-      o = t[n];
-    if (r.id !== o.id || r.item.id !== o.item.id || r.quantity !== o.quantity)
-      return true;
+function hasInventoryChanges(base: InventoryRow[], updated: InventoryRow[]) {
+  if (base.length !== updated.length) return true;
+  for (let i = 0; i < base.length; i++) {
+    const before = base[i];
+    const after = updated[i];
+    if (before.id !== after.id || before.item.id !== after.item.id || before.quantity !== after.quantity) return true;
   }
   return false;
 }
-function hasListChanges(e, t) {
-  if (e.length !== t.length) return true;
-  for (let n = 0; n < e.length; n++) if (e[n].id !== t[n].id) return true;
+function hasListChanges(base: { id: string }[], updated: { id: string }[]) {
+  if (base.length !== updated.length) return true;
+  for (let i = 0; i < base.length; i++) if (base[i].id !== updated[i].id) return true;
   return false;
 }
-function countUpdates(e) {
-  let t = 0;
-  return (
-    e.rank !== undefined && t++,
-    e.gender !== undefined && t++,
-    e.name !== undefined && t++,
-    e.age !== undefined && t++,
-    e.natureId !== undefined && t++,
-    e.money !== undefined && t++,
-    e.currentHp !== undefined && t++,
-    e.currentWill !== undefined && t++,
-    e.stats !== undefined && t++,
-    e.inventory !== undefined && t++,
-    e.pokemonIds !== undefined && t++,
-    t > 0
-  );
+/** A cleared nature leaves natureId undefined, which (like the original) does not count as an update. */
+function hasUpdates(body: T.UpdateTrainerBody) {
+  return Object.entries(body).some(([key, value]) => key !== "id" && value !== undefined);
 }
-const TrainerContext = React.createContext(undefined);
+
+const TrainerContext = React.createContext<TrainerContextValue | undefined>(undefined);
+
 export const TrainerProvider = ({
-  id: e,
-  editingMode: t = "view",
-  children: n,
+  id,
+  editingMode: initialEditingMode = "view",
+  children,
+}: {
+  id: string;
+  editingMode?: EditingMode;
+  children?: React.ReactNode;
 }) => {
-  const r = useQueryClient(),
+  const queryClient = useQueryClient();
+  const {
+    data: trainer,
+    isLoading,
+    isError,
+  } = useTrainersControllerFindOne(
     {
-      data: o,
-      isLoading: s,
-      isError: i,
-    } = useTrainersControllerFindOne(
-      {
-        pathParams: {
-          id: e,
-        },
-      },
-      {
-        enabled: e !== undefined,
-      },
-    ),
-    [l, c] = React.useState(o),
-    [u, f] = React.useState(o),
-    { mutate: p } = useTrainersControllerUpdate({
-      onSuccess: () => {
-        r.invalidateQueries(
-          queryKeyFn({
-            path: "/trainers/{id}",
-            variables: {
-              pathParams: {
-                id: e,
-              },
-            },
-          }),
-        );
-      },
-    }),
-    [h, m] = React.useState(t),
-    { data: v } = useRankupAttributesControllerFindOne({
       pathParams: {
-        rank: Object.values(Rank)[
-          Object.values(Rank).indexOf(
-            (o == null ? undefined : o.rank) ?? Rank.STARTER,
-          ) + 1
-        ],
+        id,
       },
-    }),
-    g = React.useMemo(() => {
-      if (u === undefined || l === undefined) return;
-      const j = {
-        strength: 0,
-        dexterity: 0,
-        vitality: 0,
-        insight: 0,
-        tough: 0,
-        cool: 0,
-        beauty: 0,
-        cute: 0,
-        clever: 0,
-        brawl: 0,
-        throw: 0,
-        evasion: 0,
-        weapons: 0,
-        alert: 0,
-        athletic: 0,
-        nature: 0,
-        stealth: 0,
-        empathy: 0,
-        etiquette: 0,
-        intimidate: 0,
-        perform: 0,
-        crafts: 0,
-        lore: 0,
-        medicine: 0,
-        science: 0,
-      };
-      for (const w of Object.keys(j)) j[w] = u.stats[w] - l.stats[w];
-      return j;
-    }, [u, l]),
-    b = () => {
-      if (u === undefined || l === undefined || u === l || u === o) return;
-      const j = diffTrainer(l, u);
-      countUpdates(j) &&
-        (p({
-          body: j,
-        }),
-        c(u));
     },
-    x = (j) => {
-      u !== undefined &&
-        f((w) => ({
-          ...w,
-          ...j,
-        }));
+    {
+      enabled: id !== undefined,
     },
-    y = () => {
-      f(o), S("view");
-    };
+  );
+  const [baseTrainer, setBaseTrainer] = React.useState<EditableTrainer | undefined>(trainer);
+  const [updatedTrainer, setUpdatedTrainer] = React.useState<EditableTrainer | undefined>(trainer);
+  const { mutate } = useTrainersControllerUpdate({
+    onSuccess: () => {
+      // A bare query key is read as filters, so this invalidates every query (original behaviour).
+      queryClient.invalidateQueries(
+        queryKeyFn({
+          path: "/trainers/{id}",
+          operationId: "trainersControllerFindOne",
+          variables: {
+            pathParams: {
+              id,
+            },
+          },
+        }) as InvalidateQueryFilters,
+      );
+    },
+  });
+  const [editingMode, setEditingModeState] = React.useState(initialEditingMode);
+  const ranks = Object.values(Rank);
+  const { data: rankUpAttributes } = useRankupAttributesControllerFindOne({
+    pathParams: {
+      rank: ranks[ranks.indexOf(trainer?.rank ?? Rank.STARTER) + 1],
+    },
+  });
+  const statChanges = React.useMemo(() => {
+    if (updatedTrainer === undefined || baseTrainer === undefined) return;
+    return Object.fromEntries(
+      TRAINER_STATS.map((stat) => [stat, updatedTrainer.stats[stat] - baseTrainer.stats[stat]]),
+    ) as StatChanges;
+  }, [updatedTrainer, baseTrainer]);
+
+  const saveTrainer = () => {
+    if (updatedTrainer === undefined || baseTrainer === undefined || updatedTrainer === baseTrainer || updatedTrainer === trainer)
+      return;
+    const body = diffTrainer(baseTrainer, updatedTrainer);
+    if (hasUpdates(body)) {
+      mutate({
+        body,
+      });
+      setBaseTrainer(updatedTrainer);
+    }
+  };
+  const updateTrainer = (changes: Partial<EditableTrainer>) => {
+    if (updatedTrainer === undefined) return;
+    // Spreads even if the queued state is undefined, exactly as the original did.
+    setUpdatedTrainer((current) => ({ ...current, ...changes }) as EditableTrainer);
+  };
+  const setEditingMode = (mode: EditingMode) => {
+    setEditingModeState(mode);
+    if (mode === "rankUp")
+      setUpdatedTrainer((current) => {
+        if (current === undefined) return;
+        return { ...current, rank: ranks[ranks.indexOf(current.rank) + 1] };
+      });
+  };
+  const cancelEdit = () => {
+    setUpdatedTrainer(trainer);
+    setEditingMode("view");
+  };
+
   React.useEffect(() => {
-    f(o), c(o), S("view");
-  }, [o]),
-    React.useEffect(() => {
-      u !== undefined && h === "view" && b();
-    }, [u]);
-  const S = (j) => {
-      m(j),
-        j === "rankUp" &&
-          f((w) => {
-            if (w === undefined) return;
-            const N = {
-              ...w,
-            };
-            return (
-              (N.rank =
-                Object.values(Rank)[Object.values(Rank).indexOf(N.rank) + 1]),
-              N
-            );
-          });
-    },
-    E = {
-      updatedTrainer: u,
-      baseTrainer: l,
-      isLoading: s,
-      isError: i,
-      updateTrainer: x,
-      saveTrainer: b,
-      cancelEdit: y,
-      editingMode: h,
-      setEditingMode: S,
-      rankUpAttributes: v,
-      statChanges: g,
-    };
-  return <TrainerContext.Provider value={E}>{n}</TrainerContext.Provider>;
+    setUpdatedTrainer(trainer);
+    setBaseTrainer(trainer);
+    setEditingMode("view");
+  }, [trainer]);
+  React.useEffect(() => {
+    if (updatedTrainer !== undefined && editingMode === "view") saveTrainer();
+  }, [updatedTrainer]);
+
+  const value: TrainerContextValue = {
+    updatedTrainer,
+    baseTrainer,
+    isLoading,
+    isError,
+    updateTrainer,
+    saveTrainer,
+    cancelEdit,
+    editingMode,
+    setEditingMode,
+    rankUpAttributes,
+    statChanges,
+  };
+  return <TrainerContext.Provider value={value}>{children}</TrainerContext.Provider>;
 };
+
 export const useTrainer = () => {
-  const e = React.useContext(TrainerContext);
-  if (e === undefined)
-    throw new Error("useTrainer must be used within a TrainerProvider");
-  return e;
+  const context = React.useContext(TrainerContext);
+  if (context === undefined) throw new Error("useTrainer must be used within a TrainerProvider");
+  return context;
 };
