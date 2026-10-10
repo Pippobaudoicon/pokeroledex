@@ -3,7 +3,6 @@ import { IconContext } from "react-icons";
 import { RxCross1, RxHamburgerMenu } from "react-icons/rx";
 import { TbPokeball } from "react-icons/tb";
 import { Link } from "react-router-dom";
-import { useAuth } from "@/api/client";
 import { Text } from "@/components/Text";
 import { LocalModeBadge, SessionIndicator } from "@/layout/SessionIndicator";
 import { type AppRoute, appRoutes } from "@/routes";
@@ -14,7 +13,6 @@ export const Sidebar = ({
   drawerOpened: boolean;
   toggle: () => void;
 }) => {
-  const { isAuthenticated } = useAuth();
   return (
     <>
       <div
@@ -59,7 +57,6 @@ export const Sidebar = ({
         >
           {appRoutes
             .filter((route) => !(route.ignoreLink ?? false))
-            .filter((route) => !(route.protected ?? false) || isAuthenticated)
             .map((route, index) => (
               <SidebarLink key={index} appRoute={route} showText={drawerOpened} />
             ))}

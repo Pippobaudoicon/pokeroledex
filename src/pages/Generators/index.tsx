@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useMediaQuery } from "@uidotdev/usehooks";
 import * as React from "react";
 import { IconContext } from "react-icons";
@@ -6,7 +5,7 @@ import { FaAngleRight } from "react-icons/fa6";
 import { GiBottledBolt } from "react-icons/gi";
 import { TbPokeball } from "react-icons/tb";
 import { Link, useParams } from "react-router-dom";
-import { useAuth } from "@/api/client";
+import type * as T from "../../../shared/types";
 import {
   useItemsControllerGenerate,
   usePokemonControllerGenerate,
@@ -35,27 +34,48 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import {
   GeneratorContentProvider,
   useGeneratorContent,
 } from "@/pages/Generators/context";
-const GeneratorLink = ({ name: e, icon: t, description: n }) => {
-  const { generator: r } = useParams(),
-    { setContent: o } = useGeneratorContent(),
-    s = r === e.toLowerCase();
+
+type PokemonSettings = Required<
+  Omit<T.GeneratePokemonBody, keyof T.SelectionBody | "pokemonTemplateId">
+> &
+  Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
+type ItemSettings = Required<Omit<T.GenerateItemsBody, keyof T.SelectionBody>>;
+
+/** The shape GeneratedItemList renders. /items/generate actually returns plain
+ * items, so `item` is undefined and ItemCard crashes, as in the original. */
+interface GeneratedItemEntry {
+  count: number;
+  item: T.Item;
+}
+
+const GeneratorLink = ({
+  name,
+  icon,
+  description,
+}: {
+  name: string;
+  icon: React.ReactNode;
+  description?: string;
+}) => {
+  const { generator } = useParams();
+  const { setContent } = useGeneratorContent();
+  const isSelected = generator === name.toLowerCase();
   return (
     <Link
-      to={`/generators/${e.toLowerCase()}`}
+      to={`/generators/${name.toLowerCase()}`}
       className="flex"
       onClick={() => {
-        o(null);
+        setContent(null);
       }}
     >
       <Button
         variant="blue"
         size="xlUnbound"
-        className={`flex flex-grow items-center justify-between gap-2 border-pokerole-black ${s ? "border-2" : ""}`}
+        className={`flex flex-grow items-center justify-between gap-2 border-pokerole-black ${isSelected ? "border-2" : ""}`}
       >
         <div className="flex flex-row gap-2 items-center">
           <IconContext.Provider
@@ -63,11 +83,13 @@ const GeneratorLink = ({ name: e, icon: t, description: n }) => {
               size: "3em",
             }}
           >
-            {t}
+            {icon}
           </IconContext.Provider>
           <div className="flex flex-col text-left">
-            <span className="text-3xl">{e}</span>
-            {n != null && <span className="font-move">{n}</span>}
+            <span className="text-3xl">{name}</span>
+            {description != null && (
+              <span className="font-move">{description}</span>
+            )}
           </div>
         </div>
         <FaAngleRight className="align-end" />
@@ -76,9 +98,24 @@ const GeneratorLink = ({ name: e, icon: t, description: n }) => {
   );
 };
 const GeneratedPokemonList = () => {
-  const { content: e } = useGeneratorContent(),
-    [t, n] = React.useState([]),
-    r = e ?? [];
+  const { content } = useGeneratorContent();
+  const [lockedPokemon, setLockedPokemon] = React.useState<T.Pokemon[]>([]);
+  // The generator links clear the content, so it holds Pokemon on this panel.
+  const generated = (content ?? []) as T.Pokemon[];
+  const renderSheet = (pokemon: T.Pokemon) => (
+    <StaticPokemonProvider
+      key={pokemon.id}
+      pokemon={pokemon}
+      isLocked={lockedPokemon.includes(pokemon)}
+      lockedPressed={() => {
+        if (lockedPokemon.includes(pokemon))
+          setLockedPokemon(lockedPokemon.filter((other) => other !== pokemon));
+        else setLockedPokemon([...lockedPokemon, pokemon]);
+      }}
+    >
+      <PokemonSheet showButtons="addAndLock" />
+    </StaticPokemonProvider>
+  );
   return (
     <Box
       color="bg-pokerole-beige"
@@ -90,38 +127,16 @@ const GeneratedPokemonList = () => {
             Generated Pokemon
           </Text>
           <div className="flex flex-col gap-4">
-            {r.length === 0 && (
+            {generated.length === 0 && (
               <Text size="text-md" className="text-center">
                 {" "}
                 - No Generated Pokemon -{" "}
               </Text>
             )}
-            {t
-              .filter((o) => !r.includes(o))
-              .map((o) => (
-                <StaticPokemonProvider
-                  key={o.id}
-                  pokemon={o}
-                  isLocked={t.includes(o)}
-                  lockedPressed={() => {
-                    t.includes(o) ? n(t.filter((s) => s !== o)) : n([...t, o]);
-                  }}
-                >
-                  <PokemonSheet showButtons="addAndLock" />
-                </StaticPokemonProvider>
-              ))}
-            {r.map((o) => (
-              <StaticPokemonProvider
-                key={o.id}
-                pokemon={o}
-                isLocked={t.includes(o)}
-                lockedPressed={() => {
-                  t.includes(o) ? n(t.filter((s) => s !== o)) : n([...t, o]);
-                }}
-              >
-                <PokemonSheet showButtons="addAndLock" />
-              </StaticPokemonProvider>
-            ))}
+            {lockedPokemon
+              .filter((pokemon) => !generated.includes(pokemon))
+              .map(renderSheet)}
+            {generated.map(renderSheet)}
           </div>
         </div>
       </ScrollArea>
@@ -129,8 +144,9 @@ const GeneratedPokemonList = () => {
   );
 };
 const GeneratedItemList = () => {
-  const { content: e } = useGeneratorContent(),
-    t = e ?? [];
+  const { content } = useGeneratorContent();
+  // Cast to what this list expects, not what the API returns (see GeneratedItemEntry).
+  const entries = (content ?? []) as unknown as GeneratedItemEntry[];
   return (
     <Box
       color="bg-pokerole-beige"
@@ -142,21 +158,21 @@ const GeneratedItemList = () => {
             Generated Items
           </Text>
           <div className="gap-4 grid grid-cols-2 md:p-4">
-            {t.length === 0 && (
+            {entries.length === 0 && (
               <Text size="text-md" className="text-center col-span-full">
                 {" "}
                 - No Generated Items -{" "}
               </Text>
             )}
-            {t.map((n, r) => (
+            {entries.map((entry, index) => (
               <div
-                key={r}
+                key={index}
                 className="flex flex-row items-center col-span-full xl:col-span-1 gap-4"
               >
                 <Text size="text-3xl" font="font-move" className="text-center">
-                  {n.count}x
+                  {entry.count}x
                 </Text>
-                <ItemCard item={n.item} className="flex-grow" />
+                <ItemCard item={entry.item} className="flex-grow" />
               </div>
             ))}
           </div>
@@ -166,9 +182,9 @@ const GeneratedItemList = () => {
   );
 };
 const GeneratorPanel = () => {
-  const { generator: e } = useParams(),
-    t = useMediaQuery("(min-width: 768px)");
-  if (e === undefined)
+  const { generator } = useParams();
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  if (generator === undefined)
     return (
       <div className="flex flex-col justify-center items-center h-full gap-2">
         <Text size="text-5xl" color="text-white">
@@ -176,21 +192,26 @@ const GeneratorPanel = () => {
         </Text>
         <Text size="text-2xl" color="text-white" font="font-move">
           {"Please select a generator "}
-          {t ? "from the left" : "above"}
+          {isDesktop ? "from the left" : "above"}
         </Text>
       </div>
     );
-  const n = {
+  const panels: Record<string, React.ReactNode> = {
     pokemon: <GeneratedPokemonList />,
     items: <GeneratedItemList />,
   };
-  return <>{n[e]}</>;
+  return <>{panels[generator]}</>;
 };
 const SeedInput = ({
-  value: e,
-  onChange: t,
-  useRandomSeed: n,
-  setUseRandomSeed: r,
+  value,
+  onChange,
+  useRandomSeed,
+  setUseRandomSeed,
+}: {
+  value: number;
+  onChange: (value: string) => void;
+  useRandomSeed: boolean;
+  setUseRandomSeed: (useRandomSeed: boolean) => void;
 }) => (
   <>
     <Text font="font-move" size="text-xl">
@@ -198,127 +219,93 @@ const SeedInput = ({
     </Text>
     <Input
       type="number"
-      value={e}
-      onChange={(o) => (t == null ? undefined : t(o.target.value))}
-      disabled={n}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      disabled={useRandomSeed}
     />
     <Text font="font-move" size="text-sm">
       Random Seed
     </Text>
     <Checkbox
-      checked={n}
-      onCheckedChange={(o) => {
-        typeof o == "boolean" && r(o);
+      checked={useRandomSeed}
+      onCheckedChange={(checked) => {
+        if (typeof checked == "boolean") setUseRandomSeed(checked);
       }}
     />
   </>
 );
-const formatHabitat = (e) => {
-  switch (e) {
-    case Habitat.CITIES:
-      return "Cities";
-    case Habitat.TEMPERATE_DECIDUOUS_FORESTS:
-      return "Temperate Deciduous Forests";
-    case Habitat.BADLANDS_SCRUBLANDS_AND_WASTELANDS:
-      return "Badlands, Scrublands, and Wastelands";
-    case Habitat.ELECTROMAGNETICALLY_ACTIVE_AREAS:
-      return "Electromagnetically Active Areas";
-    case Habitat.WOODLANDS:
-      return "Woodlands";
-    case Habitat.TROPICAL_JUNGLES:
-      return "Tropical Jungles";
-    case Habitat.CAVES:
-      return "Caves";
-    case Habitat.FIELDS_AND_MEADOWS:
-      return "Fields and Meadows";
-    case Habitat.SWAMPS_BOGS_AND_MARSHES:
-      return "Swamps, Bogs, and Marshes";
-    case Habitat.GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES:
-      return "Grasslands, Savannas, Plains, and Prairies";
-    case Habitat.MOUNTAINS:
-      return "Mountains";
-    case Habitat.RUINS_AND_CEMETERIES:
-      return "Ruins and Cemeteries";
-    case Habitat.TUNDRAS_AND_BOREAL_FORESTS:
-      return "Tundras and Boreal Forests";
-    case Habitat.LAKESIDES_AND_RIVERSIDES:
-      return "Lakesides and Riversides";
-    case Habitat.GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES:
-      return "Glaciers, Mountain Peaks, and Icy Caves";
-    case Habitat.VOLCANOES:
-      return "Volcanoes";
-    case Habitat.LAKES:
-      return "Lakes";
-    case Habitat.BEACHES:
-      return "Beaches";
-    case Habitat.PONDS:
-      return "Ponds";
-    case Habitat.STREAMS_AND_RIVERS:
-      return "Streams and Rivers";
-    case Habitat.OCEANIC_ABYSSES:
-      return "Oceanic Abysses";
-    case Habitat.POLAR_SEAS:
-      return "Polar Seas";
-    case Habitat.TROPICAL_SEAS_AND_CORAL_REEFS:
-      return "Tropical Seas and Coral Reefs";
-    case Habitat.OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF:
-      return "Open Ocean and the Continental Shelf";
-    case Habitat.DESERTS:
-      return "Deserts";
-  }
+const habitatNames: Record<Habitat, string> = {
+  CITIES: "Cities",
+  TEMPERATE_DECIDUOUS_FORESTS: "Temperate Deciduous Forests",
+  BADLANDS_SCRUBLANDS_AND_WASTELANDS: "Badlands, Scrublands, and Wastelands",
+  ELECTROMAGNETICALLY_ACTIVE_AREAS: "Electromagnetically Active Areas",
+  WOODLANDS: "Woodlands",
+  TROPICAL_JUNGLES: "Tropical Jungles",
+  CAVES: "Caves",
+  FIELDS_AND_MEADOWS: "Fields and Meadows",
+  SWAMPS_BOGS_AND_MARSHES: "Swamps, Bogs, and Marshes",
+  GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES:
+    "Grasslands, Savannas, Plains, and Prairies",
+  MOUNTAINS: "Mountains",
+  RUINS_AND_CEMETERIES: "Ruins and Cemeteries",
+  TUNDRAS_AND_BOREAL_FORESTS: "Tundras and Boreal Forests",
+  LAKESIDES_AND_RIVERSIDES: "Lakesides and Riversides",
+  GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES: "Glaciers, Mountain Peaks, and Icy Caves",
+  VOLCANOES: "Volcanoes",
+  LAKES: "Lakes",
+  BEACHES: "Beaches",
+  PONDS: "Ponds",
+  STREAMS_AND_RIVERS: "Streams and Rivers",
+  OCEANIC_ABYSSES: "Oceanic Abysses",
+  POLAR_SEAS: "Polar Seas",
+  TROPICAL_SEAS_AND_CORAL_REEFS: "Tropical Seas and Coral Reefs",
+  OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF: "Open Ocean and the Continental Shelf",
+  DESERTS: "Deserts",
 };
 const PokemonGenerator = () => {
-  var h, m, v;
-  const { setContent: e } = useGeneratorContent(),
-    [t, n] = React.useState(true),
-    [r, o] = React.useState(false),
-    { toast: s } = useToast(),
-    [i, l] = React.useState({
-      seed: new Date().getTime(),
-      rankUpMethod: RankUpMethod.RANDOM,
-      habitats: [],
-      includeLegendary: LegendaryFilter.NONE,
-      numberToGenerate: 1,
-      pokemonTemplateId: undefined,
-      rankOrBelow: true,
-      rank: Rank.STARTER,
-    }),
-    { mutate: c } = usePokemonControllerGenerate({
-      onSuccess: (g) => {
-        e(g), o(false);
+  const { setContent } = useGeneratorContent();
+  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
+  const [isGenerating, setIsGenerating] = React.useState(false);
+  const { toast } = useToast();
+  const [settings, setSettings] = React.useState<PokemonSettings>({
+    seed: new Date().getTime(),
+    rankUpMethod: RankUpMethod.RANDOM,
+    habitats: [],
+    includeLegendary: LegendaryFilter.NONE,
+    numberToGenerate: 1,
+    pokemonTemplateId: undefined,
+    rankOrBelow: true,
+    rank: Rank.STARTER,
+  });
+  const { mutate } = usePokemonControllerGenerate({
+    onSuccess: (pokemon) => {
+      setContent(pokemon);
+      setIsGenerating(false);
+    },
+    onError: () => {
+      setIsGenerating(false);
+      toast({
+        title: "Failed to generate pokemon",
+        description: "Please try again",
+      });
+    },
+  });
+  const { state: campaignFilter } = useCampaignFilter();
+  const generate = () => {
+    const nextSettings = { ...settings };
+    if (useRandomSeed) {
+      nextSettings.seed = new Date().getTime();
+      setSettings(nextSettings);
+    }
+    setIsGenerating(true);
+    mutate({
+      body: {
+        ...nextSettings,
+        campaignIds: campaignFilter.campaignIds,
+        includeCore: campaignFilter.includeCore,
       },
-      onError: () => {
-        o(false),
-          s({
-            title: "Failed to generate pokemon",
-            description: "Please try again",
-          });
-      },
-    }),
-    { state: u } = useCampaignFilter(),
-    { isAuthenticated: f } = useAuth(),
-    p = () => {
-      const g = {
-        ...i,
-      };
-      t && ((g.seed = new Date().getTime()), l(g));
-      const b = f
-        ? {
-            campaignIds: u.campaignIds,
-            includeCore: u.includeCore,
-          }
-        : {
-            campaignIds: [],
-            includeCore: true,
-          };
-      o(true),
-        c({
-          body: {
-            ...g,
-            ...b,
-          },
-        });
-    };
+    });
+  };
   return (
     <Box color="bg-pokerole-beige" className="p-2 flex flex-col gap-2">
       <Text size="text-2xl" color="text-pokerole-black" className="text-center">
@@ -330,15 +317,14 @@ const PokemonGenerator = () => {
         </Text>
         <Input
           type="number"
-          value={i.numberToGenerate}
-          onChange={(g) => {
-            l({
-              ...i,
-              numberToGenerate: isNaN(parseInt(g.target.value))
-                ? 0
-                : parseInt(g.target.value),
-            }),
-              (g.target.value = i.numberToGenerate.toString());
+          value={settings.numberToGenerate}
+          onChange={(event) => {
+            const number = parseInt(event.target.value);
+            setSettings({
+              ...settings,
+              numberToGenerate: isNaN(number) ? 0 : number,
+            });
+            event.target.value = settings.numberToGenerate.toString();
           }}
           className="max-w-16 text-center"
         />
@@ -348,10 +334,10 @@ const PokemonGenerator = () => {
           Pokemon
         </Text>
         <CampaignFilter
-          onChange={(g) => {
-            l({
-              ...i,
-              pokemonTemplateId: g,
+          onChange={(pokemonTemplateId) => {
+            setSettings({
+              ...settings,
+              pokemonTemplateId,
             });
           }}
           className="text-md flex-grow"
@@ -362,22 +348,22 @@ const PokemonGenerator = () => {
           Rank
         </Text>
         <Combobox
-          items={Object.values(Rank).map((g) => ({
+          items={Object.values(Rank).map((rank) => ({
             label: (
               <div className="flex items-center space-x-1">
-                <RankIcon rank={Rank[g]} size="sm" /> <span>{g}</span>
+                <RankIcon rank={rank} size="sm" /> <span>{rank}</span>
               </div>
             ),
-            searchValue: g,
-            value: g.toLowerCase(),
+            searchValue: rank,
+            value: rank.toLowerCase(),
           }))}
-          value={i.rank.toLowerCase()}
-          onChange={(g) => {
-            l({
-              ...i,
+          value={settings.rank.toLowerCase()}
+          onChange={(value) => {
+            setSettings({
+              ...settings,
               rank:
-                Object.values(Rank).find((b) => b.toLowerCase() === g) ??
-                i.rank,
+                Object.values(Rank).find((rank) => rank.toLowerCase() === value) ??
+                settings.rank,
             });
           }}
           className="text-md flex-grow"
@@ -388,15 +374,16 @@ const PokemonGenerator = () => {
           Rank Up Method
         </Text>
         <Combobox
-          items={Object.values(RankUpMethod).map((g) => ({
-            label: g.replace(/_/g, " "),
-            value: g.toLowerCase(),
+          items={Object.values(RankUpMethod).map((method) => ({
+            label: method.replace(/_/g, " "),
+            value: method.toLowerCase(),
           }))}
-          value={(h = i.rankUpMethod) == null ? undefined : h.toLowerCase()}
-          onChange={(g) => {
-            l({
-              ...i,
-              rankUpMethod: g.toUpperCase(),
+          value={settings.rankUpMethod.toLowerCase()}
+          onChange={(value) => {
+            setSettings({
+              ...settings,
+              // Re-picking the current method sends "" (original quirk).
+              rankUpMethod: value.toUpperCase() as RankUpMethod,
             });
           }}
           className="text-md flex-grow"
@@ -421,11 +408,12 @@ const PokemonGenerator = () => {
               value: LegendaryFilter.ALL.toLowerCase(),
             },
           ]}
-          value={(m = i.includeLegendary) == null ? undefined : m.toLowerCase()}
-          onChange={(g) => {
-            l({
-              ...i,
-              includeLegendary: g.toUpperCase(),
+          value={settings.includeLegendary.toLowerCase()}
+          onChange={(value) => {
+            setSettings({
+              ...settings,
+              // Re-picking the current filter sends "" (original quirk).
+              includeLegendary: value.toUpperCase() as LegendaryFilter,
             });
           }}
           className="text-md flex-grow text-wrap"
@@ -436,18 +424,15 @@ const PokemonGenerator = () => {
           Habitats
         </Text>
         <MultiSelect
-          options={Object.values(Habitat).map((g) => ({
-            label: formatHabitat(g),
-            value: Habitat[g],
+          options={Object.values(Habitat).map((habitat) => ({
+            label: habitatNames[habitat],
+            value: habitat,
           }))}
-          selected={
-            ((v = i.habitats) == null ? undefined : v.map((g) => Habitat[g])) ??
-            []
-          }
-          onChange={(g) => {
-            l({
-              ...i,
-              habitats: g.map((b) => b),
+          selected={settings.habitats}
+          onChange={(habitats) => {
+            setSettings({
+              ...settings,
+              habitats,
             });
           }}
           className="text-md flex-grow text-wrap"
@@ -459,85 +444,72 @@ const PokemonGenerator = () => {
           Recommended Rank or lower
         </Text>
         <Checkbox
-          checked={i.rankOrBelow}
-          onCheckedChange={(g) => {
-            l({
-              ...i,
-              rankOrBelow: g === "indeterminate" ? true : g,
+          checked={settings.rankOrBelow}
+          onCheckedChange={(checked) => {
+            setSettings({
+              ...settings,
+              rankOrBelow: checked === "indeterminate" ? true : checked,
             });
           }}
         />
       </div>
       <div className="flex flex-row gap-2 items-center flex-grow">
         <SeedInput
-          value={i.seed}
-          onChange={(g) => {
-            l({
-              ...i,
-              seed: parseInt(g),
+          value={settings.seed}
+          onChange={(value) => {
+            setSettings({
+              ...settings,
+              seed: parseInt(value),
             });
           }}
-          useRandomSeed={t}
-          setUseRandomSeed={n}
+          useRandomSeed={useRandomSeed}
+          setUseRandomSeed={setUseRandomSeed}
         />
       </div>
       <Button
         id="generator-generate-button"
-        onClick={p}
-        disabled={
-          i.numberToGenerate < 1 ||
-          i.numberToGenerate == null ||
-          i.numberToGenerate === undefined ||
-          r
-        }
+        onClick={generate}
+        disabled={settings.numberToGenerate < 1 || isGenerating}
       >
-        {r ? <LoadingSpinner className="h-6" /> : "Generate"}
+        {isGenerating ? <LoadingSpinner className="h-6" /> : "Generate"}
       </Button>
     </Box>
   );
 };
-const ItemGenerator = ({ className: e }) => {
-  var h, m;
-  const { setContent: t } = useGeneratorContent(),
-    [n, r] = React.useState(true),
-    [o, s] = React.useState(false),
-    [i, l] = React.useState({
-      seed: new Date().getTime(),
-      numberToGenerate: 1,
-      categories: [],
-      pockets: [],
-    }),
-    { mutate: c } = useItemsControllerGenerate({
-      onSuccess: (v) => {
-        t(v), s(false);
+const ItemGenerator = () => {
+  const { setContent } = useGeneratorContent();
+  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
+  const [isGenerating, setIsGenerating] = React.useState(false);
+  const [settings, setSettings] = React.useState<ItemSettings>({
+    seed: new Date().getTime(),
+    numberToGenerate: 1,
+    categories: [],
+    pockets: [],
+  });
+  const { mutate } = useItemsControllerGenerate({
+    onSuccess: (items) => {
+      setContent(items);
+      setIsGenerating(false);
+    },
+  });
+  const { state: campaignFilter } = useCampaignFilter();
+  const generate = () => {
+    const nextSettings = { ...settings };
+    if (useRandomSeed) {
+      nextSettings.seed = new Date().getTime();
+      setSettings(nextSettings);
+    }
+    setIsGenerating(true);
+    mutate({
+      body: {
+        ...nextSettings,
+        campaignIds: campaignFilter.campaignIds,
+        includeCore: campaignFilter.includeCore,
       },
-    }),
-    { state: u } = useCampaignFilter(),
-    { isAuthenticated: f } = useAuth(),
-    p = () => {
-      const v = {
-        ...i,
-      };
-      n && ((v.seed = new Date().getTime()), l(v));
-      const g = f
-        ? {
-            campaignIds: u.campaignIds,
-            includeCore: u.includeCore,
-          }
-        : {
-            campaignIds: [],
-            includeCore: true,
-          };
-      s(true),
-        c({
-          body: {
-            ...v,
-            ...g,
-          },
-        });
-    };
+    });
+  };
   return (
-    <Box color="bg-pokerole-beige" className={cn("p-2 flex flex-col gap-2", e)}>
+    <Box color="bg-pokerole-beige" className="p-2 flex flex-col gap-2">
       <Text size="text-2xl" color="text-pokerole-black" className="text-center">
         Item Generator
       </Text>
@@ -547,15 +519,14 @@ const ItemGenerator = ({ className: e }) => {
         </Text>
         <Input
           type="number"
-          value={i.numberToGenerate}
-          onChange={(v) => {
-            l({
-              ...i,
-              numberToGenerate: isNaN(parseInt(v.target.value))
-                ? 0
-                : parseInt(v.target.value),
-            }),
-              (v.target.value = i.numberToGenerate.toString());
+          value={settings.numberToGenerate}
+          onChange={(event) => {
+            const number = parseInt(event.target.value);
+            setSettings({
+              ...settings,
+              numberToGenerate: isNaN(number) ? 0 : number,
+            });
+            event.target.value = settings.numberToGenerate.toString();
           }}
           className="max-w-16 text-center"
         />
@@ -565,19 +536,15 @@ const ItemGenerator = ({ className: e }) => {
           Pockets
         </Text>
         <MultiSelect
-          options={Object.values(ItemPocket).map((v) => ({
-            label: v.replace(/_/g, " "),
-            value: v.toLowerCase(),
+          options={Object.values(ItemPocket).map((pocket) => ({
+            label: pocket.replace(/_/g, " "),
+            value: pocket.toLowerCase(),
           }))}
-          selected={
-            ((h = i.pockets) == null
-              ? undefined
-              : h.map((v) => v.toLowerCase())) ?? []
-          }
-          onChange={(v) => {
-            l({
-              ...i,
-              pockets: v.map((g) => g.toUpperCase()),
+          selected={settings.pockets.map((pocket) => pocket.toLowerCase())}
+          onChange={(pockets) => {
+            setSettings({
+              ...settings,
+              pockets: pockets.map((pocket) => pocket.toUpperCase() as ItemPocket),
             });
           }}
         />
@@ -587,58 +554,51 @@ const ItemGenerator = ({ className: e }) => {
           Categories
         </Text>
         <MultiSelect
-          options={Object.values(ItemCategory).map((v) => ({
-            label: v.replace(/_/g, " "),
-            value: v.toLowerCase(),
+          options={Object.values(ItemCategory).map((category) => ({
+            label: category.replace(/_/g, " "),
+            value: category.toLowerCase(),
           }))}
-          selected={
-            ((m = i.categories) == null
-              ? undefined
-              : m.map((v) => v.toLowerCase())) ?? []
-          }
-          onChange={(v) => {
-            l({
-              ...i,
-              categories: v.map((g) => g.toUpperCase()),
+          selected={settings.categories.map((category) => category.toLowerCase())}
+          onChange={(categories) => {
+            setSettings({
+              ...settings,
+              categories: categories.map(
+                (category) => category.toUpperCase() as ItemCategory,
+              ),
             });
           }}
         />
       </div>
       <div className="flex flex-row gap-2 items-center flex-grow">
         <SeedInput
-          value={i.seed}
-          onChange={(v) => {
-            l({
-              ...i,
-              seed: parseInt(v),
+          value={settings.seed}
+          onChange={(value) => {
+            setSettings({
+              ...settings,
+              seed: parseInt(value),
             });
           }}
-          useRandomSeed={n}
-          setUseRandomSeed={r}
+          useRandomSeed={useRandomSeed}
+          setUseRandomSeed={setUseRandomSeed}
         />
       </div>
       <Button
-        onClick={p}
-        disabled={
-          i.numberToGenerate < 1 ||
-          i.numberToGenerate == null ||
-          i.numberToGenerate === undefined ||
-          o
-        }
+        onClick={generate}
+        disabled={settings.numberToGenerate < 1 || isGenerating}
       >
-        {o ? <LoadingSpinner className="h-6" /> : "Generate"}
+        {isGenerating ? <LoadingSpinner className="h-6" /> : "Generate"}
       </Button>
     </Box>
   );
 };
 const SelectedGenerator = () => {
-  const { generator: e } = useParams();
-  if (e === undefined) return <></>;
-  const t = {
+  const { generator } = useParams();
+  if (generator === undefined) return <></>;
+  const generators: Record<string, React.ReactNode> = {
     pokemon: <PokemonGenerator />,
     items: <ItemGenerator />,
   };
-  return <>{t[e]}</>;
+  return <>{generators[generator]}</>;
 };
 export const GeneratorsPage = () => (
   <GeneratorContentProvider>

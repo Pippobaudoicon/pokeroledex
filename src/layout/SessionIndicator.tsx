@@ -46,9 +46,4 @@ export const LocalModeBadge = ({ className }: { className?: string }) => (
 );
 // Hosted donation widgets loaded remote images and fonts. Keep this local marker
 // in the same slots so the original layout and guided-tour targets still work.
-// The Ko-fi widget props are still accepted at the call sites but ignored here.
-export const LocalWorkspaceLabel = (_props: {
-  kofiID?: string;
-  title?: string;
-  color?: string;
-}) => <span className="font-move text-sm text-white px-3">Local workspace</span>;
+export const LocalWorkspaceLabel = () => <span className="font-move text-sm text-white px-3">Local workspace</span>;

@@ -1,7 +1,6 @@
 import { RxCross1, RxHamburgerMenu } from "react-icons/rx";
 import { TbPokeball } from "react-icons/tb";
 import { Link } from "react-router-dom";
-import { useAuth } from "@/api/client";
 import { Text } from "@/components/Text";
 import { LocalNotes } from "@/layout/LocalNotes";
 import {
@@ -17,7 +16,6 @@ export const MobileNav = ({
   drawerOpened: boolean;
   toggle: () => void;
 }) => {
-  const { isAuthenticated } = useAuth();
   return (
     <>
       <nav className="mobile-header h-16 flex flex-row items-center bg-pokerole-black p-2 justify-between md:hidden fixed w-full z-30">
@@ -48,7 +46,6 @@ export const MobileNav = ({
       >
         {appRoutes
           .filter((route) => !(route.ignoreLink ?? false))
-          .filter((route) => !(route.protected ?? false) || isAuthenticated)
           .map((route, index) => (
             <MobileNavLink key={index} appRoute={route} onClick={toggle} />
           ))}
@@ -61,11 +58,7 @@ export const MobileNav = ({
           </div>
           <div className="flex flex-row justify-center items-center gap-2">
             <div id="mobile-nav-ko-fi-button">
-              <LocalWorkspaceLabel
-                kofiID="eliturbo"
-                title="Support"
-                color="#FFD166"
-              />
+              <LocalWorkspaceLabel />
             </div>
             <div id="mobile-nav-feedback-button">
               <LocalNotes />

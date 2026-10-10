@@ -11,9 +11,6 @@ export const localAuth = {
   isAuthenticated: true,
   isLoading: false,
   user: { sub: "local-user", name: "Local Trainer", nickname: "Local Trainer" } as LocalUser,
-  // Never called while isAuthenticated is true; kept so the hosted call sites still type-check.
-  loginWithRedirect: (_options?: { appState?: { returnTo?: string } }) => {},
-  loginWithPopup: () => {},
 };
 
 export const useAuth = () => localAuth;

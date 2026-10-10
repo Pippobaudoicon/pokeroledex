@@ -46,7 +46,7 @@ export const LocalNotes = () => {
       toast({
         title: "Note Saved",
         description:
-          "Saved on this computer. Nothing was sent to the original website.",
+          "Saved to this app's database. Nothing was sent to the original website.",
       });
     } catch (error) {
       console.error("Feedback submit failed", error);
@@ -72,8 +72,8 @@ export const LocalNotes = () => {
           <DialogHeader>
             <DialogTitle>Save a Local Note</DialogTitle>
             <DialogDescription>
-              Record bugs and ideas for this local copy. Notes stay in
-              data/local.json on this computer.
+              Record bugs and ideas for this copy. Notes are saved in this
+              app's database.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="grid gap-3">

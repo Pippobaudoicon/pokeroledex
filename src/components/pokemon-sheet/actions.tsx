@@ -12,7 +12,6 @@ import {
 import { GrUpgrade } from "react-icons/gr";
 import { Link, useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
-import { useAuth } from "@/api/client";
 import {
   usePokemonControllerCreate,
   usePokemonControllerRemove,
@@ -192,7 +191,6 @@ export const SheetActions = () => {
 export const AddToMyPokemon = () => {
   const { updatedPokemon } = usePokemon();
   const { toast } = useToast();
-  const { user, isAuthenticated, loginWithPopup } = useAuth();
   const { mutate } = usePokemonControllerCreate({
     onSuccess: (pokemon) => {
       toast({
@@ -219,24 +217,6 @@ export const AddToMyPokemon = () => {
     },
   });
   const createPokemon = () => {
-    if (!isAuthenticated || user == null) {
-      toast({
-        title: "Not logged in",
-        description: (
-          <>
-            <span>
-              You need to be logged in to create a pokemon.{" "}
-              <Link to={appRoutes.find((route) => route.name === "Login")?.path ?? ""}>
-                <span className="text-attributes-blue-dark underline hover:text-attributes-blue">
-                  Login here
-                </span>
-              </Link>
-            </span>
-          </>
-        ),
-      });
-      return;
-    }
     const body: T.CreatePokemonBody = {
       pokemonTemplateId: updatedPokemon?.pokemonTemplate.id ?? "",
       rank: updatedPokemon?.rank,
@@ -250,32 +230,17 @@ export const AddToMyPokemon = () => {
     });
   };
   return (
-    <>
-      {isAuthenticated ? (
-        <div id="create-pokemon-button">
-          <CollapsableButton
-            id="create-pokemon-button"
-            text="Add to my pokemon"
-            icon={<FaSave size={20} />}
-            variant="green"
-            onClick={() => {
-              createPokemon();
-            }}
-          />
-        </div>
-      ) : (
-        <div id="create-pokemon-button">
-          <CollapsableButton
-            text="Log in to create new"
-            icon={<FaSave size={20} />}
-            variant="green"
-            onClick={() => {
-              loginWithPopup();
-            }}
-          />
-        </div>
-      )}
-    </>
+    <div id="create-pokemon-button">
+      <CollapsableButton
+        id="create-pokemon-button"
+        text="Add to my pokemon"
+        icon={<FaSave size={20} />}
+        variant="green"
+        onClick={() => {
+          createPokemon();
+        }}
+      />
+    </div>
   );
 };
 export const LockButton = () => {

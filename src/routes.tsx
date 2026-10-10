@@ -19,8 +19,6 @@ export interface AppRoute {
   page: React.ReactElement;
   /** Detail routes that should not appear in the navigation. */
   ignoreLink?: boolean;
-  /** Only reachable when signed in (always true locally). */
-  protected?: boolean;
 }
 
 export const appRoutes: AppRoute[] = [
@@ -87,7 +85,6 @@ export const appRoutes: AppRoute[] = [
     name: "My Pokemon",
     icon: <MdCatchingPokemon />,
     page: <MyPokemonPage />,
-    protected: true,
   },
   {
     path: "/myPokemon/:id",
@@ -95,14 +92,12 @@ export const appRoutes: AppRoute[] = [
     icon: <MdCatchingPokemon />,
     page: <MyPokemonPage />,
     ignoreLink: true,
-    protected: true,
   },
   {
     path: "/myTrainers",
     name: "My Trainers",
     icon: <FaUserFriends />,
     page: <MyTrainersPage />,
-    protected: true,
   },
   {
     path: "/myTrainers/:id",
@@ -110,14 +105,12 @@ export const appRoutes: AppRoute[] = [
     icon: <FaUserFriends />,
     page: <MyTrainersPage />,
     ignoreLink: true,
-    protected: true,
   },
   {
     path: "/campaigns",
     name: "Campaigns",
     icon: <FaCompass />,
     page: <CampaignsPage />,
-    protected: true,
   },
   {
     path: "/campaigns/:id",
@@ -125,6 +118,5 @@ export const appRoutes: AppRoute[] = [
     icon: <FaCompass />,
     page: <CampaignsPage />,
     ignoreLink: true,
-    protected: true,
   },
 ];
