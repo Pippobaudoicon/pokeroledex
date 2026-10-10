@@ -102,13 +102,16 @@ export const ImportPage = () => {
         <Text size="text-xl">1. Add the bookmark</Text>
         <Text size="text-base" font="font-move">
           Drag this button to your bookmarks bar. On a phone, copy the code, bookmark any page and replace the bookmark's
-          address with the code.
+          address with the code. On a computer you can instead paste the code into the developer-tools console on
+          pokeroledex.nl.
         </Text>
         <div className="flex flex-wrap gap-2">
           <a ref={link} className={buttonVariants({ variant: "red" })}>
             Grab my pokeroledex.nl data
           </a>
-          <Button variant="white" onClick={() => navigator.clipboard.writeText(code)}>
+          {/* Decoded, the code also runs when pasted into the developer-tools console:
+              the leading "javascript:" reads as a statement label there. */}
+          <Button variant="white" onClick={() => navigator.clipboard.writeText(decodeURIComponent(code))}>
             Copy code
           </Button>
         </div>
