@@ -3,6 +3,7 @@
   "name": "pokeroledex",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-25",
+  "routes": [{ "pattern": "pokeroledex.tommasolopiparo.com", "custom_domain": true }],
   "assets": {
     // Files are served first. Requests that match no file go to the Worker, which
     // handles the BoxSprites fallback, 404s and the SPA index.html (worker/index.ts).
