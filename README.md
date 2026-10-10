@@ -23,8 +23,7 @@ Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/re
 
 ## Deploy
 
-1. `pnpm exec wrangler d1 create pokeroledex` and put the returned `database_id` into `wrangler.jsonc` (it is a placeholder now).
-2. `pnpm deploy`.
+`pnpm deploy` builds, applies migrations to the remote D1 database and deploys. `wrangler.jsonc` points at the existing `pokeroledex` database; to deploy to another Cloudflare account, run `pnpm exec wrangler d1 create pokeroledex` there and put the returned `database_id` into `wrangler.jsonc` first.
 
 There is no login: the app has one built-in user, and anyone who can reach the URL can read and change its data. Non-GET API calls must come from the same origin. Put a deployment behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) if it should be private.
 

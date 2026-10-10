@@ -10,6 +10,6 @@
     "run_worker_first": ["/api/*"]
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "pokeroledex", "database_id": "local-placeholder", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "pokeroledex", "database_id": "a7adefee-6890-46f2-bc0c-bcdada772e0e", "migrations_dir": "migrations" }
   ]
 }
