@@ -3,7 +3,6 @@ import * as React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { IssueButton } from "@/layout/IssueButton";
-import { LocalNotes } from "@/layout/LocalNotes";
 import { MobileNav } from "@/layout/MobileNav";
 import { Sidebar } from "@/layout/Sidebar";
 import { SupportButton } from "@/layout/SupportButton";
@@ -59,7 +58,6 @@ export const AppLayout = () => {
         <div className="hidden md:flex fixed bottom-6 right-6 z-50 space-x-3 items-end">
           <SupportButton />
           <IssueButton />
-          <LocalNotes />
         </div>
       </div>
     </>
