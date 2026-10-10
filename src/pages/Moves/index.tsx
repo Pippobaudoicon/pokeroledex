@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { useDebounce } from "@uidotdev/usehooks";
 import * as React from "react";
-import { useAuth } from "@/api/client";
+import type * as T from "../../../shared/types";
 import { useMovesControllerFindByCampaigns } from "@/api/components";
 import { MoveCategory, PokemonType } from "@/api/schemas";
 import { FilterSection } from "@/components/FilterSection";
@@ -13,199 +12,205 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
+
+interface MoveFilter {
+  id: string;
+  filter: (move: T.Move) => boolean;
+}
+
+interface FilterProps {
+  filters: MoveFilter[];
+  setFilters: (filters: MoveFilter[]) => void;
+}
+
 const useCategoryFilter = () => {
-  const [e, t] = React.useState([]);
+  const [selectedCategories, setSelectedCategories] = React.useState<
+    MoveCategory[]
+  >([]);
   return {
-    filter: (r) => (e.length === 0 ? true : e.some((o) => r.category === o)),
-    selectedCategories: e,
-    setSelectedCategories: t,
+    filter: (move: T.Move) =>
+      selectedCategories.length === 0
+        ? true
+        : selectedCategories.some((category) => move.category === category),
+    selectedCategories,
+    setSelectedCategories,
   };
 };
-const CategoryFilter = ({ filters: e, setFilters: t }) => {
-  const {
-    filter: n,
-    selectedCategories: r,
-    setSelectedCategories: o,
-  } = useCategoryFilter();
+
+// The filter function is new on every render, so this effect re-runs (and replaces its entry) every render.
+const CategoryFilter = ({ filters, setFilters }: FilterProps) => {
+  const { filter, selectedCategories, setSelectedCategories } =
+    useCategoryFilter();
+  React.useEffect(() => {
+    const otherFilters = filters.filter((other) => other.id !== "category");
+    otherFilters.push({ filter, id: "category" });
+    setFilters(otherFilters);
+  }, [filter]);
   return (
-    React.useEffect(() => {
-      const s = e.filter((i) => i.id !== "category");
-      s.push({
-        filter: n,
-        id: "category",
-      }),
-        t(s);
-    }, [n]),
-    (
-      <div className="flex flex-row gap-2 items-center">
-        <Text size="text-xl">Category:</Text>
-        <MultiSelect
-          options={Object.values(MoveCategory).map((s) => ({
-            label: s,
-            value: s,
-          }))}
-          selected={r}
-          onChange={(s) => {
-            o(s.map((i) => i));
-          }}
-          className="text-xl"
-          placeholder="Select categories..."
-        />
-      </div>
-    )
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl">Category:</Text>
+      <MultiSelect
+        options={Object.values(MoveCategory).map((category) => ({
+          label: category,
+          value: category,
+        }))}
+        selected={selectedCategories}
+        onChange={setSelectedCategories}
+        className="text-xl"
+        placeholder="Select categories..."
+      />
+    </div>
   );
 };
+
 const useTypeFilter = () => {
-  const [e, t] = React.useState([]);
+  const [selectedTypes, setSelectedTypes] = React.useState<PokemonType[]>([]);
   return {
-    filter: (r) => (e.length === 0 ? true : e.some((o) => r.type === o)),
-    selectedTypes: e,
-    setSelectedTypes: t,
+    filter: (move: T.Move) =>
+      selectedTypes.length === 0
+        ? true
+        : selectedTypes.some((type) => move.type === type),
+    selectedTypes,
+    setSelectedTypes,
   };
 };
-const TypeFilter = ({ filters: e, setFilters: t }) => {
-  const { filter: n, selectedTypes: r, setSelectedTypes: o } = useTypeFilter();
+
+const TypeFilter = ({ filters, setFilters }: FilterProps) => {
+  const { filter, selectedTypes, setSelectedTypes } = useTypeFilter();
+  React.useEffect(() => {
+    const otherFilters = filters.filter((other) => other.id !== "type");
+    otherFilters.push({ filter, id: "type" });
+    setFilters(otherFilters);
+  }, [filter]);
   return (
-    React.useEffect(() => {
-      const s = e.filter((i) => i.id !== "type");
-      s.push({
-        filter: n,
-        id: "type",
-      }),
-        t(s);
-    }, [n]),
-    (
-      <div className="flex flex-row gap-2 items-center">
-        <Text size="text-xl">Type:</Text>
-        <MultiSelect
-          options={Object.values(PokemonType).map((s) => ({
-            label: s,
-            value: s,
-          }))}
-          selected={r}
-          onChange={(s) => {
-            o(s.map((i) => i));
-          }}
-          className="text-xl"
-          placeholder="Select types..."
-        />
-      </div>
-    )
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl">Type:</Text>
+      <MultiSelect
+        options={Object.values(PokemonType).map((type) => ({
+          label: type,
+          value: type,
+        }))}
+        selected={selectedTypes}
+        onChange={setSelectedTypes}
+        className="text-xl"
+        placeholder="Select types..."
+      />
+    </div>
   );
 };
-const MoveFilters = ({ filters: e, setFilters: t, className: n }) => (
-  <div className={n}>
-    <TypeFilter setFilters={t} filters={e} />
-    <CategoryFilter setFilters={t} filters={e} />
+
+const MoveFilters = ({
+  filters,
+  setFilters,
+  className,
+}: FilterProps & { className?: string }) => (
+  <div className={className}>
+    <TypeFilter setFilters={setFilters} filters={filters} />
+    <CategoryFilter setFilters={setFilters} filters={filters} />
   </div>
 );
-const MoveList = ({ className: e }) => {
-  const { state: t } = useCampaignFilter(),
-    { isAuthenticated: n } = useAuth(),
-    [r, o] = React.useState(undefined),
-    [s, i] = React.useState(false),
-    { mutate: l } = useMovesControllerFindByCampaigns({
-      onSuccess: (j) => {
-        o(j), i(false);
-      },
-      onError: () => i(false),
-    }),
-    c = s && !r,
-    [u, f] = React.useState(""),
-    [p, h] = React.useState([]),
-    m = useDebounce(u, 200),
-    v = React.useMemo(
-      () =>
-        r == null
-          ? undefined
-          : r
-              .filter((j) =>
-                (j.name ?? "").toLowerCase().includes(m.toLowerCase()),
-              )
-              .filter((j) => p.every((w) => w.filter(j)))
-              .sort((j, w) => {
-                const N = (j.type ?? "").localeCompare(w.type ?? "");
-                return N !== 0 ? N : (j.name ?? "").localeCompare(w.name ?? "");
-              }),
-      [r, m, p],
-    );
-  React.useEffect(() => {
-    i(true);
-    const j = n
-      ? {
-          campaignIds: t.campaignIds,
-          includeCore: t.includeCore,
-        }
-      : {
-          campaignIds: [],
-          includeCore: true,
-        };
-    l({
-      body: j,
-    });
-  }, [t.campaignIds, t.includeCore, n, l]);
-  const g = 30,
-    [b, x] = React.useState(g),
-    y = React.useRef(null),
-    S = React.useRef(null);
-  React.useEffect(() => {
-    x(g);
-  }, [m, p, r]),
-    React.useEffect(() => {
-      var T;
-      const j =
-        (T = y.current) == null
-          ? undefined
-          : T.querySelector('[data-slot="scroll-area-viewport"]');
-      if (j === null || S.current === null) return;
-      const w = new IntersectionObserver(
-        (O) => {
-          for (const A of O)
-            A.isIntersecting &&
-              x(($) =>
-                Math.min((v == null ? undefined : v.length) ?? 0, $ + g),
-              );
-        },
-        {
-          root: j,
-          rootMargin: "200px",
-        },
-      );
-      w.observe(S.current);
-      const k = setTimeout(() => {
-        const O = j;
-        if (O === null) return;
-        let A = 0;
-        for (
-          ;
-          O.scrollHeight <= O.clientHeight &&
-          ((v == null ? undefined : v.length) ?? 0) > b &&
-          A < 20;
 
+const PAGE_SIZE = 30;
+
+const MoveList = ({ className }: { className?: string }) => {
+  const { state: campaignFilter } = useCampaignFilter();
+  const [moves, setMoves] = React.useState<T.Move[] | undefined>(undefined);
+  const [isFetching, setIsFetching] = React.useState(false);
+  const { mutate: fetchMoves } = useMovesControllerFindByCampaigns({
+    onSuccess: (data) => {
+      setMoves(data);
+      setIsFetching(false);
+    },
+    onError: () => setIsFetching(false),
+  });
+  const showSpinner = isFetching && !moves;
+  const [search, setSearch] = React.useState("");
+  const [filters, setFilters] = React.useState<MoveFilter[]>([]);
+  const debouncedSearch = useDebounce(search, 200);
+  const filteredMoves = React.useMemo(
+    () =>
+      moves
+        ?.filter((move) =>
+          (move.name ?? "")
+            .toLowerCase()
+            .includes(debouncedSearch.toLowerCase()),
         )
-          x(($) => Math.min((v == null ? undefined : v.length) ?? 0, $ + g)),
-            A++;
-      }, 50);
-      return () => {
-        w.disconnect(), clearTimeout(k);
-      };
-    }, [v]);
-  const E = React.useMemo(() => {
-    const j = v == null ? undefined : v.slice(0, b);
-    return j == null
-      ? undefined
-      : j.map((w) => <MoveCard key={w.id} move={w} />);
-  }, [v, b]);
+        .filter((move) => filters.every((filter) => filter.filter(move)))
+        .sort((first, second) => {
+          const byType = (first.type ?? "").localeCompare(second.type ?? "");
+          return byType !== 0
+            ? byType
+            : (first.name ?? "").localeCompare(second.name ?? "");
+        }),
+    [moves, debouncedSearch, filters],
+  );
+  React.useEffect(() => {
+    setIsFetching(true);
+    fetchMoves({
+      body: {
+        campaignIds: campaignFilter.campaignIds,
+        includeCore: campaignFilter.includeCore,
+      },
+    });
+  }, [campaignFilter.campaignIds, campaignFilter.includeCore, fetchMoves]);
+
+  // Infinite scroll: render PAGE_SIZE more cards whenever the sentinel nears the viewport.
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+  const sentinelRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [debouncedSearch, filters, moves]);
+  React.useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (viewport === null || sentinelRef.current === null) return;
+    const showMore = () =>
+      setVisibleCount((count) =>
+        Math.min(filteredMoves?.length ?? 0, count + PAGE_SIZE),
+      );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) if (entry.isIntersecting) showMore();
+      },
+      { root: viewport, rootMargin: "200px" },
+    );
+    observer.observe(sentinelRef.current);
+    // Fill a viewport that is not yet scrollable.
+    const timeout = setTimeout(() => {
+      if (viewport == null) return;
+      for (
+        let attempts = 0;
+        viewport.scrollHeight <= viewport.clientHeight &&
+        (filteredMoves?.length ?? 0) > visibleCount &&
+        attempts < 20;
+        attempts++
+      )
+        showMore();
+    }, 50);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timeout);
+    };
+  }, [filteredMoves]);
+  const moveCards = React.useMemo(
+    () =>
+      filteredMoves
+        ?.slice(0, visibleCount)
+        .map((move) => <MoveCard key={move.id} move={move} />),
+    [filteredMoves, visibleCount],
+  );
   return (
-    <div className={`flex flex-col h-full ${e} gap-2`}>
+    <div className={`flex flex-col h-full ${className} gap-2`}>
       <div className="flex flex-row space-x-2">
         <Input
           id="moves-search-input"
           className="rounded-3xl"
           placeholder="Search..."
-          value={u}
-          onChange={(j) => {
-            f(j.target.value);
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
           }}
         />
         <Button id="moves-search-button" className="rounded-3xl">
@@ -214,25 +219,26 @@ const MoveList = ({ className: e }) => {
       </div>
       <FilterSection label="Filters">
         <MoveFilters
-          filters={p}
-          setFilters={h}
+          filters={filters}
+          setFilters={setFilters}
           className="flex md:flex-row flex-col gap-2 mt-2"
         />
       </FilterSection>
-      <ScrollArea ref={y} className="rounded-t-3xl flex-1">
+      <ScrollArea ref={scrollAreaRef} className="rounded-t-3xl flex-1">
         <div className="grid md:grid-cols-2 grid-cols-1 gap-2">
-          {!!c && (
+          {showSpinner && (
             <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
               <LoadingSpinner />
             </div>
           )}
-          {E}
-          <div ref={S} className="h-1 w-full col-span-full" />
+          {moveCards}
+          <div ref={sentinelRef} className="h-1 w-full col-span-full" />
         </div>
       </ScrollArea>
     </div>
   );
 };
+
 export const MovesPage = () => (
   <div className="moves-layout p-2 pb-0 md:h-[calc(100vh-1rem)] max-md:pb-2">
     <MoveList className="overflow-hidden" />

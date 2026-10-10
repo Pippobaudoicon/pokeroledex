@@ -1,8 +1,7 @@
-// @ts-nocheck
 import { useDebounce, useMediaQuery } from "@uidotdev/usehooks";
 import * as React from "react";
+import type * as T from "../../../shared/types";
 import { Link, useParams } from "react-router-dom";
-import { useAuth } from "@/api/client";
 import { usePokemonTemplatesControllerFindByCampaignsMinimal } from "@/api/components";
 import { Habitat, PokemonType, Rank } from "@/api/schemas";
 import { FilterSection } from "@/components/FilterSection";
@@ -17,266 +16,268 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { PokemonDetail } from "@/pages/PokemonCatalog/PokemonDetail";
+
+interface PokemonFilter {
+  id: string;
+  filter: (pokemon: T.PokemonTemplateSummary) => boolean;
+}
+
+interface FilterProps {
+  filters: PokemonFilter[];
+  setFilters: (filters: PokemonFilter[]) => void;
+  className?: string;
+}
+
 const useHabitatFilter = () => {
-  const [e, t] = React.useState([]);
+  const [selectedHabitats, setSelectedHabitats] = React.useState<Habitat[]>([]);
   return {
-    filter: (r) =>
-      e.length === 0 ? true : e.some((o) => r.habitats.includes(o)),
-    selectedHabitats: e,
-    setSelectedHabitats: t,
+    filter: (pokemon: T.PokemonTemplateSummary) =>
+      selectedHabitats.length === 0 ||
+      selectedHabitats.some((habitat) => pokemon.habitats.includes(habitat)),
+    selectedHabitats,
+    setSelectedHabitats,
   };
 };
-const HabitatFilter = ({ filters: e, setFilters: t }) => {
-  const {
-    filter: n,
-    selectedHabitats: r,
-    setSelectedHabitats: o,
-  } = useHabitatFilter();
+const HabitatFilter = ({ filters, setFilters }: FilterProps) => {
+  const { filter, selectedHabitats, setSelectedHabitats } = useHabitatFilter();
+  React.useEffect(() => {
+    const otherFilters = filters.filter((other) => other.id !== "habitat");
+    otherFilters.push({ filter, id: "habitat" });
+    setFilters(otherFilters);
+  }, [filter]);
   return (
-    React.useEffect(() => {
-      const s = e.filter((i) => i.id !== "habitat");
-      s.push({
-        filter: n,
-        id: "habitat",
-      }),
-        t(s);
-    }, [n]),
-    (
-      <div className="flex flex-row gap-2 items-center">
-        <Text size="text-xl">Habitat:</Text>
-        <MultiSelect
-          options={Object.values(Habitat)
-            .map((s) => ({
-              label: s.replace(/_/g, " "),
-              value: s,
-            }))
-            .sort((s, i) => s.label.localeCompare(i.label))}
-          selected={r}
-          onChange={(s) => {
-            o(s.map((i) => i));
-          }}
-          className="text-xl"
-          placeholder="Select habitats..."
-        />
-      </div>
-    )
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl">Habitat:</Text>
+      <MultiSelect
+        options={Object.values(Habitat)
+          .map((habitat) => ({
+            label: habitat.replace(/_/g, " "),
+            value: habitat,
+          }))
+          .sort((first, second) => first.label.localeCompare(second.label))}
+        selected={selectedHabitats}
+        onChange={setSelectedHabitats}
+        className="text-xl"
+        placeholder="Select habitats..."
+      />
+    </div>
   );
 };
-const useRankFilter = () => {
-  const [e, t] = React.useState(undefined),
-    [n, r] = React.useState(false);
-  return {
-    filter: (s) =>
-      e == null
-        ? true
-        : n
-          ? Object.values(Rank).indexOf(s.recommendedRank) <=
-            Object.values(Rank).indexOf(e)
-          : Object.values(Rank).indexOf(s.recommendedRank) ===
-            Object.values(Rank).indexOf(e),
-    selectedRank: e,
-    setSelectedRank: t,
-    andLower: n,
-    setAndLower: r,
-  };
-};
-const RankFilter = ({ filters: e, setFilters: t }) => {
-  const {
-    filter: n,
-    selectedRank: r,
-    setSelectedRank: o,
-    andLower: s,
-    setAndLower: i,
-  } = useRankFilter();
-  return (
-    React.useEffect(() => {
-      const l = e.filter((c) => c.id !== "rank");
-      l.push({
-        filter: n,
-        id: "rank",
-      }),
-        t(l);
-    }, [n]),
-    (
-      <div className="flex flex-row gap-2 items-center">
-        <Text size="text-xl">Rank:</Text>
-        <RankSelect
-          onSelect={o}
-          rank={r}
-          placeholder="Select rank..."
-          comboBoxClassName="text-xl"
-        />
-        <Checkbox checked={s} onCheckedChange={i} />
-        <Text size="text-md">And lower</Text>
-      </div>
-    )
-  );
-};
+
 const useTypeFilter = () => {
-  const [e, t] = React.useState([]);
+  const [selectedTypes, setSelectedTypes] = React.useState<PokemonType[]>([]);
   return {
-    filter: (r) => (e.length === 0 ? true : e.some((o) => r.types.includes(o))),
-    selectedTypes: e,
-    setSelectedTypes: t,
+    filter: (pokemon: T.PokemonTemplateSummary) =>
+      selectedTypes.length === 0 ||
+      selectedTypes.some((type) =>
+        pokemon.types.some((pokemonType) => pokemonType === type),
+      ),
+    selectedTypes,
+    setSelectedTypes,
   };
 };
-const TypeFilter = ({ filters: e, setFilters: t }) => {
-  const { filter: n, selectedTypes: r, setSelectedTypes: o } = useTypeFilter();
+const TypeFilter = ({ filters, setFilters }: FilterProps) => {
+  const { filter, selectedTypes, setSelectedTypes } = useTypeFilter();
+  React.useEffect(() => {
+    const otherFilters = filters.filter((other) => other.id !== "type");
+    otherFilters.push({ filter, id: "type" });
+    setFilters(otherFilters);
+  }, [filter]);
   return (
-    React.useEffect(() => {
-      const s = e.filter((i) => i.id !== "type");
-      s.push({
-        filter: n,
-        id: "type",
-      }),
-        t(s);
-    }, [n]),
-    (
-      <div className="flex flex-row gap-2 items-center">
-        <Text size="text-xl">Type:</Text>
-        <MultiSelect
-          options={Object.values(PokemonType)
-            .filter((s) => s !== PokemonType.TYPELESS)
-            .map((s) => ({
-              label: s,
-              value: s,
-            }))}
-          selected={r}
-          onChange={(s) => {
-            o(s.map((i) => i));
-          }}
-          className="text-xl"
-          placeholder="Select types..."
-        />
-      </div>
-    )
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl">Type:</Text>
+      <MultiSelect
+        options={Object.values(PokemonType)
+          .filter((type) => type !== PokemonType.TYPELESS)
+          .map((type) => ({ label: type, value: type }))}
+        selected={selectedTypes}
+        onChange={setSelectedTypes}
+        className="text-xl"
+        placeholder="Select types..."
+      />
+    </div>
   );
 };
-const PokemonFilters = ({ filters: e, setFilters: t, className: n }) => (
-  <div className={n}>
-    <TypeFilter setFilters={t} filters={e} />
-    <RankFilter setFilters={t} filters={e} />
-    <HabitatFilter setFilters={t} filters={e} />
+
+const useRankFilter = () => {
+  const [selectedRank, setSelectedRank] = React.useState<Rank | undefined>(
+    undefined,
+  );
+  const [andLower, setAndLower] = React.useState<boolean | "indeterminate">(
+    false,
+  );
+  return {
+    filter: (pokemon: T.PokemonTemplateSummary) =>
+      selectedRank == null
+        ? true
+        : andLower
+          ? Object.values(Rank).indexOf(pokemon.recommendedRank) <=
+            Object.values(Rank).indexOf(selectedRank)
+          : Object.values(Rank).indexOf(pokemon.recommendedRank) ===
+            Object.values(Rank).indexOf(selectedRank),
+    selectedRank,
+    setSelectedRank,
+    andLower,
+    setAndLower,
+  };
+};
+const RankFilter = ({ filters, setFilters }: FilterProps) => {
+  const { filter, selectedRank, setSelectedRank, andLower, setAndLower } =
+    useRankFilter();
+  React.useEffect(() => {
+    const otherFilters = filters.filter((other) => other.id !== "rank");
+    otherFilters.push({ filter, id: "rank" });
+    setFilters(otherFilters);
+  }, [filter]);
+  return (
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl">Rank:</Text>
+      <RankSelect
+        onSelect={setSelectedRank}
+        rank={selectedRank}
+        placeholder="Select rank..."
+        comboBoxClassName="text-xl"
+      />
+      <Checkbox checked={andLower} onCheckedChange={setAndLower} />
+      <Text size="text-md">And lower</Text>
+    </div>
+  );
+};
+const PokemonFilters = ({ filters, setFilters, className }: FilterProps) => (
+  <div className={className}>
+    <TypeFilter setFilters={setFilters} filters={filters} />
+    <RankFilter setFilters={setFilters} filters={filters} />
+    <HabitatFilter setFilters={setFilters} filters={filters} />
   </div>
 );
-const PokemonTemplateList = ({ onClick: e, className: t }) => {
-  const { state: n } = useCampaignFilter(),
-    { isAuthenticated: r } = useAuth(),
-    [o, s] = React.useState(undefined),
-    [i, l] = React.useState(false),
-    { mutate: c } = usePokemonTemplatesControllerFindByCampaignsMinimal({
-      onSuccess: (w) => {
-        s(w), l(false);
-      },
-      onError: () => {
-        l(false);
-      },
-    }),
-    u = i && o == null,
-    [f, p] = React.useState(""),
-    [h, m] = React.useState([]),
-    v = useDebounce(f, 200),
-    g = React.useMemo(
-      () =>
-        o == null
-          ? undefined
-          : o
-              .sort((w, N) => (w.dexID ?? "").localeCompare(N.dexID ?? ""))
-              .filter((w) =>
-                (w.name ?? "").toLowerCase().includes(v.toLowerCase()),
-              )
-              .filter((w) => h.every((N) => N.filter(w))),
-      [o, v, h],
-    );
-  React.useEffect(() => {
-    l(true);
-    const w = r
-      ? {
-          campaignIds: n.campaignIds,
-          includeCore: n.includeCore,
-        }
-      : {
-          campaignIds: [],
-          includeCore: true,
-        };
-    c({
-      body: w,
-    });
-  }, [n.campaignIds, n.includeCore, r, c]);
-  const b = 60,
-    [x, y] = React.useState(b),
-    S = React.useRef(null),
-    E = React.useRef(null);
-  React.useEffect(() => {
-    y(b);
-  }, [v, h, o]),
-    React.useEffect(() => {
-      var O;
-      const w =
-        (O = S.current) == null
-          ? undefined
-          : O.querySelector('[data-slot="scroll-area-viewport"]');
-      if (w === null || E.current === null) return;
-      const N = new IntersectionObserver(
-        (A) => {
-          for (const $ of A)
-            $.isIntersecting &&
-              y((Y) =>
-                Math.min((g == null ? undefined : g.length) ?? 0, Y + b),
-              );
-        },
-        {
-          root: w,
-          rootMargin: "200px",
-        },
-      );
-      N.observe(E.current);
-      const T = setTimeout(() => {
-        const A = w;
-        if (A === null) return;
-        let $ = 0;
-        for (
-          ;
-          A.scrollHeight <= A.clientHeight &&
-          ((g == null ? undefined : g.length) ?? 0) > x &&
-          $ < 20;
 
+const PokemonTemplateList = ({
+  onClick,
+  className,
+}: {
+  onClick?: (id: string) => void;
+  className?: string;
+}) => {
+  const { state: campaignFilter } = useCampaignFilter();
+  const [pokemonTemplates, setPokemonTemplates] = React.useState<
+    T.PokemonTemplateSummary[] | undefined
+  >(undefined);
+  const [isFetching, setIsFetching] = React.useState(false);
+  const { mutate: fetchPokemonTemplates } =
+    usePokemonTemplatesControllerFindByCampaignsMinimal({
+      onSuccess: (templates) => {
+        setPokemonTemplates(templates);
+        setIsFetching(false);
+      },
+      onError: () => setIsFetching(false),
+    });
+  const showSpinner = isFetching && pokemonTemplates == null;
+  const [search, setSearch] = React.useState("");
+  const [filters, setFilters] = React.useState<PokemonFilter[]>([]);
+  const debouncedSearch = useDebounce(search, 200);
+  const filteredPokemonTemplates = React.useMemo(
+    () =>
+      pokemonTemplates
+        ?.sort((first, second) =>
+          (first.dexID ?? "").localeCompare(second.dexID ?? ""),
         )
-          y((Y) => Math.min((g == null ? undefined : g.length) ?? 0, Y + b)),
-            $++;
-      }, 50);
-      return () => {
-        N.disconnect(), clearTimeout(T);
-      };
-    }, [g]);
-  const j = React.useMemo(() => {
-    const w = g == null ? undefined : g.slice(0, x);
-    return w == null
-      ? undefined
-      : w.map((N) => (
-          <Link key={N.id} to={`/pokemon/${N.id}`} className="flex flex-col">
-            <PokemonTemplateCard
-              name={N.name}
-              image={N.image}
-              number={N.number}
-              types={N.types}
-              onClick={() => (e == null ? undefined : e(N.id))}
-              className="flex-grow"
-              numberClassName="md:hidden lg:block max-xs:hidden"
-            />
-          </Link>
-        ));
-  }, [g, x]);
+        .filter((template) =>
+          (template.name ?? "")
+            .toLowerCase()
+            .includes(debouncedSearch.toLowerCase()),
+        )
+        .filter((template) =>
+          filters.every((filter) => filter.filter(template)),
+        ),
+    [pokemonTemplates, debouncedSearch, filters],
+  );
+  React.useEffect(() => {
+    setIsFetching(true);
+    fetchPokemonTemplates({
+      body: {
+        campaignIds: campaignFilter.campaignIds,
+        includeCore: campaignFilter.includeCore,
+      },
+    });
+  }, [
+    campaignFilter.campaignIds,
+    campaignFilter.includeCore,
+    fetchPokemonTemplates,
+  ]);
+
+  const [visibleCount, setVisibleCount] = React.useState(60);
+  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
+  const sentinelRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    setVisibleCount(60);
+  }, [debouncedSearch, filters, pokemonTemplates]);
+  React.useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    if (viewport === null || sentinelRef.current === null) return;
+    const showMore = () =>
+      setVisibleCount((count) =>
+        Math.min(filteredPokemonTemplates?.length ?? 0, count + 60),
+      );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) if (entry.isIntersecting) showMore();
+      },
+      { root: viewport, rootMargin: "200px" },
+    );
+    observer.observe(sentinelRef.current);
+    const timeout = setTimeout(() => {
+      if (viewport == null) return;
+      for (
+        let attempts = 0;
+        viewport.scrollHeight <= viewport.clientHeight &&
+        (filteredPokemonTemplates?.length ?? 0) > visibleCount &&
+        attempts < 20;
+        attempts++
+      ) {
+        showMore();
+      }
+    }, 50);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timeout);
+    };
+  }, [filteredPokemonTemplates]);
+
+  const pokemonCards = React.useMemo(
+    () =>
+      filteredPokemonTemplates?.slice(0, visibleCount).map((template) => (
+        <Link
+          key={template.id}
+          to={`/pokemon/${template.id}`}
+          className="flex flex-col"
+        >
+          <PokemonTemplateCard
+            name={template.name}
+            image={template.image}
+            number={template.number}
+            types={template.types}
+            onClick={() => onClick?.(template.id)}
+            className="flex-grow"
+            numberClassName="md:hidden lg:block max-xs:hidden"
+          />
+        </Link>
+      )),
+    [filteredPokemonTemplates, visibleCount],
+  );
   return (
-    <div className={`flex flex-col gap-2 h-full overflow-hidden ${t}`}>
+    <div
+      className={`flex flex-col gap-2 filters-full overflow-hidden ${className}`}
+    >
       <div className="flex flex-row space-x-2 shrink-0">
         <Input
           id="pokemon-search-input"
           className="rounded-3xl"
           placeholder="Search..."
-          value={f}
-          onChange={(w) => {
-            p(w.target.value);
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
           }}
         />
         <Button id="pokemon-search-button" className="rounded-3xl">
@@ -286,43 +287,49 @@ const PokemonTemplateList = ({ onClick: e, className: t }) => {
       <div className="shrink-0">
         <FilterSection label="Filters">
           <PokemonFilters
-            filters={h}
-            setFilters={m}
+            filters={filters}
+            setFilters={setFilters}
             className="flex md:flex-row flex-col gap-2 mt-2 flex-wrap"
           />
         </FilterSection>
       </div>
-      <ScrollArea ref={S} className="md:rounded-t-3xl rounded-3xl flex-1">
+      <ScrollArea
+        ref={scrollAreaRef}
+        className="md:rounded-className-3xl rounded-3xl flex-1"
+      >
         <div className="pokemon-card-grid grid gap-2">
-          {!!u && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
+          {showSpinner && (
+            <div className="flex col-span-full flex-row flex-grow justify-center items-center filters-full event-full">
               <LoadingSpinner />
             </div>
           )}
-          {j}
-          <div ref={E} className="h-1 w-full col-span-full" />
+          {pokemonCards}
+          <div
+            ref={sentinelRef}
+            className="filters-1 event-full col-span-full"
+          />
         </div>
       </ScrollArea>
     </div>
   );
 };
 export const PokemonCatalogPage = () => {
-  const { id: e } = useParams(),
-    [t, n] = React.useState(e),
-    r = useMediaQuery("(min-width: 768px)");
+  const { id } = useParams();
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState(id);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   React.useEffect(() => {
-    n(e);
-  }, [e]);
-  const OComponent = r ? ScrollArea : "div";
+    setSelectedTemplateId(id);
+  }, [id]);
+  const DetailContainer = isDesktop ? ScrollArea : "div";
   return (
     <div className="catalog-layout p-2 pb-0 grid md:h-[calc(100vh-1rem)] md:grid-rows-1 grid-cols-5 box-border gap-3">
       <PokemonTemplateList
         className="md:col-span-2 col-span-full max-md:min-h-[30vh] max-md:max-h-[50vh]"
-        onClick={n}
+        onClick={setSelectedTemplateId}
       />
-      <OComponent className="md:col-span-3 col-span-full max-md:pb-2 h-full">
-        <PokemonDetail pokemonTemplateId={t} />
-      </OComponent>
+      <DetailContainer className="md:col-span-3 col-span-full max-md:pb-2 h-full">
+        <PokemonDetail pokemonTemplateId={selectedTemplateId} />
+      </DetailContainer>
     </div>
   );
 };
