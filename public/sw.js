@@ -17,6 +17,8 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
+  // The 172 MB rulebook PDF streams in ranges (worker/index.ts); its text is cached like any file.
+  if (url.pathname === "/rulebook/corebook.pdf") return;
   // Logging out drops the saved copies of this person's records.
   if (url.pathname === "/cdn-cgi/access/logout") return event.waitUntil(caches.delete(API));
 

@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { FaFileImport, FaFistRaised, FaHome, FaUserFriends } from "react-icons/fa";
+import { FaBook, FaFileImport, FaFistRaised, FaHome, FaUserFriends } from "react-icons/fa";
 import { FaCompass } from "react-icons/fa6";
 import { GiBigGear, GiBottledBolt } from "react-icons/gi";
 import { MdCatchingPokemon } from "react-icons/md";
@@ -13,6 +13,7 @@ import { MovesPage } from "@/pages/Moves";
 import { MyPokemonPage } from "@/pages/MyPokemon";
 import { MyTrainersPage } from "@/pages/MyTrainers";
 import { PokemonCatalogPage } from "@/pages/PokemonCatalog";
+import { RulebookPage } from "@/pages/Rulebook";
 export interface AppRoute {
   path: string;
   name: string;
@@ -125,5 +126,13 @@ export const appRoutes: AppRoute[] = [
     name: "Import",
     icon: <FaFileImport />,
     page: <ImportPage />,
+  },
+  {
+    // Opened from the Rulebook button rather than the navigation.
+    path: "/rulebook",
+    name: "Rulebook",
+    icon: <FaBook />,
+    page: <RulebookPage />,
+    ignoreLink: true,
   },
 ];

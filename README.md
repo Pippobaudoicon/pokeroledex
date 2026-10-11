@@ -65,7 +65,21 @@ Static files are served directly. Requests that match no file reach the Worker, 
 
 The app is an installable PWA: `/sw.js` caches the shell and static files, and keeps the last answer to each `/api` read so Pokémon, trainers, moves and items already opened stay readable offline (read-only; changes need a connection). Logging out clears those saved answers.
 
-The **Rulebook** button in the desktop controls and mobile menu opens the [Pokérole 3.0 corebook download](https://www.mediafire.com/file/ciqdxrua7ur81q5/POKEROLE_COREBOOK_3.0.pdf/file).
+The **Rulebook** button in the desktop controls and mobile menu opens `/rulebook`, the Pokérole 3.0 corebook in four tabs:
+
+- **Text**: searchable text, one card per page (accents ignored, Ctrl+F works too). A page number opens that page in Pages.
+- **Pages**: every page as a pre-rendered WebP image, with thumbnails on the side like a PDF viewer. Click a page to zoom. The PDF's JPEG 2000 art takes seconds per page to decode, so the images scroll far more smoothly than the PDF.
+- **PDF**: the original file in the browser's own viewer, searchable but slow to scroll.
+- **Ask**: type a rules question and get a short answer from the book with the pages it came from (`POST /api/rulebook/ask`). The Worker asks the AI Search instance through the `RULEBOOK_SEARCH` binding (`ai_search` in `wrangler.jsonc`, `remote` so `pnpm dev` uses the real instance); the instance has no generation model, so `worker/ask.ts` names a Workers AI one. Every question costs a Workers AI call.
+
+The book is not in the repository. It lives in the R2 bucket `pokeroledex-rulebook`, behind the same login as the rest of the site: `corebook.pdf` (streamed in ranges), `pages.json` (text per page), `pages/` and `thumbs/` (one image per page), and `search/`, one Markdown file per section of the contents (`scripts/rulebook-sections.ts`) for the Cloudflare AI Search instance `pokeroledex-corebook`, whose path filter is `search/**`. To set it up, [download the corebook](https://www.mediafire.com/file/ciqdxrua7ur81q5/POKEROLE_COREBOOK_3.0.pdf/file), install poppler and webp (`brew install poppler webp`), then:
+
+```sh
+pnpm exec wrangler r2 bucket create pokeroledex-rulebook       # once
+node scripts/upload-rulebook.ts POKEROLE_COREBOOK_3.0.pdf --remote  # --local for pnpm dev
+```
+
+Rendering the 641 pages takes about 13 minutes on 8 cores; finished pages are kept in `.wrangler/rulebook/` and skipped on the next run. The text and every page already viewed are cached for offline reading; the PDF needs a connection.
 
 ## Data
 

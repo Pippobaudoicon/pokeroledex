@@ -155,3 +155,28 @@
   .app-layout .whitespace-nowrap { white-space: normal; }
   .pokemon-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.rulebook-page-link:hover { text-decoration: underline; }
+.rulebook-pdf { height: calc(100dvh - 10rem); border-radius: 0 0 1rem 1rem; }
+.rulebook-viewer { display: flex; gap: 0.75rem; height: calc(100dvh - 10rem); }
+.rulebook-thumbs { position: relative; flex: none; width: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; }
+.rulebook-thumb { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.375rem; border-radius: 0.75rem; color: white; font-size: 0.875rem; }
+.rulebook-thumb img { width: 100%; height: auto; border-radius: 0.25rem; background: #e8e0cc; }
+.rulebook-thumb:hover { background: rgba(255, 255, 255, 0.1); }
+.rulebook-thumb-current, .rulebook-thumb-current:hover { background: rgba(255, 255, 255, 0.3); }
+.rulebook-main { position: relative; flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; align-items: safe center; gap: 0.75rem; }
+/* One whole page fits the view; zoomed, pages show at least at their real 1224px width. */
+.rulebook-page { flex: none; width: min(100%, calc((100dvh - 10rem) * 612 / 1008)); height: auto; border-radius: 0.5rem; background: #e8e0cc; cursor: zoom-in; }
+.rulebook-zoomed .rulebook-page { width: max(100%, 1224px); max-width: none; cursor: zoom-out; }
+.rulebook-contents { position: relative; flex: none; width: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.125rem; }
+.rulebook-contents-chapter { margin: 0.75rem 0 0.25rem; padding: 0 0.5rem; color: white; font-size: 1rem; font-family: Square, sans-serif; }
+.rulebook-contents-chapter:first-child { margin-top: 0; }
+.rulebook-contents-item { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.25rem 0.5rem; border-radius: 0.5rem; color: rgba(255, 255, 255, 0.8); font-size: 0.875rem; text-align: left; }
+.rulebook-contents-item:hover { background: rgba(255, 255, 255, 0.1); }
+.rulebook-contents-current, .rulebook-contents-current:hover { background: rgba(255, 255, 255, 0.3); color: white; }
+.rulebook-text { position: relative; flex: 1; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; }
+.rulebook-text > * { flex: none; width: 100%; max-width: 56rem; margin: 0 auto; }
+@media (max-width: 767px) { .rulebook-thumbs, .rulebook-contents { display: none; } }
+.rulebook-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rulebook-answer { display: flex; flex-direction: column; gap: 0.75rem; }
+.rulebook-source { display: block; width: 100%; padding: 0.25rem 0; text-align: left; text-decoration: underline; }

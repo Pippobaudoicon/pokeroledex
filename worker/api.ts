@@ -5,6 +5,7 @@ import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/ty
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import type { Env } from './index.ts';
+import { askRulebook } from './ask.ts';
 import { IssueError, openIssue } from './github.ts';
 import { fetchOldData } from './import.ts';
 import { loadReference, type Reference } from './reference.ts';
@@ -74,6 +75,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         SELECT ?, value ->> 'collection', value ->> 'id', value ->> 'data' FROM json_each(?) WHERE true
         ON CONFLICT (owner, collection, id) DO UPDATE SET data = excluded.data`).bind(owner, JSON.stringify(rows)).run();
       return reply({ counts: Object.fromEntries(Object.entries(collections).map(([name, records]) => [name, records.length])), missing, skipped });
+    }
+    if (name === 'rulebook' && action === 'ask' && method === 'POST') {
+      const { status, ...result } = await askRulebook(env, body.question);
+      return reply(status === 200 ? result : { status, payload: result.message }, status);
     }
     if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
