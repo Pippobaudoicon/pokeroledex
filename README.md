@@ -65,6 +65,8 @@ Static files are served directly. Requests that match no file reach the Worker, 
 
 The app is an installable PWA: `/sw.js` caches the shell and static files, and keeps the last answer to each `/api` read so Pokémon, trainers, moves and items already opened stay readable offline (read-only; changes need a connection). Logging out clears those saved answers.
 
+The **Rulebook** button in the desktop controls and mobile menu opens the [Pokérole 3.0 corebook download](https://www.mediafire.com/file/ciqdxrua7ur81q5/POKEROLE_COREBOOK_3.0.pdf/file).
+
 ## Data
 
 - **Reference data** (1,196 Pokémon forms, 892 moves, 394 items, 305 abilities, 25 natures, rank-up tables) lives in `data/reference/` and is published read-only as `/reference/*.json`.
@@ -84,7 +86,7 @@ Cards support locking across rolls, removal, two-d20 shiny rolls, HP tracking, f
 
 ## What was recovered
 
-The original source code, server and source maps were not available. The frontend was rebuilt from the deployed production bundle: bundled libraries were replaced by npm packages pinned to the versions found in it, and the application code was split into modules, renamed and typed. Every screen was compared against the original with screenshots and smoke flows. The original's own bugs were kept, not fixed: for example, the item generator crashes when it shows results, a new trainer does not save the chosen nature, and error toasts never show the server's message. Comments in the code mark these quirks.
+The original source code, server and source maps were not available. The frontend was rebuilt from the deployed production bundle: bundled libraries were replaced by npm packages pinned to the versions found in it, and the application code was split into modules, renamed and typed. Every screen was compared against the original with screenshots and smoke flows. Some of the original's own bugs remain: for example, a new trainer does not save the chosen nature, and error toasts never show the server's message. Comments in the code mark these quirks.
 
 2,606 image and font files were captured. Another 222 referenced URLs returned missing-asset HTML on the original site; exact paths are in `recovery/asset-manifest.json`.
 

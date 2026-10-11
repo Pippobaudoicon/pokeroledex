@@ -38,7 +38,7 @@ const isShiny = (entry: EncounterEntry) => entry.shinyRoll.every((die) => die ==
 const defaultSettings = (): T.GenerateEncounterBody => ({
   numberToGenerate: 1, name: "", types: [], generations: [], habitats: [], ranks: [],
   includeLegendary: LegendaryFilter.NONE, includeMythical: false, excludeForms: true,
-  rankOrBelow: true, allowDuplicates: true, excludeStarters: false, fossils: "ALL",
+  rankOrBelow: true, allowDuplicates: true, excludeStarters: true, fossils: "NONE",
   seed: Date.now(), rankUpMethod: RankUpMethod.RANDOM,
 });
 
@@ -135,7 +135,7 @@ export const EncounterGenerator = () => {
         />
         <Text font="font-move" size="text-xl">Habitats</Text>
         <MultiSelect
-          options={Object.values(Habitat).map((habitat) => ({ label: habitatNames[habitat], value: habitat }))}
+          options={Object.values(Habitat).sort((a, b) => habitatNames[a].localeCompare(habitatNames[b])).map((habitat) => ({ label: habitatNames[habitat], value: habitat }))}
           selected={settings.habitats ?? []} onChange={(habitats) => setSettings({ ...settings, habitats })} placeholder="Any habitat"
         />
         <Text font="font-move" size="text-xl">Recommended ranks</Text>
@@ -151,7 +151,7 @@ export const EncounterGenerator = () => {
         <Text font="font-move" size="text-xl">Fossils</Text>
         <Combobox
           items={[{ label: "Include fossils", value: "ALL" }, { label: "No fossils", value: "NONE" }, { label: "Only fossils", value: "ONLY" }]}
-          value={settings.fossils} className="text-md" onChange={(value) => setSettings({ ...settings, fossils: (value || "ALL") as T.GenerateEncounterBody["fossils"] })}
+          value={settings.fossils} className="text-md" onChange={(value) => setSettings({ ...settings, fossils: (value || "NONE") as T.GenerateEncounterBody["fossils"] })}
         />
         <Text font="font-move" size="text-xl">Rank up method</Text>
         <Combobox

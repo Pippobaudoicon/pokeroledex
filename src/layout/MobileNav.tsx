@@ -3,6 +3,7 @@ import { TbPokeball } from "react-icons/tb";
 import { Link } from "react-router-dom";
 import { Text } from "@/components/Text";
 import { IssueButton } from "@/layout/IssueButton";
+import { RulebookButton } from "@/layout/RulebookButton";
 import {
   AccountButton,
   LocalWorkspaceLabel,
@@ -57,6 +58,7 @@ export const MobileNav = ({
             </div>
           </div>
           <div className="flex flex-row flex-wrap justify-center items-center gap-2">
+            <RulebookButton />
             <div id="mobile-nav-ko-fi-button">
               <LocalWorkspaceLabel />
             </div>

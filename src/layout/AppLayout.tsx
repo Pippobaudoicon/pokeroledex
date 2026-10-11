@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { IssueButton } from "@/layout/IssueButton";
 import { MobileNav } from "@/layout/MobileNav";
+import { RulebookButton } from "@/layout/RulebookButton";
 import { Sidebar } from "@/layout/Sidebar";
 import { SupportButton } from "@/layout/SupportButton";
 import { Tutorial } from "@/layout/Tutorial";
@@ -56,6 +57,7 @@ export const AppLayout = () => {
           </div>
         </ScrollContainer>
         <div className="hidden md:flex fixed bottom-6 right-6 z-50 space-x-3 items-end">
+          <RulebookButton />
           <SupportButton />
           <IssueButton />
         </div>

@@ -47,8 +47,6 @@ type PokemonSettings = Required<
   Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
 type ItemSettings = Required<Omit<T.GenerateItemsBody, keyof T.SelectionBody>>;
 
-/** The shape GeneratedItemList renders. /items/generate actually returns plain
- * items, so `item` is undefined and ItemCard crashes, as in the original. */
 interface GeneratedItemEntry {
   count: number;
   item: T.Item;
@@ -147,8 +145,13 @@ const GeneratedPokemonList = () => {
 };
 const GeneratedItemList = () => {
   const { content } = useGeneratorContent();
-  // Cast to what this list expects, not what the API returns (see GeneratedItemEntry).
-  const entries = (content ?? []) as unknown as GeneratedItemEntry[];
+  const items = (content ?? []) as T.Item[];
+  const entries: GeneratedItemEntry[] = [];
+  for (const item of items) {
+    const entry = entries.find((entry) => entry.item.id === item.id);
+    if (entry) entry.count += 1;
+    else entries.push({ count: 1, item });
+  }
   return (
     <Box
       color="bg-pokerole-beige"
@@ -423,6 +426,7 @@ const ItemGenerator = () => {
   const { setContent } = useGeneratorContent();
   const [useRandomSeed, setUseRandomSeed] = React.useState(true);
   const [isGenerating, setIsGenerating] = React.useState(false);
+  const { toast } = useToast();
   const [settings, setSettings] = React.useState<ItemSettings>({
     seed: new Date().getTime(),
     numberToGenerate: 1,
@@ -433,6 +437,13 @@ const ItemGenerator = () => {
     onSuccess: (items) => {
       setContent(items);
       setIsGenerating(false);
+    },
+    onError: () => {
+      setIsGenerating(false);
+      toast({
+        title: "Failed to generate items",
+        description: "Please try again",
+      });
     },
   });
   const { state: campaignFilter } = useCampaignFilter();
