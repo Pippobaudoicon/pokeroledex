@@ -8,6 +8,7 @@ import { MoveCategoryBadge } from "@/components/MoveCategory";
 import { RankIcon } from "@/components/RankIcon";
 import { Text } from "@/components/Text";
 import { TypeIcon } from "@/components/TypeBadge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { getContrastTextColor } from "@/lib/colors";
 import { encounterMovePools } from "@/lib/encounter-moves";
@@ -49,6 +50,44 @@ const poolDice = (pool: string | undefined) => {
     : undefined;
 };
 
+const STAB_HINT = "S.T.A.B.: same type as the Pokémon, +1 damage die";
+
+/**
+ * Explains a value on mouse hover, or on tap on touch screens. A popover rather than a tooltip so a tap
+ * elsewhere closes it, and the click is kept from toggling the card.
+ */
+const Hint = ({ hint, className, children }: { hint?: string; className?: string; children: React.ReactNode }) => {
+  const [open, setOpen] = React.useState(false);
+  if (!hint) return <span className={className}>{children}</span>;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild={true}>
+        <span
+          role="button"
+          tabIndex={0}
+          className={`move-hint ${className ?? ""}`}
+          onPointerEnter={(event) => event.pointerType === "mouse" && setOpen(true)}
+          onPointerLeave={(event) => event.pointerType === "mouse" && setOpen(false)}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {children}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        collisionPadding={8}
+        className="w-auto max-w-xs px-3 py-2 font-move text-base"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        // Returning focus to this trigger would close a hint opened meanwhile on another value.
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {hint}
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 // The dice roller (DiceRoll) is parked for now: chips only show the dice count. Set to true to roll on tap.
 const ROLLING_ENABLED = false;
 
@@ -63,9 +102,9 @@ const RollChip = ({ dice, label, title, onClick }: { dice: number; label: string
   );
   if (!ROLLING_ENABLED) {
     return (
-      <span className="dice-chip ml-1 inline-flex items-center gap-1 align-middle font-move" aria-label={`${dice} ${label} dice`} title={title}>
+      <Hint hint={title} className="dice-chip ml-1 inline-flex items-center gap-1 align-middle font-move">
         {content}
-      </span>
+      </Hint>
     );
   }
   return (
@@ -126,7 +165,7 @@ export const MoveCard = ({
             size="text-base"
             className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white bg-opacity-20 transition-all duration-500 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
           >
-            A: {pools ? <span title={accuracyTitle}>{pools.accuracy}</span> : (<>
+            A: {pools ? <Hint hint={accuracyTitle}>{pools.accuracy}</Hint> : (<>
               {move.accuracy1.length > 0 ? abbreviateStat(move.accuracy1) : "-"}
             {move.accuracy2 === undefined
               ? ""
@@ -140,10 +179,10 @@ export const MoveCard = ({
           >
             D:{" "}
             {pools ? (
-              <span title={damageTitle}>
-                {pools.damage}
-                {pools.stab && <span title="S.T.A.B.: same type as the Pokémon, +1 damage die"> ★</span>}
-              </span>
+              <>
+                <Hint hint={damageTitle}>{pools.damage}</Hint>
+                {pools.stab && <Hint hint={STAB_HINT}> ★</Hint>}
+              </>
             ) : (<>
             {move.damage1 === undefined || move.damage1 === null || move.damage1 === ""
               ? "-"
@@ -207,7 +246,7 @@ export const MoveCard = ({
                 {pools?.stab && (
                   <>
                     {" + "}
-                    <span title="S.T.A.B.: same type as the Pokémon, +1 damage die">1 ★</span>
+                    <Hint hint={STAB_HINT}>1 ★</Hint>
                   </>
                 )}
                 {pools && pools.damage !== "—" && !damageDice && ` = ${pools.damage} dice`}
