@@ -2,7 +2,11 @@ import { useDebounce, useMediaQuery } from "@uidotdev/usehooks";
 import * as React from "react";
 import type * as T from "../../../shared/types";
 import { Link, useParams } from "react-router-dom";
-import { usePokemonTemplatesControllerFindByCampaignsMinimal } from "@/api/components";
+import {
+  useNamesControllerFindByCampaigns,
+  usePokemonTemplatesControllerFindByCampaignsMinimal,
+  usePokemonTemplatesControllerFindLearners,
+} from "@/api/components";
 import { Habitat, PokemonType, Rank } from "@/api/schemas";
 import { FilterSection } from "@/components/FilterSection";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -10,42 +14,198 @@ import { MultiSelect } from "@/components/MultiSelect";
 import { PokemonTemplateCard } from "@/components/PokemonTemplateCard";
 import { RankSelect } from "@/components/RankSelect";
 import { Text } from "@/components/Text";
+import { Combobox } from "@/components/Combobox";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
+import { type ListFilter, useRegisterFilter } from "@/hooks/use-register-filter";
 import { PokemonDetail } from "@/pages/PokemonCatalog/PokemonDetail";
 import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 
-interface PokemonFilter {
-  id: string;
-  filter: (pokemon: T.PokemonTemplateSummary) => boolean;
-}
+type PokemonFilter = ListFilter<T.PokemonTemplateSummary>;
 
 interface FilterProps {
   filters: PokemonFilter[];
-  setFilters: (filters: PokemonFilter[]) => void;
+  setFilters: React.Dispatch<React.SetStateAction<PokemonFilter[]>>;
   className?: string;
 }
 
+/** Searchable picker over the moves or abilities in the selected campaigns. */
+const EntryPicker = ({
+  collection,
+  value,
+  onChange,
+  placeholder,
+}: {
+  collection: "moves" | "abilities";
+  value: string;
+  onChange: (id: string) => void;
+  placeholder: string;
+}) => {
+  const { state: campaignFilter } = useCampaignFilter();
+  const { mutate, data: entries } = useNamesControllerFindByCampaigns();
+  React.useEffect(() => {
+    mutate({
+      pathParams: { collection },
+      body: {
+        campaignIds: campaignFilter.campaignIds,
+        includeCore: campaignFilter.includeCore,
+      },
+    });
+  }, [mutate, collection, campaignFilter.campaignIds, campaignFilter.includeCore]);
+  const items = React.useMemo(
+    () =>
+      (entries ?? [])
+        .map((entry) => {
+          const label = entry.campaignName
+            ? `${entry.name} (${entry.campaignName})`
+            : entry.name;
+          // The id keeps entries with the same name and campaign apart.
+          return { label, value: entry.id, searchValue: `${label} ${entry.id}` };
+        })
+        .sort((first, second) => first.label.localeCompare(second.label)),
+    [entries],
+  );
+  return (
+    <Combobox
+      items={items}
+      value={value}
+      onChange={onChange}
+      className="text-xl"
+      placeholder={placeholder}
+    />
+  );
+};
+
+const MoveFilter = ({ setFilters }: FilterProps) => {
+  const { state: campaignFilter } = useCampaignFilter();
+  const [moveId, setMoveId] = React.useState("");
+  const { mutate, data: learnerIds, reset } =
+    usePokemonTemplatesControllerFindLearners();
+  React.useEffect(() => {
+    reset();
+    if (moveId !== "")
+      mutate({
+        pathParams: { moveId },
+        body: {
+          campaignIds: campaignFilter.campaignIds,
+          includeCore: campaignFilter.includeCore,
+        },
+      });
+  }, [mutate, reset, moveId, campaignFilter.campaignIds, campaignFilter.includeCore]);
+  // Shows nothing until the learners arrive rather than every Pokémon.
+  const filter = React.useMemo(() => {
+    const learners = new Set(learnerIds);
+    return (pokemon: T.PokemonTemplateSummary) =>
+      moveId === "" || learners.has(pokemon.id);
+  }, [moveId, learnerIds]);
+  useRegisterFilter("move", filter, setFilters);
+  return (
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl" className="whitespace-nowrap">Learns:</Text>
+      <EntryPicker
+        collection="moves"
+        value={moveId}
+        onChange={setMoveId}
+        placeholder="Select move..."
+      />
+    </div>
+  );
+};
+
+const AbilityFilter = ({ setFilters }: FilterProps) => {
+  const [abilityId, setAbilityId] = React.useState("");
+  const filter = React.useCallback(
+    (pokemon: T.PokemonTemplateSummary) =>
+      abilityId === "" ||
+      [
+        pokemon.abilityOne,
+        pokemon.abilityTwo,
+        pokemon.hiddenAbility,
+        pokemon.eventAbility,
+      ].some((ability) => ability?.id === abilityId),
+    [abilityId],
+  );
+  useRegisterFilter("ability", filter, setFilters);
+  return (
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl" className="whitespace-nowrap">Ability:</Text>
+      <EntryPicker
+        collection="abilities"
+        value={abilityId}
+        onChange={setAbilityId}
+        placeholder="Select ability..."
+      />
+    </div>
+  );
+};
+
+const statLabels: Record<T.Attribute, string> = {
+  strength: "Str",
+  dexterity: "Dex",
+  vitality: "Vit",
+  special: "Spe",
+  insight: "Ins",
+};
+
+const BaseStatFilter = ({ setFilters }: FilterProps) => {
+  const [minimums, setMinimums] = React.useState<Partial<T.AttributeStats>>({});
+  const filter = React.useCallback(
+    (pokemon: T.PokemonTemplateSummary) =>
+      Object.entries(minimums).every(
+        ([stat, minimum]) => pokemon.baseStats[stat as T.Attribute] >= minimum,
+      ),
+    [minimums],
+  );
+  useRegisterFilter("base-stats", filter, setFilters);
+  return (
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl" className="whitespace-nowrap">Min. base:</Text>
+      <div className="grid grid-cols-5 gap-2">
+        {(Object.keys(statLabels) as T.Attribute[]).map((stat) => (
+          <label key={stat} className="flex flex-col gap-1 items-center">
+            <Text size="text-base">{statLabels[stat]}</Text>
+            <Input
+              type="number"
+              min={0}
+              max={10}
+              inputMode="numeric"
+              aria-label={`Minimum base ${stat}`}
+              className="w-full rounded-3xl px-2 text-center"
+              value={minimums[stat] ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                setMinimums(({ [stat]: _, ...others }) =>
+                  value === "" ? others : { ...others, [stat]: Number(value) },
+                );
+              }}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const useHabitatFilter = () => {
   const [selectedHabitats, setSelectedHabitats] = React.useState<Habitat[]>([]);
-  return {
-    filter: (pokemon: T.PokemonTemplateSummary) =>
+  const filter = React.useCallback(
+    (pokemon: T.PokemonTemplateSummary) =>
       selectedHabitats.length === 0 ||
       selectedHabitats.some((habitat) => pokemon.habitats.includes(habitat)),
+    [selectedHabitats],
+  );
+  return {
+    filter,
     selectedHabitats,
     setSelectedHabitats,
   };
 };
-const HabitatFilter = ({ filters, setFilters }: FilterProps) => {
+const HabitatFilter = ({ setFilters }: FilterProps) => {
   const { filter, selectedHabitats, setSelectedHabitats } = useHabitatFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "habitat");
-    otherFilters.push({ filter, id: "habitat" });
-    setFilters(otherFilters);
-  }, [filter]);
+  useRegisterFilter("habitat", filter, setFilters);
   return (
     <div className="flex flex-row gap-2 items-center">
       <Text size="text-xl">Habitat:</Text>
@@ -67,23 +227,23 @@ const HabitatFilter = ({ filters, setFilters }: FilterProps) => {
 
 const useTypeFilter = () => {
   const [selectedTypes, setSelectedTypes] = React.useState<PokemonType[]>([]);
-  return {
-    filter: (pokemon: T.PokemonTemplateSummary) =>
+  const filter = React.useCallback(
+    (pokemon: T.PokemonTemplateSummary) =>
       selectedTypes.length === 0 ||
       selectedTypes.some((type) =>
         pokemon.types.some((pokemonType) => pokemonType === type),
       ),
+    [selectedTypes],
+  );
+  return {
+    filter,
     selectedTypes,
     setSelectedTypes,
   };
 };
-const TypeFilter = ({ filters, setFilters }: FilterProps) => {
+const TypeFilter = ({ setFilters }: FilterProps) => {
   const { filter, selectedTypes, setSelectedTypes } = useTypeFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "type");
-    otherFilters.push({ filter, id: "type" });
-    setFilters(otherFilters);
-  }, [filter]);
+  useRegisterFilter("type", filter, setFilters);
   return (
     <div className="flex flex-row gap-2 items-center">
       <Text size="text-xl">Type:</Text>
@@ -107,8 +267,8 @@ const useRankFilter = () => {
   const [andLower, setAndLower] = React.useState<boolean | "indeterminate">(
     false,
   );
-  return {
-    filter: (pokemon: T.PokemonTemplateSummary) =>
+  const filter = React.useCallback(
+    (pokemon: T.PokemonTemplateSummary) =>
       selectedRank == null
         ? true
         : andLower
@@ -116,20 +276,20 @@ const useRankFilter = () => {
             Object.values(Rank).indexOf(selectedRank)
           : Object.values(Rank).indexOf(pokemon.recommendedRank) ===
             Object.values(Rank).indexOf(selectedRank),
+    [selectedRank, andLower],
+  );
+  return {
+    filter,
     selectedRank,
     setSelectedRank,
     andLower,
     setAndLower,
   };
 };
-const RankFilter = ({ filters, setFilters }: FilterProps) => {
+const RankFilter = ({ setFilters }: FilterProps) => {
   const { filter, selectedRank, setSelectedRank, andLower, setAndLower } =
     useRankFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "rank");
-    otherFilters.push({ filter, id: "rank" });
-    setFilters(otherFilters);
-  }, [filter]);
+  useRegisterFilter("rank", filter, setFilters);
   return (
     <div className="flex flex-row gap-2 items-center">
       <Text size="text-xl">Rank:</Text>
@@ -149,6 +309,9 @@ const PokemonFilters = ({ filters, setFilters, className }: FilterProps) => (
     <TypeFilter setFilters={setFilters} filters={filters} />
     <RankFilter setFilters={setFilters} filters={filters} />
     <HabitatFilter setFilters={setFilters} filters={filters} />
+    <MoveFilter setFilters={setFilters} filters={filters} />
+    <AbilityFilter setFilters={setFilters} filters={filters} />
+    <BaseStatFilter setFilters={setFilters} filters={filters} />
   </div>
 );
 

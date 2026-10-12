@@ -252,6 +252,13 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         // Lists do not need the large nested moves; detail endpoints retain them.
         return reply(name === 'pokemon-templates' && action !== 'all' ? result.map(({ possibleMoves, ...record }) => record) : result);
       }
+      // Compact lists for the catalog filters: names for pickers, and the templates that learn a move.
+      if (method === 'POST' && action === 'names') {
+        return reply(selected(name, body).map(record => ({ id: record.id, name: record.name, campaignName: record.campaign?.name ?? null })));
+      }
+      if (method === 'POST' && name === 'pokemon-templates' && action === 'learns') {
+        return reply(selected(name, body).filter(record => record.possibleMoves.some((move: Row) => move.move.id === id)).map(record => record.id));
+      }
       if (method === 'GET' && action === 'find-many') {
         return reply((id ?? '').split(',').map(value => template(find(name, value))).filter(Boolean));
       }

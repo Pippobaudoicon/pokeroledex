@@ -7,6 +7,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type RulebookSection, rulebookSections } from "../../../shared/rulebook-sections";
+import { quickReference } from "./quick-reference";
 
 const PDF = "/rulebook/corebook.pdf";
 
@@ -332,10 +333,41 @@ const RulebookAsk = ({ openPage }: { openPage: (page: number) => void }) => {
   );
 };
 
+// Static summaries (quick-reference.ts), so they show even when the book's text does not load.
+const QuickReference = ({ openPage }: { openPage: (page: number) => void }) => (
+  <div className="rulebook-quick">
+    {quickReference.map(({ title, pages, points }) => (
+      <Box key={title} color="bg-pokerole-beige" className="p-4 flex flex-col gap-3">
+        <Text size="text-2xl">{title}</Text>
+        <ul className="font-move text-base text-pokerole-black">
+          {points.map((point) => (
+            <li key={point}>{point}</li>
+          ))}
+        </ul>
+        <div className="rulebook-quick-pages">
+          {pages.map((page) => (
+            <button
+              key={page}
+              type="button"
+              className="rulebook-page-link font-square text-base text-pokerole-black"
+              title="Show this page"
+              onClick={() => {
+                openPage(page);
+              }}
+            >
+              p. {page}
+            </button>
+          ))}
+        </div>
+      </Box>
+    ))}
+  </div>
+);
+
 export const RulebookPage = () => {
   const [tab, setTab] = React.useState("text");
   const [page, setPage] = React.useState(1);
-  const { data: pages, isLoading, isError } = useQuery({
+  const { data: pages, isLoading } = useQuery({
     queryKey: ["rulebook-text"],
     queryFn: async () => {
       const response = await fetch("/rulebook/pages.json");
@@ -345,8 +377,20 @@ export const RulebookPage = () => {
     staleTime: Infinity,
   });
   const src = `${PDF}#page=${page}`;
-  if (isLoading) return <LoadingSpinner className="h-12 w-16" />;
-  if (isError || !pages) return <Text size="text-xl" color="text-white">The rulebook could not be loaded.</Text>;
+  const openPage = (number: number) => {
+    setPage(number);
+    setTab("pages");
+  };
+  // Without the text there is no page count for Pages; the PDF may still open.
+  const openQuickPage = (number: number) => {
+    if (pages) openPage(number);
+    else window.open(`${PDF}#page=${number}`, "_blank", "noopener");
+  };
+  const unavailable = isLoading ? (
+    <LoadingSpinner className="h-12 w-16" />
+  ) : (
+    <Text size="text-xl" color="text-white">The rulebook could not be loaded.</Text>
+  );
   return (
     <div className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -361,32 +405,27 @@ export const RulebookPage = () => {
           <TabsTrigger value="pages" title="The book's pages, fast to scroll">Pages</TabsTrigger>
           <TabsTrigger value="pdf" title="The original PDF: searchable, but slow to scroll">PDF</TabsTrigger>
           <TabsTrigger value="ask" title="Ask a rules question">Ask</TabsTrigger>
+          <TabsTrigger value="quick" title="Battle rules at a glance, for the GM">
+            Quick<span className="max-md:hidden">&nbsp;reference</span>
+          </TabsTrigger>
         </TabsList>
         {/* Kept mounted so the search and scroll position survive a visit to Pages. */}
         <TabsContent value="text" forceMount={true} hidden={tab !== "text"}>
-          <RulebookText
-            pages={pages}
-            openPage={(number) => {
-              setPage(number);
-              setTab("pages");
-            }}
-          />
+          {pages ? <RulebookText pages={pages} openPage={openPage} /> : unavailable}
         </TabsContent>
         <TabsContent value="pages">
-          <RulebookPages count={pages.length} page={page} />
+          {pages ? <RulebookPages count={pages.length} page={page} /> : unavailable}
         </TabsContent>
         {/* Kept mounted so the last answer survives a visit to Pages. */}
         <TabsContent value="ask" forceMount={true} hidden={tab !== "ask"}>
-          <RulebookAsk
-            openPage={(number) => {
-              setPage(number);
-              setTab("pages");
-            }}
-          />
+          <RulebookAsk openPage={openPage} />
         </TabsContent>
         <TabsContent value="pdf">
           {/* The browser's own PDF viewer brings page navigation and Ctrl+F. */}
           <iframe key={page} src={src} title="Pokérole 3.0 Corebook" className="rulebook-pdf w-full bg-white" />
+        </TabsContent>
+        <TabsContent value="quick">
+          <QuickReference openPage={openQuickPage} />
         </TabsContent>
       </Tabs>
     </div>

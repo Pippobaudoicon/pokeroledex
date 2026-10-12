@@ -274,7 +274,7 @@ export const PokemonSheet = ({ showButtons = "edit", showMovePools = false }: { 
           >
             <MoveCard
               move={move}
-              pokemon={showMovePools ? pokemon : undefined}
+              pokemon={pokemon}
               initialOpen={!showMovePools}
               disableToggle={!showMovePools}
               showDelete={editingMode === "edit" || editingMode === "rankUp"}

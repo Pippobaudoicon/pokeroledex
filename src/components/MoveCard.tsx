@@ -1,7 +1,9 @@
 import { useToggle } from "@uidotdev/usehooks";
-import type * as React from "react";
+import { Dice5 } from "lucide-react";
+import * as React from "react";
 import { FaXmark } from "react-icons/fa6";
 import { CollapsableButton } from "@/components/CollapsableButton";
+import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
 import { MoveCategoryBadge } from "@/components/MoveCategory";
 import { RankIcon } from "@/components/RankIcon";
 import { Text } from "@/components/Text";
@@ -39,6 +41,41 @@ export interface MoveCardProps {
   onDelete?: React.MouseEventHandler<HTMLButtonElement>;
 }
 
+/** Dice in a pool like "4/5" (a choice of attributes): roll the larger, as the corebook advises (p. 57). */
+const poolDice = (pool: string | undefined) => {
+  const choices = pool?.split("/").map(Number) ?? [];
+  return choices.length > 0 && choices.every((dice) => Number.isInteger(dice) && dice > 0)
+    ? Math.max(...choices)
+    : undefined;
+};
+
+/** Tappable dice count at the end of a pool line: rolls that pool. */
+// The dice roller (DiceRoll) is parked for now: chips only show the dice count. Set to true to roll on tap.
+const ROLLING_ENABLED = false;
+
+/** Dice count at the end of a pool line; rolls that pool on tap while rolling is enabled. */
+const RollChip = ({ dice, label, onClick }: { dice: number; label: string; onClick: (event: React.MouseEvent) => void }) => {
+  const className = "dice-chip ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-full align-middle font-square text-sm leading-none";
+  const content = (
+    <>
+      <Dice5 size={14} aria-hidden />
+      {dice}
+    </>
+  );
+  if (!ROLLING_ENABLED) {
+    return (
+      <span className={className} aria-label={`${dice} ${label} dice`}>
+        {content}
+      </span>
+    );
+  }
+  return (
+    <button type="button" className={className} aria-label={`Roll ${label}: ${dice} dice`} title={`Roll ${dice} dice`} onClick={onClick}>
+      {content}
+    </button>
+  );
+};
+
 /** Move summary that expands on click to show its full details. */
 export const MoveCard = ({
   move,
@@ -54,6 +91,13 @@ export const MoveCard = ({
   const lightTextColor = getContrastTextColor(background + "-light");
   const [open, toggle] = useToggle(initialOpen);
   const pools = pokemon ? encounterMovePools(move, pokemon) : undefined;
+  const accuracyDice = poolDice(pools?.accuracy);
+  const damageDice = poolDice(pools?.damage);
+  const [roll, setRoll] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
+  const rollPool = (kind: DiceRollRequest["kind"], dice: number) => (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setRoll((previous) => ({ title: move.name, kind, dice, key: (previous?.key ?? 0) + 1 }));
+  };
   const learnedRank = pokemon?.pokemonTemplate.possibleMoves.find((possible) => possible.move.id === move.id)?.rank;
   return (
     <div
@@ -93,7 +137,7 @@ export const MoveCard = ({
             className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white bg-opacity-20 transition-all duration-300 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
           >
             D:{" "}
-            {pools ? pools.damage : (<>
+            {pools ? `${pools.damage}${pools.stab ? "★" : ""}` : (<>
             {move.damage1 === undefined || move.damage1 === null || move.damage1 === ""
               ? "-"
               : abbreviateStat(move.damage1)}
@@ -131,17 +175,18 @@ export const MoveCard = ({
             <Text size="text-base" color={lightTextColor}>
               Accuracy:{" "}
               <span className="font-move">
-                {pools ? pools.accuracy : (<>
                 {move.accuracy1 ?? "-"}
-                {move.accuracy2 === undefined ? "" : ` + ${move.accuracy2}`}
-                </>)}
+                {move.accuracy2 === undefined || move.accuracy2 === "" ? "" : ` + ${move.accuracy2}`}
+                {pools && pools.accuracy !== "—" && !accuracyDice && ` = ${pools.accuracy} dice`}
               </span>
+              {accuracyDice && (
+                <RollChip dice={accuracyDice} label="accuracy" onClick={rollPool("accuracy", accuracyDice)} />
+              )}
             </Text>
             <Text size="text-base" color={lightTextColor}>
               Damage:{" "}
               <span className="font-move">
-                {pools ? pools.damage : (<>
-                {move.damage1 ?? "-"}
+                {move.damage1 || "-"}
                 {move.damage2 === undefined ||
                 move.damage2 === null ||
                 move.damage2 === ""
@@ -152,8 +197,15 @@ export const MoveCard = ({
                 move.damagePower === "0"
                   ? ""
                   : ` + ${move.damagePower}`}
-                </>)}
+                {pools?.stab && (
+                  <>
+                    {" + "}
+                    <span title="Same type as the Pokémon: +1 die">1★</span>
+                  </>
+                )}
+                {pools && pools.damage !== "—" && !damageDice && ` = ${pools.damage} dice`}
               </span>
+              {damageDice && <RollChip dice={damageDice} label="damage" onClick={rollPool("damage", damageDice)} />}
             </Text>
             <div className="flex flex-row space-x-2">
               <Text size="text-base" color={lightTextColor}>
@@ -182,6 +234,15 @@ export const MoveCard = ({
           {move.description}
         </Text>
       </div>
+      {roll && (
+        <DiceRoll
+          key={roll.key}
+          request={roll}
+          onClose={() => setRoll(null)}
+          next={roll.kind === "accuracy" && damageDice ? `Roll damage (${damageDice} dice)` : undefined}
+          onNext={damageDice ? () => rollPool("damage", damageDice)() : undefined}
+        />
+      )}
     </div>
   );
 };

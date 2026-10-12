@@ -297,6 +297,13 @@ export interface IssueReport {
   createdAt: string;
 }
 
+/** `POST /{moves,abilities}/names`: what a picker needs. */
+export interface NamedEntry {
+  id: string;
+  name: string;
+  campaignName: string | null;
+}
+
 // Request bodies.
 
 export interface SelectionBody {

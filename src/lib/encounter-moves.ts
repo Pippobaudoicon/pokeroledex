@@ -25,12 +25,18 @@ function dicePool(formulas: (string | null | undefined)[], pokemon: Pokemon): st
   return [...new Set(totals)].join("/");
 }
 
+/** Physical or Special moves of one of the user's own types roll 1 extra damage die (corebook p. 60). */
+const hasStab = (move: Move, pokemon: Pokemon) =>
+  move.category !== "SUPPORT" && pokemon.pokemonTemplate.types.some((type) => type === move.type);
+
 export function encounterMovePools(move: Move, pokemon: Pokemon) {
   const power = Number(move.damagePower) || 0;
+  const stab = hasStab(move, pokemon);
   return {
     accuracy: dicePool([move.accuracy1, move.accuracy2], pokemon),
     damage: move.damage1 || move.damage2
-      ? dicePool([move.damage1, move.damage2, power > 0 ? String(power) : ""], pokemon)
+      ? dicePool([move.damage1, move.damage2, power > 0 ? String(power) : "", stab ? "1" : ""], pokemon)
       : "—",
+    stab,
   };
 }

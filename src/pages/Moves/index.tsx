@@ -12,40 +12,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
+import { type ListFilter, useRegisterFilter } from "@/hooks/use-register-filter";
 
-interface MoveFilter {
-  id: string;
-  filter: (move: T.Move) => boolean;
-}
+type MoveFilter = ListFilter<T.Move>;
 
 interface FilterProps {
   filters: MoveFilter[];
-  setFilters: (filters: MoveFilter[]) => void;
+  setFilters: React.Dispatch<React.SetStateAction<MoveFilter[]>>;
 }
 
 const useCategoryFilter = () => {
   const [selectedCategories, setSelectedCategories] = React.useState<
     MoveCategory[]
   >([]);
+  const filter = React.useCallback(
+    (move: T.Move) =>
+      selectedCategories.length === 0 ||
+      selectedCategories.some((category) => move.category === category),
+    [selectedCategories],
+  );
   return {
-    filter: (move: T.Move) =>
-      selectedCategories.length === 0
-        ? true
-        : selectedCategories.some((category) => move.category === category),
+    filter,
     selectedCategories,
     setSelectedCategories,
   };
 };
 
-// The filter function is new on every render, so this effect re-runs (and replaces its entry) every render.
-const CategoryFilter = ({ filters, setFilters }: FilterProps) => {
+const CategoryFilter = ({ setFilters }: FilterProps) => {
   const { filter, selectedCategories, setSelectedCategories } =
     useCategoryFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "category");
-    otherFilters.push({ filter, id: "category" });
-    setFilters(otherFilters);
-  }, [filter]);
+  useRegisterFilter("category", filter, setFilters);
   return (
     <div className="flex flex-row gap-2 items-center">
       <Text size="text-xl">Category:</Text>
@@ -65,23 +61,21 @@ const CategoryFilter = ({ filters, setFilters }: FilterProps) => {
 
 const useTypeFilter = () => {
   const [selectedTypes, setSelectedTypes] = React.useState<PokemonType[]>([]);
+  const filter = React.useCallback(
+    (move: T.Move) =>
+      selectedTypes.length === 0 || selectedTypes.some((type) => move.type === type),
+    [selectedTypes],
+  );
   return {
-    filter: (move: T.Move) =>
-      selectedTypes.length === 0
-        ? true
-        : selectedTypes.some((type) => move.type === type),
+    filter,
     selectedTypes,
     setSelectedTypes,
   };
 };
 
-const TypeFilter = ({ filters, setFilters }: FilterProps) => {
+const TypeFilter = ({ setFilters }: FilterProps) => {
   const { filter, selectedTypes, setSelectedTypes } = useTypeFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "type");
-    otherFilters.push({ filter, id: "type" });
-    setFilters(otherFilters);
-  }, [filter]);
+  useRegisterFilter("type", filter, setFilters);
   return (
     <div className="flex flex-row gap-2 items-center">
       <Text size="text-xl">Type:</Text>
@@ -99,6 +93,58 @@ const TypeFilter = ({ filters, setFilters }: FilterProps) => {
   );
 };
 
+// Structured added effects cover most core moves; the effect text covers the rest and custom moves.
+const statusAilments = /^(Paralyze|Poison|BadlyPoison|Burn\d?|Freeze|Sleep|Drowzy|Confuse|Flinch|Infatuat|Disable)/;
+const inflictsStatus =
+  /\b(paralyze|poison|badly poison|burn|freeze|confuse|infatuate|flinch|disable)s? (the|all|each|every|a|any|one|foes?|targets?|that|those|both)\b|\bputs? (the|all|each) (?!user)[\w ]{0,20}to sleep|\b(1st|2nd|3rd)[ -]degree burn/i;
+const restoresHp =
+  /\b(basic|complete) heal\b|(?<!(can't|cannot) )\b(heals?|restores?|restoring) (\d+ )?HP\b|\brestores? [\w ]{0,20}\d+ HP\b/i;
+const areaTargets: T.MoveTarget[] = [
+  "ALL_FOES",
+  "AREA",
+  "BATTLEFIELD",
+  "ALLYS_BATTLEFIELD",
+  "FOES_BATTLEFIELD",
+  "ALL_ALLIES",
+  "USER_AND_ALLIES",
+];
+const moveEffects = {
+  "Status conditions": (move: T.Move) =>
+    (move.addedEffects?.Ailments ?? []).some(
+      (ailment) => ailment.Affects === "Targets" && statusAilments.test(ailment.Type),
+    ) || inflictsStatus.test(move.effect),
+  Healing: (move: T.Move) => move.addedEffects?.Heal != null || restoresHp.test(move.effect),
+  "Area / multiple targets": (move: T.Move) =>
+    areaTargets.includes(move.target) || /\barea move\b|\ball foes\b/i.test(move.effect),
+};
+type MoveEffect = keyof typeof moveEffects;
+
+const EffectFilter = ({ setFilters }: FilterProps) => {
+  const [selectedEffects, setSelectedEffects] = React.useState<MoveEffect[]>([]);
+  const filter = React.useCallback(
+    (move: T.Move) =>
+      selectedEffects.length === 0 ||
+      selectedEffects.some((effect) => moveEffects[effect](move)),
+    [selectedEffects],
+  );
+  useRegisterFilter("effect", filter, setFilters);
+  return (
+    <div className="flex flex-row gap-2 items-center">
+      <Text size="text-xl">Effect:</Text>
+      <MultiSelect
+        options={(Object.keys(moveEffects) as MoveEffect[]).map((effect) => ({
+          label: effect,
+          value: effect,
+        }))}
+        selected={selectedEffects}
+        onChange={setSelectedEffects}
+        className="text-xl"
+        placeholder="Select effects..."
+      />
+    </div>
+  );
+};
+
 const MoveFilters = ({
   filters,
   setFilters,
@@ -107,6 +153,7 @@ const MoveFilters = ({
   <div className={className}>
     <TypeFilter setFilters={setFilters} filters={filters} />
     <CategoryFilter setFilters={setFilters} filters={filters} />
+    <EffectFilter setFilters={setFilters} filters={filters} />
   </div>
 );
 
@@ -131,9 +178,9 @@ const MoveList = ({ className }: { className?: string }) => {
     () =>
       moves
         ?.filter((move) =>
-          (move.name ?? "")
-            .toLowerCase()
-            .includes(debouncedSearch.toLowerCase()),
+          [move.name, move.effect, move.description].some((text) =>
+            (text ?? "").toLowerCase().includes(debouncedSearch.toLowerCase()),
+          ),
         )
         .filter((move) => filters.every((filter) => filter.filter(move)))
         .sort((first, second) => {
@@ -207,7 +254,7 @@ const MoveList = ({ className }: { className?: string }) => {
         <Input
           id="moves-search-input"
           className="rounded-3xl"
-          placeholder="Search..."
+          placeholder="Search names and effects..."
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);

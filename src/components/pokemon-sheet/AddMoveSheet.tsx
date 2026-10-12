@@ -9,6 +9,7 @@ import { MoveCard } from "@/components/MoveCard";
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { RankIcon } from "@/components/RankIcon";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -67,26 +68,31 @@ const AddMoveSheet = ({ trigger, className }: { trigger: React.ReactNode; classN
         }),
     [moves],
   );
-  /** Rank-up mode only offers the species' learnable moves. */
-  const candidateMoves = React.useMemo(
-    () =>
-      editingMode === "rankUp"
-        ? updatedPokemon?.pokemonTemplate.possibleMoves != null
-          ? updatedPokemon.pokemonTemplate.possibleMoves.slice().sort((a, b) => {
-              const byType = a.move.type.localeCompare(b.move.type);
-              return byType !== 0 ? byType : a.move.name.localeCompare(b.move.name);
-            })
-          : undefined
-        : allMoves,
-    [editingMode, updatedPokemon, allMoves],
-  );
+  /** Rank-up mode always offers only the species' learnable moves; edit mode can turn that off. */
+  const [learnableOnly, setLearnableOnly] = React.useState(true);
+  const restricted = editingMode === "rankUp" || learnableOnly;
+  const ranks = Object.keys(Rank);
+  // The current species/form's learnset up to the edited rank, each move once at its lowest rank.
+  const learnableMoves = React.useMemo(() => {
+    if (updatedPokemon === undefined) return undefined;
+    const byMove = new Map<string, T.PossibleMove>();
+    for (const possibleMove of updatedPokemon.pokemonTemplate.possibleMoves) {
+      const rank = ranks.indexOf(possibleMove.rank);
+      const known = byMove.get(possibleMove.move.id);
+      if (rank <= ranks.indexOf(updatedPokemon.rank) && (known === undefined || rank < ranks.indexOf(known.rank)))
+        byMove.set(possibleMove.move.id, possibleMove);
+    }
+    return [...byMove.values()].sort((a, b) => {
+      const byType = a.move.type.localeCompare(b.move.type);
+      return byType !== 0 ? byType : a.move.name.localeCompare(b.move.name);
+    });
+  }, [updatedPokemon?.pokemonTemplate, updatedPokemon?.rank]);
   const [search, setSearch] = React.useState("");
   const debouncedSearch = useDebounce(search, 200);
-  const availableMoves = candidateMoves?.filter(
+  const availableMoves = (restricted ? learnableMoves : allMoves)?.filter(
     (possibleMove) =>
       updatedPokemon !== undefined &&
-      !updatedPokemon.moves.some((move) => move.id === possibleMove.move.id) &&
-      Object.keys(Rank).indexOf(possibleMove.rank) <= Object.keys(Rank).indexOf(updatedPokemon.rank),
+      !updatedPokemon.moves.some((move) => move.id === possibleMove.move.id),
   );
   const filteredMoves = React.useMemo(
     () =>
@@ -196,17 +202,30 @@ const AddMoveSheet = ({ trigger, className }: { trigger: React.ReactNode; classN
               className="rounded-3xl"
             />
           </div>
+          {editingMode === "edit" && (
+            <label className="col-span-full flex flex-row gap-2 items-center">
+              <Checkbox
+                checked={learnableOnly}
+                onCheckedChange={(checked) => {
+                  setLearnableOnly(checked === true);
+                }}
+              />
+              <span className="font-move text-base">
+                Only moves this Pokémon can learn at its current rank or below
+              </span>
+            </label>
+          )}
           <ScrollArea ref={scrollAreaRef} className="md:h-[80vh] h-[60vh] rounded-3xl">
             <div className="grid grid-cols-1 gap-2">
-              {isLoading && (
+              {isLoading && !restricted && (
                 <LoadingSpinner className="col-span-full items-center justify-center w-full" />
               )}
-              {!isLoading && filteredMoves?.length === 0 && (
+              {(restricted || !isLoading) && filteredMoves?.length === 0 && (
                 <div className="col-span-full text-muted-foreground text-center py-4">
                   No moves found.
                 </div>
               )}
-              {!isLoading && moveListItems}
+              {(restricted || !isLoading) && moveListItems}
               <div ref={sentinelRef} className="h-1 w-full col-span-full" />
             </div>
           </ScrollArea>

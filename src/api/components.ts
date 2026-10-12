@@ -291,7 +291,34 @@ export const usePokemonTemplatesControllerFindFiltered = (options?: MutationOpti
   });
 };
 
-export type PokemonTemplatesControllerFindOneVariables = { pathParams: { id: string } } & FetcherExtraProps;
+export type PokemonTemplatesControllerFindLearnersVariables = { pathParams: { moveId: string }; body: T.SelectionBody } & FetcherExtraProps;
+
+const fetchPokemonTemplatesControllerFindLearners = (variables: PokemonTemplatesControllerFindLearnersVariables, signal?: AbortSignal) =>
+  apiFetch<string[]>({ url: "/pokemon-templates/learns/{moveId}", method: "post", ...variables, signal });
+
+/** Ids of the templates that can learn a move. */
+export const usePokemonTemplatesControllerFindLearners = (options?: MutationOptions<string[], PokemonTemplatesControllerFindLearnersVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<string[], ApiFetchError, PokemonTemplatesControllerFindLearnersVariables>({
+    mutationFn: (variables) => fetchPokemonTemplatesControllerFindLearners({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};
+
+export type NamesControllerFindByCampaignsVariables = { pathParams: { collection: "moves" | "abilities" }; body: T.SelectionBody } & FetcherExtraProps;
+
+const fetchNamesControllerFindByCampaigns = (variables: NamesControllerFindByCampaignsVariables, signal?: AbortSignal) =>
+  apiFetch<T.NamedEntry[]>({ url: "/{collection}/names", method: "post", ...variables, signal });
+
+export const useNamesControllerFindByCampaigns = (options?: MutationOptions<T.NamedEntry[], NamesControllerFindByCampaignsVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<T.NamedEntry[], ApiFetchError, NamesControllerFindByCampaignsVariables>({
+    mutationFn: (variables) => fetchNamesControllerFindByCampaigns({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};
+
+export type PokemonTemplatesControllerFindOneVariables ={ pathParams: { id: string } } & FetcherExtraProps;
 
 const fetchPokemonTemplatesControllerFindOne = (variables: PokemonTemplatesControllerFindOneVariables, signal?: AbortSignal) =>
   apiFetch<T.PokemonTemplate>({ url: "/pokemon-templates/{id}", method: "get", ...variables, signal });
