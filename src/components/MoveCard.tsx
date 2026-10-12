@@ -64,7 +64,7 @@ const RollChip = ({ dice, label, onClick }: { dice: number; label: string; onCli
   );
   if (!ROLLING_ENABLED) {
     return (
-      <span className={className} aria-label={`${dice} ${label} dice`}>
+      <span className="dice-chip ml-1 inline-flex items-center gap-1 align-middle font-move" aria-label={`${dice} ${label} dice`}>
         {content}
       </span>
     );
