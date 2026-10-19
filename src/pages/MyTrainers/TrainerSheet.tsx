@@ -1,383 +1,257 @@
-import { useDebounce } from "@uidotdev/usehooks";
 import * as React from "react";
-import { FaPerson } from "react-icons/fa6";
 import { Link } from "react-router-dom";
-import { Textfit } from "react-textfit";
-import type * as T from "../../../shared/types";
 import { useNaturesControllerFindAll } from "@/api/components";
 import { Rank } from "@/api/schemas";
-import { Box } from "@/components/Box";
-import { Combobox } from "@/components/Combobox";
-import { LabeledField } from "@/components/LabeledField";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { StatPips } from "@/components/Pips";
-import { PokemonImage } from "@/components/PokemonImage";
-import { RankIcon } from "@/components/RankIcon";
-import { StatBox } from "@/components/StatBox";
-import { Text } from "@/components/Text";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { button } from "@/components/kit/button";
+import { Stepper } from "@/components/kit/Controls";
+import { Group, Row } from "@/components/kit/List";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Picker } from "@/components/kit/Picker";
+import { Sprite } from "@/components/kit/Sprite";
 import { SOCIALS, TRAINER_ATTRIBUTES, TRAINER_SKILLS } from "@/lib/stats";
-import { capitalize } from "@/lib/utils";
-import { type EditableTrainer, type TrainerStatKey, useTrainer } from "@/pages/MyTrainers/context";
+import { capitalize, cn, formatEnumName } from "@/lib/utils";
+import { type TrainerStatKey, useTrainer } from "@/pages/MyTrainers/context";
 import { TrainerSheetHeader } from "@/pages/MyTrainers/Header";
 import { InventoryList, InventorySection } from "@/pages/MyTrainers/Inventory";
 
 type StatType = "attribute" | "social" | "skill";
-const STATS_BY_TYPE = { attribute: TRAINER_ATTRIBUTES, social: SOCIALS, skill: TRAINER_SKILLS };
-const POINTS_BY_TYPE = { attribute: "attributePoints", social: "socialPoints", skill: "skillPoints" } as const;
+const statsByType = { attribute: TRAINER_ATTRIBUTES, social: SOCIALS, skill: TRAINER_SKILLS };
+const pointsByType = { attribute: "attributePoints", social: "socialPoints", skill: "skillPoints" } as const;
 
-const TrainerStatPips = ({
-  stat,
-  type,
-  pipClassName,
-}: {
-  stat: TrainerStatKey;
-  type: StatType;
-  pipClassName?: string;
-}) => {
-  const { baseTrainer, updatedTrainer, updateTrainer, rankUpAttributes, editingMode, statChanges } = useTrainer();
-  const allocatablePoints = React.useMemo(() => {
-    if (editingMode === "edit") return Infinity;
-    if (editingMode === "view" || rankUpAttributes == null) return 0;
-    return (
-      (rankUpAttributes[POINTS_BY_TYPE[type]] ?? 0) -
-      STATS_BY_TYPE[type].reduce((sum, key) => sum + (statChanges?.[key] ?? 0), 0)
-    );
-  }, [rankUpAttributes, statChanges, editingMode]);
-  if (baseTrainer == null || updatedTrainer == null)
-    return (
-      <div className="flex flex-row flex-grow justify-center items-center h-full">
-        <LoadingSpinner />
-      </div>
-    );
-  const baseValue = baseTrainer.stats[stat];
-  const change = statChanges?.[stat] ?? 0;
-  const minimum = type === "skill" ? 0 : 1;
-  const maxStat = editingMode === "edit" && type === "attribute" ? 6 : 5;
-  // Clicking the current value resets it: to 0 when editing, to the saved value when ranking up.
-  const selectStat = (index: number) => {
-    const clicked = index + 1 - minimum;
-    updateTrainer({
-      stats: {
-        ...updatedTrainer.stats,
-        [stat]: baseValue + change === clicked ? (editingMode === "edit" ? 0 : baseValue) : clicked,
-      },
-    });
-  };
+const TrainerStatRow = ({ stat, type }: { stat: TrainerStatKey; type: StatType }) => {
+  const { baseTrainer, updatedTrainer, updateTrainer, editingMode, rankUpAttributes, statChanges } = useTrainer();
+  if (!baseTrainer || !updatedTrainer) return null;
+  const offset = type === "skill" ? 0 : 1;
+  const value = updatedTrainer.stats[stat] + offset;
+  const before = baseTrainer.stats[stat] + offset;
+  const pointsLeft =
+    editingMode === "edit"
+      ? Infinity
+      : editingMode === "view"
+        ? 0
+        : (rankUpAttributes?.[pointsByType[type]] ?? 0) - statsByType[type].reduce((sum, key) => sum + (statChanges?.[key] ?? 0), 0);
+  const cap =
+    editingMode === "edit" && type === "attribute"
+      ? 6
+      : type === "skill" && editingMode === "rankUp"
+        ? Math.min(5, rankUpAttributes?.skillLimit ?? 5)
+        : 5;
+  const editable = editingMode !== "view";
   return (
-    <StatPips
-      maxPips={Math.max(maxStat, baseValue + 1)}
-      baseStat={editingMode === "edit" ? minimum : baseValue + minimum}
-      maxStat={maxStat}
-      numSelected={editingMode === "edit" ? baseValue + change : change}
-      allocatablePoints={allocatablePoints}
-      onSelect={selectStat}
-      pipClassName={pipClassName}
-      limit={editingMode !== "edit" && type === "skill" ? rankUpAttributes?.skillLimit : undefined}
-    />
-  );
-};
-
-const TrainerTextField = ({
-  property,
-  className,
-}: {
-  property: "currentHp" | "currentWill" | "money";
-  className?: string;
-}) => {
-  const { updatedTrainer, updateTrainer } = useTrainer();
-  const [value, setValue] = React.useState<number | string>(updatedTrainer != null ? updatedTrainer[property] : "");
-  const debouncedValue = useDebounce(value, 500);
-  // The value is a string only when the stored field isn't a number, which the API never sends.
-  const setField = (next: number | string) => updateTrainer({ [property]: next } as Partial<EditableTrainer>);
-  React.useEffect(() => {
-    if (updatedTrainer === undefined) return;
-    // Parses the live value, not the debounced one (original behaviour).
-    let next = typeof updatedTrainer[property] == "number" ? parseInt(value?.toString() ?? "") : debouncedValue;
-    if (typeof next == "number" && isNaN(next)) next = 0;
-    setField(next);
-  }, [debouncedValue]);
-  React.useEffect(() => {
-    if (updatedTrainer !== undefined) setValue(updatedTrainer[property]);
-  }, [updatedTrainer]);
-  if (updatedTrainer === undefined) return <div>Loading...</div>;
-  if (typeof updatedTrainer[property] != "number" && typeof updatedTrainer[property] != "string")
-    throw new Error(`Value ${JSON.stringify(updatedTrainer[property])} of ValueInput is not a number or text`);
-  return (
-    <Input
-      className={`border-none rounded-md p-0 text-3xl text-center ${className}`}
-      value={value}
-      onChange={(event) => {
-        setValue(event.target.value);
-      }}
-      onBlur={() => setField(typeof updatedTrainer[property] === "number" ? parseInt(String(value)) || 0 : value)}
-    />
-  );
-};
-
-const TrainerRankField = () => {
-  const { updatedTrainer, editingMode, updateTrainer } = useTrainer();
-  return (
-    <LabeledField
-      color="bg-pokerole-black"
-      label="Rank"
-      className="p-0"
-      valueClassName="p-0"
-    >
-      <div className="flex flex-row items-center">
-        <Combobox
-          items={(Object.keys(Rank) as (keyof typeof Rank)[]).map((rank) => ({
-            label: (
-              <div className="flex items-center space-x-1">
-                <RankIcon rank={Rank[rank]} size="md" />{" "}
-                <Textfit className="md:max-w-20">{rank}</Textfit>
-              </div>
-            ),
-            value: rank.toLowerCase(),
-            searchValue: rank,
-          }))}
-          value={updatedTrainer?.rank.toLowerCase()}
-          className="flex-grow"
-          disabled={editingMode !== "edit"}
-          onChange={(value) => {
-            if (updatedTrainer !== undefined)
-              updateTrainer({
-                rank: value.toUpperCase() as T.Rank,
-              });
-          }}
+    <div className="flex min-h-12 items-center gap-3 border-b border-hairline py-1 pr-2 pl-4 last:border-b-0 lg:min-h-10 lg:pl-3">
+      <span className="w-20 shrink-0 text-body">{capitalize(stat)}</span>
+      <span aria-hidden className="flex min-w-0 flex-1 gap-[3px]">
+        {Array.from({ length: Math.max(cap, value) }, (_, index) => (
+          <span
+            key={index}
+            className={cn(
+              "h-2.5 max-w-5 min-w-1 flex-1 rounded-full",
+              index < (editingMode === "rankUp" ? before : value)
+                ? "bg-label"
+                : index < value
+                  ? "bg-tint"
+                  : "border-[1.5px] border-label/25",
+            )}
+          />
+        ))}
+      </span>
+      {editable ? (
+        <Stepper
+          label={capitalize(stat)}
+          value={value}
+          min={editingMode === "rankUp" ? before : offset}
+          max={Math.max(value, Math.min(cap, value + Math.max(0, pointsLeft)))}
+          onChange={(next) => updateTrainer({ stats: { ...updatedTrainer.stats, [stat]: next - offset } })}
         />
-      </div>
-    </LabeledField>
-  );
-};
-
-const TrainerNatureField = () => {
-  const { updatedTrainer, editingMode, updateTrainer } = useTrainer();
-  const { data: natures } = useNaturesControllerFindAll({});
-  const items = () =>
-    natures == null
-      ? []
-      : natures.map((nature) => ({
-          label: <span>{nature?.name ?? ""}</span>,
-          value: nature?.name.toLowerCase() ?? "",
-          searchValue: nature?.name ?? "",
-        }));
-  return (
-    <LabeledField
-      color="bg-pokerole-black"
-      label="Nature"
-      className="p-0"
-      valueClassName="p-0"
-    >
-      <div className="flex flex-row items-center">
-        <Combobox
-          items={items()}
-          value={updatedTrainer?.nature?.name.toLowerCase()}
-          className="flex-grow"
-          disabled={editingMode !== "edit"}
-          onChange={(value) => {
-            if (updatedTrainer === undefined) return;
-            updateTrainer({
-              nature: natures?.find((nature) => nature?.name.toLowerCase() === value),
-            });
-          }}
-        />
-      </div>
-    </LabeledField>
-  );
-};
-
-const TrainerPokemonCard = ({ pokemon }: { pokemon: T.Pokemon }) => (
-  <div>
-    <Link to={`/myPokemon/${pokemon.id}`}>
-      <Box
-        color="bg-pokerole-beige"
-        className="p-2 flex flex-col items-center hover:bg-pokerole-black transition-colors duration-300 ease-in-out"
-      >
-        <PokemonImage
-          imageFileName={pokemon.pokemonTemplate.image}
-          type="box"
-          className="w-[42.5px] image-rendering-pixelated"
-        />
-      </Box>
-    </Link>
-  </div>
-);
-
-export const TrainerSheet = () => {
-  const { updatedTrainer, updateTrainer } = useTrainer();
-  if (updatedTrainer === undefined)
-    return (
-      <div className="flex flex-row flex-grow justify-center items-center h-full">
-        <LoadingSpinner />
-      </div>
-    );
-  const renderSkill = (skill: (typeof TRAINER_SKILLS)[number]) => (
-    <div key={skill} className="flex flex-col items-center">
-      <Text color="text-pokerole-black" size="text-base">
-        {capitalize(skill)}
-      </Text>
-      <TrainerStatPips stat={skill} type="skill" pipClassName="w-4 h-4" />
+      ) : (
+        <output aria-label={capitalize(stat)} className="w-6 shrink-0 text-center text-body font-semibold tabular-nums">
+          {value}
+        </output>
+      )}
     </div>
   );
+};
+
+const StatGroup = ({ type, title }: { type: StatType; title: string }) => {
+  const { editingMode, rankUpAttributes, statChanges } = useTrainer();
+  const left = (rankUpAttributes?.[pointsByType[type]] ?? 0) - statsByType[type].reduce((sum, key) => sum + (statChanges?.[key] ?? 0), 0);
   return (
-    <div className="grid grid-flow-row grid-cols-6 gap-2">
-      <TrainerSheetHeader />
-      <Box
-        color="bg-pokerole-beige"
-        className="trainer-overview p-2 flex flex-col gap-2 2xl:col-span-1 col-span-full"
-      >
-        <Box
-          color="bg-pokerole-beige"
-          className="p-2 flex flex-col items-center"
-          withBorder={true}
-        >
-          <FaPerson size={140} />
-        </Box>
-        <div className="flex flex-row space-x-2">
-          <LabeledField
-            color="bg-pokerole-black"
-            label="HP"
-            topLabel={`Max: ${updatedTrainer.stats.vitality + 4 + 1}`}
-            className="flex-grow"
-          >
-            <TrainerTextField property="currentHp" />
-          </LabeledField>
-          <LabeledField
-            color="bg-pokerole-black"
-            label="Will"
-            topLabel={`Max: ${updatedTrainer.stats.insight + 3 + 1}`}
-            className="flex-grow"
-          >
-            <TrainerTextField property="currentWill" />
-          </LabeledField>
-        </div>
-        <LabeledField color="bg-pokerole-black" label="$">
-          <TrainerTextField property="money" />
-        </LabeledField>
-        <TrainerRankField />
-        <TrainerNatureField />
-      </Box>
-      <div className="2xl:col-span-2 col-span-full flex flex-col gap-2">
-        <div className="grid grid-cols-2 gap-2 max-2xl:order-2">
-          <Box
-            color="bg-pokerole-beige"
-            className="p-2 space-y-2 2xl:col-span-1 col-span-full"
-          >
-            <Text className="text-center">Attributes</Text>
-            <StatBox
-              statName="Strength"
-              color="bg-attributes-blue"
-              pipRow={<TrainerStatPips stat="strength" type="attribute" />}
-            />
-            <StatBox
-              statName="Dexterity"
-              color="bg-attributes-blue"
-              pipRow={<TrainerStatPips stat="dexterity" type="attribute" />}
-            />
-            <StatBox
-              statName="Vitality"
-              color="bg-attributes-blue"
-              pipRow={<TrainerStatPips stat="vitality" type="attribute" />}
-            />
-            <StatBox
-              statName="Insight"
-              color="bg-attributes-blue"
-              pipRow={<TrainerStatPips stat="insight" type="attribute" />}
-            />
-          </Box>
-          <Box
-            color="bg-pokerole-red"
-            className="p-2 flex flex-col flex-shrink 2xl:col-span-1 col-span-full"
-          >
-            <Text className="text-center" size="text-sm">
-              Skills
-            </Text>
-            <div className="p-2 grid grid-cols-2 gap-4">
-              <div className="flex flex-col items-center gap-2">
-                {TRAINER_SKILLS.slice(0, 4).map(renderSkill)}
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                {TRAINER_SKILLS.slice(4, 8).map(renderSkill)}
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                {TRAINER_SKILLS.slice(8, 12).map(renderSkill)}
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                {TRAINER_SKILLS.slice(12, 16).map(renderSkill)}
-              </div>
-            </div>
-          </Box>
-        </div>
-        <Box
-          color="bg-pokerole-beige"
-          className="p-2 flex-grow gap-1 flex flex-col max-2xl:order-1"
-        >
-          <Text className="text-center" size="text-sm">
-            Party
-          </Text>
-          <div className="flex flex-row gap-1 justify-around flex-grow flex-wrap">
-            {updatedTrainer.pokemon.slice(0, 6).map((pokemon, index) => (
-              <TrainerPokemonCard key={index} pokemon={pokemon} />
+    <Group
+      title={title}
+      action={
+        editingMode === "rankUp" ? (
+          <span className="rounded-full bg-tint/10 px-2 py-0.5 text-footnote font-semibold text-tint">{left} points left</span>
+        ) : undefined
+      }
+    >
+      {statsByType[type].map((stat) => (
+        <TrainerStatRow key={stat} stat={stat} type={type} />
+      ))}
+    </Group>
+  );
+};
+
+const Resource = ({ property, label, max }: { property: "currentHp" | "currentWill" | "money"; label: string; max?: number }) => {
+  const { updatedTrainer, updateTrainer } = useTrainer();
+  const stored = updatedTrainer?.[property] ?? 0;
+  const [draft, setDraft] = React.useState(String(stored));
+  React.useEffect(() => setDraft(String(stored)), [stored]);
+  const commit = () => {
+    const value = Number.parseInt(draft, 10);
+    if (!Number.isNaN(value) && value >= 0 && value !== stored) updateTrainer({ [property]: value });
+  };
+  React.useEffect(() => {
+    const timer = setTimeout(commit, 400);
+    return () => clearTimeout(timer);
+  }, [draft]);
+  return (
+    <div className="min-w-0 rounded-2xl bg-surface p-3 shadow-card">
+      <label className="flex flex-col gap-1">
+        <span className="text-footnote font-semibold text-label-2">{label}</span>
+        <input
+          aria-label={label}
+          type="number"
+          min={0}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          className="h-10 w-full min-w-0 rounded-lg bg-fill px-2 text-title-2 font-semibold tabular-nums outline-none focus-visible:outline-2 focus-visible:outline-focus"
+        />
+      </label>
+      {max !== undefined && <p className="mt-1 text-caption text-label-2">of {max}</p>}
+    </div>
+  );
+};
+
+const Identity = () => {
+  const { updatedTrainer: trainer, editingMode, updateTrainer } = useTrainer();
+  const { data: natures } = useNaturesControllerFindAll({});
+  if (!trainer) return null;
+  const fieldClass =
+    "h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg";
+  if (editingMode !== "edit")
+    return (
+      <Group title="Trainer">
+        <Row title="Nature" value={trainer.nature?.name ?? "None"} />
+        <Row title="Rank" value={formatEnumName(trainer.rank)} />
+      </Group>
+    );
+  return (
+    <Group title="Trainer">
+      <div className="flex flex-col gap-3 p-3">
+        <label className="flex flex-col gap-1 text-footnote text-label-2">
+          Name
+          <input value={trainer.name} onChange={(event) => updateTrainer({ name: event.target.value })} className={fieldClass} />
+        </label>
+        <label className="flex flex-col gap-1 text-footnote text-label-2">
+          Age
+          <input
+            type="number"
+            min={0}
+            value={trainer.age}
+            onChange={(event) => updateTrainer({ age: Number(event.target.value) })}
+            className={fieldClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-footnote text-label-2">
+          Rank
+          <select value={trainer.rank} onChange={(event) => updateTrainer({ rank: event.target.value as Rank })} className={fieldClass}>
+            {Object.values(Rank).map((rank) => (
+              <option key={rank} value={rank}>
+                {formatEnumName(rank)}
+              </option>
             ))}
-          </div>
-        </Box>
-      </div>
-      <Box
-        color="bg-pokerole-beige"
-        className="p-2 space-y-2 2xl:col-span-1 col-span-full"
-      >
-        <Text className="text-center">Socials</Text>
-        <StatBox
-          statName="Tough"
-          color="bg-socials-tough"
-          pipRow={<TrainerStatPips stat="tough" type="social" />}
-        />
-        <StatBox
-          statName="Cool"
-          color="bg-socials-cool"
-          pipRow={<TrainerStatPips stat="cool" type="social" />}
-        />
-        <StatBox
-          statName="Beauty"
-          color="bg-socials-beauty"
-          pipRow={<TrainerStatPips stat="beauty" type="social" />}
-        />
-        <StatBox
-          statName="Cute"
-          color="bg-socials-cute"
-          pipRow={<TrainerStatPips stat="cute" type="social" />}
-        />
-        <StatBox
-          statName="Clever"
-          color="bg-socials-clever"
-          pipRow={<TrainerStatPips stat="clever" type="social" />}
-        />
-      </Box>
-      <Box
-        color="bg-pokerole-beige"
-        className="p-2 space-y-2 2xl:col-span-2 col-span-full"
-      >
-        <Text className="text-center">Inventory</Text>
-        <ScrollArea className="h-[25.5rem]">
-          <InventoryList
-            inventoryItems={updatedTrainer.inventory}
-            columnCount={2}
-            onChange={(changed) => {
-              updateTrainer({
-                inventory: updatedTrainer.inventory.map((entry) => (entry.id === changed.id ? changed : entry)),
-              });
-            }}
-            onDelete={(deleted) => {
-              updateTrainer({
-                inventory: updatedTrainer.inventory.filter((entry) => entry.id !== deleted.id),
-              });
+          </select>
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-footnote text-label-2">Nature</span>
+          <Picker
+            label="Nature"
+            value={trainer.nature?.id ?? ""}
+            clearable={false}
+            items={(natures ?? []).map((nature) => ({ value: nature.id, label: nature.name }))}
+            onChange={(id) => {
+              const nature = natures?.find((entry) => entry.id === id);
+              if (nature) updateTrainer({ nature });
             }}
           />
-        </ScrollArea>
-        <InventorySection buttonClassName="w-full" />
-      </Box>
+        </div>
+      </div>
+    </Group>
+  );
+};
+
+export const TrainerSheet = () => {
+  const { updatedTrainer: trainer, isError, updateTrainer } = useTrainer();
+  if (isError)
+    return (
+      <>
+        <PageHeader title="Trainer" back={{ to: "/myTrainers", label: "Trainers" }} />
+        <div className="mx-4 rounded-2xl bg-surface p-8 text-center shadow-card">
+          <p className="text-body">This trainer couldn’t be loaded.</p>
+          <Link to="/myTrainers" className={cn(button({ variant: "tinted" }), "mt-3")}>
+            Back to trainers
+          </Link>
+        </div>
+      </>
+    );
+  if (!trainer)
+    return (
+      <div aria-hidden className="space-y-4 p-4">
+        <div className="skeleton h-24 rounded-xl" />
+        <div className="skeleton h-60 rounded-xl" />
+      </div>
+    );
+  return (
+    <div className="mx-auto max-w-6xl pb-8">
+      <TrainerSheetHeader />
+      <div className="flex flex-col gap-6 px-4 lg:px-8">
+        <div className="grid grid-cols-3 gap-3">
+          <Resource property="currentHp" label="HP" max={trainer.stats.vitality + 5} />
+          <Resource property="currentWill" label="Will" max={trainer.stats.insight + 4} />
+          <Resource property="money" label="Money" />
+        </div>
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-6">
+            <Identity />
+            <Group title="Party" action={<span className="text-footnote text-label-2">{trainer.pokemon.length} Pokémon</span>}>
+              {trainer.pokemon.length ? (
+                <ul className="flex flex-wrap gap-2 p-3">
+                  {trainer.pokemon.slice(0, 6).map((pokemon) => (
+                    <li key={pokemon.id}>
+                      <Link
+                        to={`/myPokemon/${pokemon.id}`}
+                        className="flex w-24 flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-raised"
+                      >
+                        <Sprite image={pokemon.pokemonTemplate.image} set="box" className="h-14 w-17" />
+                        <span className="w-full truncate text-footnote">{pokemon.pokemonTemplate.name}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="p-4 text-subhead text-label-2">
+                  No Pokémon assigned yet. Choose this trainer from a Pokémon’s sheet to add it to the party.
+                </p>
+              )}
+            </Group>
+            <StatGroup type="attribute" title="Attributes" />
+            <StatGroup type="social" title="Socials" />
+          </div>
+          <div className="flex min-w-0 flex-col gap-6">
+            <Group title="Inventory" action={<InventorySection />}>
+              <InventoryList
+                inventoryItems={trainer.inventory}
+                onChange={(index, quantity) =>
+                  updateTrainer({ inventory: trainer.inventory.map((entry, at) => (at === index ? { ...entry, quantity } : entry)) })
+                }
+                onDelete={(index) => updateTrainer({ inventory: trainer.inventory.filter((_, at) => at !== index) })}
+              />
+            </Group>
+            <StatGroup type="skill" title="Skills" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

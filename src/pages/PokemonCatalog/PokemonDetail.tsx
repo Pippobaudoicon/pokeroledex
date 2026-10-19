@@ -26,7 +26,7 @@ const ranks = Object.values(Rank);
 
 /** Type-tinted wash behind the artwork. */
 export const typeWash = (types: T.PokemonType[]) =>
-  `linear-gradient(160deg, color-mix(in oklab, ${typeColor(types[0])} 34%, white) 0%, color-mix(in oklab, ${typeColor(types[1] ?? types[0])} 16%, white) 70%, var(--color-surface) 100%)`;
+  `linear-gradient(160deg, color-mix(in oklab, ${typeColor(types[0])} 34%, var(--color-surface)) 0%, color-mix(in oklab, ${typeColor(types[1] ?? types[0])} 16%, var(--color-surface)) 70%, var(--color-surface) 100%)`;
 
 const AddButton = ({ template, className }: { template: Summary; className?: string }) => {
   const { toast } = useToast();
@@ -71,10 +71,10 @@ const AddButton = ({ template, className }: { template: Summary; className?: str
 
 const Hero = ({ template, layout, onClose }: { template: Summary; layout: Layout; onClose?: () => void }) => (
   <div className="relative overflow-hidden" style={{ backgroundImage: typeWash(template.types) }}>
-    <Pokeball className="absolute -top-16 -right-16 size-72 text-white/50" strokeWidth={3.5} />
+    <Pokeball className="absolute -top-16 -right-16 size-72 text-surface/50" strokeWidth={3.5} />
     {layout === "inspector" && (
       <div className="relative flex justify-end gap-1 p-2">
-        <button type="button" onClick={onClose} aria-label="Close details" className={cn(button({ variant: "gray", size: "icon" }), "bg-white/60 hover:bg-white/80")}>
+        <button type="button" onClick={onClose} aria-label="Close details" className={cn(button({ variant: "gray", size: "icon" }), "bg-surface/60 hover:bg-surface/80")}>
           <X className="size-4" />
         </button>
       </div>
@@ -90,8 +90,8 @@ const Hero = ({ template, layout, onClose }: { template: Summary; layout: Layout
           {template.types.map((type) => (
             <TypePill key={type} type={type} />
           ))}
-          {template.legendary && <span className="inline-flex h-6 items-center rounded-full bg-white/70 px-2.5 text-footnote font-semibold">Legendary</span>}
-          {template.goodStarter && <span className="inline-flex h-6 items-center rounded-full bg-white/70 px-2.5 text-footnote font-semibold">Good starter</span>}
+          {template.legendary && <span className="inline-flex h-6 items-center rounded-full bg-surface/70 px-2.5 text-footnote font-semibold">Legendary</span>}
+          {template.goodStarter && <span className="inline-flex h-6 items-center rounded-full bg-surface/70 px-2.5 text-footnote font-semibold">Good starter</span>}
         </div>
       </div>
       <Sprite image={template.image} set="book" eager className="size-32 drop-shadow-[0_8px_16px_rgb(0_0_0/0.18)] @lg:size-40" />

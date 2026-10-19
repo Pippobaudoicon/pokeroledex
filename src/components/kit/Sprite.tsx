@@ -31,7 +31,7 @@ export const Sprite = ({
           alt=""
           loading={eager ? "eager" : "lazy"}
           decoding="async"
-          className={cn("max-h-full max-w-full object-contain", set === "box" && "[image-rendering:pixelated]")}
+          className={cn("h-full w-full object-contain", set === "box" && "[image-rendering:pixelated]")}
           onError={(event) => {
             event.currentTarget.style.visibility = "hidden";
           }}

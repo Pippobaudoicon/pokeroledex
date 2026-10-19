@@ -101,7 +101,7 @@ export const Chip = ({
     style={style}
     className={cn(
       "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-subhead font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-150 lg:h-7 lg:px-2.5",
-      pressed ? "border-transparent bg-label text-white" : "border-hairline bg-surface text-label hover:bg-raised",
+      pressed ? "border-transparent bg-label text-canvas" : "border-hairline bg-surface text-label hover:bg-raised",
       className,
     )}
   >

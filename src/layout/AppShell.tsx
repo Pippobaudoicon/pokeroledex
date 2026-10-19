@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Lightbulb, LogOut, Search, Users } from "lucide-react";
+import { Lightbulb, LogOut, PanelLeftClose, PanelLeftOpen, Search, Users } from "lucide-react";
 import * as React from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { cn } from "@/lib/utils";
+import { AppearanceSelect } from "@/layout/Appearance";
 import { IssueButton } from "@/layout/IssueButton";
 import { activeNav, home, navSections } from "@/layout/nav";
 import { SpotlightProvider, useSpotlight } from "@/layout/Spotlight";
@@ -19,78 +20,97 @@ export const useMe = () =>
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-const SidebarLink = ({ to, label, icon }: { to: string; label: string; icon: React.ReactNode }) => (
+const SidebarLink = ({ to, label, icon, collapsed }: { to: string; label: string; icon: React.ReactNode; collapsed: boolean }) => (
   <NavLink
     to={to}
     end={to === "/"}
+    title={collapsed ? label : undefined}
     className={({ isActive }) =>
       cn(
         "flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body transition-colors duration-150 [&_svg]:size-4 [&_svg]:shrink-0",
+        collapsed && "justify-center px-0",
         isActive ? "bg-tint/10 font-semibold text-tint" : "text-label hover:bg-fill",
       )
     }
   >
     {icon}
-    {label}
+    <span className={collapsed ? "sr-only" : undefined}>{label}</span>
   </NavLink>
 );
 
-const Sidebar = () => {
+const Sidebar = ({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) => {
   const { open } = useSpotlight();
   const { data: me } = useMe();
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-hairline bg-raised/80 backdrop-blur-xl lg:flex">
-      <Link to="/" className="mx-3 mt-4 mb-3 flex items-center gap-2 rounded-lg px-2 py-1">
-        <Pokeball className="size-6 text-tint" strokeWidth={9} />
-        <span className="font-display text-title-3 tracking-tight">PokéroleDex</span>
-      </Link>
+    <aside className={cn("fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-hairline bg-raised/80 backdrop-blur-xl lg:flex", collapsed ? "w-16" : "w-60")}>
+      <div className={cn("mx-3 mt-4 mb-3 flex h-8 items-center gap-1", collapsed && "justify-center")}>
+        {!collapsed && (
+          <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1">
+            <Pokeball className="size-6 shrink-0 text-tint" strokeWidth={9} />
+            <span className="font-display text-title-3 tracking-tight">PokéroleDex</span>
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          aria-controls="sidebar-nav"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="grid size-8 shrink-0 place-items-center rounded-lg text-label-2 hover:bg-fill"
+        >
+          {collapsed ? <PanelLeftOpen aria-hidden className="size-4" /> : <PanelLeftClose aria-hidden className="size-4" />}
+        </button>
+      </div>
       <button
         type="button"
         onClick={open}
-        className="mx-3 mb-3 flex h-8 items-center gap-2 rounded-lg bg-fill px-2.5 text-body text-label-2 transition-colors hover:bg-fill-strong"
+        title={collapsed ? "Search" : undefined}
+        className={cn("mx-3 mb-3 flex h-8 items-center gap-2 rounded-lg bg-fill px-2.5 text-body text-label-2 transition-colors hover:bg-fill-strong", collapsed && "justify-center px-0")}
       >
         <Search aria-hidden className="size-4" />
-        Search
-        <kbd className="ml-auto rounded border border-hairline bg-surface px-1 text-caption">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+        <span className={collapsed ? "sr-only" : undefined}>Search</span>
+        {!collapsed && <kbd className="ml-auto rounded border border-hairline bg-surface px-1 text-caption">{isMac ? "⌘K" : "Ctrl K"}</kbd>}
       </button>
-      <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 pb-3">
-        <SidebarLink to={home.to} label={home.label} icon={home.icon} />
+      <nav id="sidebar-nav" aria-label="Main" className="flex-1 overflow-y-auto px-3 pb-3">
+        <SidebarLink to={home.to} label={home.label} icon={home.icon} collapsed={collapsed} />
         {navSections.map((section) => (
           <div key={section.title} className="mt-4">
-            <h2 className="px-2.5 pb-1 text-caption font-semibold uppercase tracking-wide text-label-2">{section.title}</h2>
+            <h2 className={collapsed ? "sr-only" : "px-2.5 pb-1 text-caption font-semibold uppercase tracking-wide text-label-2"}>{section.title}</h2>
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => (
-                <SidebarLink key={item.to} {...item} />
+                <SidebarLink key={item.to} {...item} collapsed={collapsed} />
               ))}
             </div>
           </div>
         ))}
       </nav>
       <div className="flex flex-col gap-0.5 border-t border-hairline p-3">
+        <AppearanceSelect compact={collapsed} />
         <IssueButton
           trigger={
-            <button type="button" className="flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body text-label hover:bg-fill">
+            <button type="button" title={collapsed ? "Suggest a feature" : undefined} className={cn("flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body text-label hover:bg-fill", collapsed && "justify-center px-0")}>
               <Lightbulb aria-hidden className="size-4" />
-              Suggest a feature
+              <span className={collapsed ? "sr-only" : undefined}>Suggest a feature</span>
             </button>
           }
         />
-        <AccountRow email={me?.email} />
+        <AccountRow email={me?.email} collapsed={collapsed} />
       </div>
     </aside>
   );
 };
 
-export const AccountRow = ({ email }: { email?: string }) => {
+export const AccountRow = ({ email, collapsed = false }: { email?: string; collapsed?: boolean }) => {
   const local = import.meta.env.DEV;
   return (
-    <div className="flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-subhead text-label-2">
-      <Users aria-hidden className="size-4" />
-      <span className="min-w-0 flex-1 truncate">{local ? "Local mode" : (email ?? "Signed in")}</span>
+    <div title={collapsed ? (local ? "Local mode" : email) : undefined} className={cn("flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-subhead text-label-2", collapsed && "justify-center px-0")}>
+      {(!collapsed || local) && <Users aria-hidden className="size-4 shrink-0" />}
+      <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>{local ? "Local mode" : (email ?? "Signed in")}</span>
       {!local && (
-        <a href="/cdn-cgi/access/logout" className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-tint hover:bg-tint/10">
+        <a href="/cdn-cgi/access/logout" title={collapsed ? "Log out" : undefined} className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-tint hover:bg-tint/10">
           <LogOut aria-hidden className="size-3.5" />
-          Log out
+          <span className={collapsed ? "sr-only" : undefined}>Log out</span>
         </a>
       )}
     </div>
@@ -158,6 +178,22 @@ const useScrollReset = () => {
 
 export const AppShell = () => {
   useScrollReset();
+  const [collapsed, setCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem("pokeroledex-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem("pokeroledex-sidebar-collapsed", String(next));
+    } catch {
+      // Collapsing still works when browser storage is unavailable.
+    }
+  };
   return (
     <SpotlightProvider>
       <a
@@ -166,8 +202,8 @@ export const AppShell = () => {
       >
         Skip to content
       </a>
-      <Sidebar />
-      <main id="main" className="min-h-dvh pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0 lg:pl-60">
+      <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
+      <main id="main" className={cn("min-h-dvh pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0", collapsed ? "lg:pl-16" : "lg:pl-60")}>
         <Outlet />
       </main>
       <TabBar />

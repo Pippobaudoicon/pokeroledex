@@ -1,6 +1,7 @@
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { Link } from "react-router-dom";
+import { AppearanceSelect } from "@/layout/Appearance";
 import { cn } from "@/lib/utils";
 
 /**
@@ -68,7 +69,10 @@ export const PageHeader = ({
         >
           {title}
         </BarTitle>
-        <div className="flex shrink-0 items-center justify-end gap-1">{actions}</div>
+        <div className="flex shrink-0 items-center justify-end gap-1">
+          {actions}
+          <div className="lg:hidden"><AppearanceSelect compact /></div>
+        </div>
       </div>
       {!compact && (
         <div className="px-4 pb-3 lg:px-8 lg:pb-4">

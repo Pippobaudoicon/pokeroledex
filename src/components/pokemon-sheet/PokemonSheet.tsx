@@ -57,7 +57,7 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
   const template = pokemon.pokemonTemplate;
   return (
     <div className="relative overflow-hidden rounded-2xl shadow-card" style={{ backgroundImage: typeWash(template.types) }}>
-      <Pokeball className="absolute -top-10 -right-10 size-48 text-white/50" strokeWidth={4} />
+      <Pokeball className="absolute -top-10 -right-10 size-48 text-surface/50" strokeWidth={4} />
       <div className="relative flex items-center gap-3 p-3 pr-4">
         <Sprite image={template.image} set="book" eager className="size-22 drop-shadow-[0_6px_10px_rgb(0_0_0/0.15)] @lg:size-26" />
         <div className="min-w-0 flex-1">
@@ -195,7 +195,7 @@ const Moves = () => {
             onClick={() => setAdding(true)}
             className="flex min-h-12 w-full items-center gap-3 border-t border-hairline px-4 text-body font-medium text-tint hover:bg-tint/5 lg:min-h-10 lg:px-3"
           >
-            <span className="grid size-6 place-items-center rounded-full bg-tint text-white">
+            <span className="grid size-6 place-items-center rounded-full bg-tint text-on-tint">
               <Plus aria-hidden className="size-4" strokeWidth={2.5} />
             </span>
             Add a move

@@ -1,9 +1,6 @@
 import type { Item } from "../../shared/types";
 import { ItemCategory, ItemPocket } from "@/api/schemas";
-import { Box } from "@/components/Box";
 import { ItemImage } from "@/components/ItemImage";
-import { Text } from "@/components/Text";
-import { getContrastTextColor } from "@/lib/colors";
 import { formatEnumName } from "@/lib/utils";
 const getPocketColor = (pocket: ItemPocket | null | undefined) => {
   switch (pocket) {
@@ -48,10 +45,8 @@ const getCategoryColor = (category: ItemCategory) => {
   }
 };
 /** Tailwind color name (without `bg-`) for an item: by category when it has one, else by pocket. */
-export const getItemColor = (
-  pocket: ItemPocket | null | undefined,
-  category: ItemCategory | null | undefined,
-) => (category != null ? getCategoryColor(category) : getPocketColor(pocket));
+export const getItemColor = (pocket: ItemPocket | null | undefined, category: ItemCategory | null | undefined) =>
+  category != null ? getCategoryColor(category) : getPocketColor(pocket);
 
 export interface ItemCardProps {
   item: Item;
@@ -59,50 +54,31 @@ export interface ItemCardProps {
 }
 
 export const ItemCard = ({ item, className }: ItemCardProps) => {
-  const textColor = getContrastTextColor(getItemColor(item.pocket, item.category));
+  const facts = [
+    ["Pocket", formatEnumName(item.pocket ?? "—")],
+    ["Category", item.category ? formatEnumName(item.category) : "—"],
+    ["Trainer price", item.trainerPrice ?? "—"],
+    ["PMD price", item.pmdPrice ?? "—"],
+    ["Single use", item.oneUse ? "Yes" : "No"],
+  ];
   return (
-    <Box
-      color={`bg-${getItemColor(item.pocket, item.category)} ${className}`}
-      className="p-2 flex flex-row gap-2"
-    >
-      <Box
-        color={`bg-${getItemColor(item.pocket, item.category)}-light`}
-        className="p-2 md:min-w-32 min-w-24 md:min-h-32 min-h-24 flex justify-center items-center"
-      >
-        <ItemImage imageFileName={item.image} className="md:h-20 h-16" />
-      </Box>
-      <div className="flex flex-col justify-center">
-        <Text size="text-2xl" color={textColor} className="break-all">
-          {item.name}
-        </Text>
-        <Text size="text-xs" className="italic" color={textColor}>
-          {item.source}
-        </Text>
-        <Text size="text-sm" color={textColor}>
-          <span className="font-bold">{"Pocket: "}</span>
-          <span className="font-move">{formatEnumName(item.pocket ?? "-")}</span>
-        </Text>
-        <Text size="text-sm" color={textColor}>
-          <span className="font-bold">{"Category: "}</span>
-          <span className="font-move">
-            {item.category != null ? formatEnumName(item.category) : "-"}
-          </span>
-        </Text>
-        <Text size="text-sm" color={textColor}>
-          <span className="font-bold">{"Price: "}</span>
-          <span className="font-move">
-            {item.trainerPrice ?? item.pmdPrice ?? "-"}
-          </span>
-        </Text>
-        <Text
-          size="text-lg"
-          font="font-move"
-          className="whitespace-pre-wrap"
-          color={textColor}
-        >
-          <span>{item.description}</span>
-        </Text>
+    <div className={`overflow-hidden rounded-2xl bg-surface text-label shadow-card ${className ?? ""}`}>
+      <div className="flex items-center gap-3 border-b border-hairline p-4">
+        <ItemImage imageFileName={item.image} className="size-16 shrink-0" />
+        <div className="min-w-0">
+          <h3 className="text-headline font-semibold break-words">{item.name}</h3>
+          {item.source && <p className="mt-1 text-footnote text-label-2">{item.source}</p>}
+        </div>
       </div>
-    </Box>
+      <dl className="px-4">
+        {facts.map(([label, value]) => (
+          <div key={label} className="flex gap-3 border-b border-hairline py-2 last:border-b-0">
+            <dt className="w-24 shrink-0 text-subhead text-label-2">{label}</dt>
+            <dd className="min-w-0 flex-1 text-subhead break-words">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {item.description && <p className="border-t border-hairline p-4 text-body whitespace-pre-wrap">{item.description}</p>}
+    </div>
   );
 };

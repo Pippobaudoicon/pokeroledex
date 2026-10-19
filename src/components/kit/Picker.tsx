@@ -105,12 +105,12 @@ export const Picker = ({
                       setOpen(false);
                       setQuery("");
                     }}
-                    className="group/item flex min-h-11 cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-body aria-selected:bg-tint aria-selected:text-white lg:min-h-8"
+                    className="group/item flex min-h-11 cursor-default items-center gap-2 rounded-lg px-2.5 py-1.5 text-body aria-selected:bg-tint aria-selected:text-on-tint lg:min-h-8"
                   >
                     <Check aria-hidden className={cn("size-4 shrink-0", item.value === value ? "opacity-100" : "opacity-0")} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{item.label}</span>
-                      {item.detail && <span className="block truncate text-footnote text-label-2 group-aria-selected/item:text-white/85">{item.detail}</span>}
+                      {item.detail && <span className="block truncate text-footnote text-label-2 group-aria-selected/item:text-on-tint">{item.detail}</span>}
                     </span>
                   </Command.Item>
                 ))}

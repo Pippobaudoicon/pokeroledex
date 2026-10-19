@@ -1,358 +1,207 @@
-import { useDebounce, useHover } from "@uidotdev/usehooks";
+import { Plus, Trash2 } from "lucide-react";
 import * as React from "react";
-import { FaTrashCan } from "react-icons/fa6";
 import type * as T from "../../../shared/types";
 import { useItemsControllerFindAll } from "@/api/components";
 import { ItemCategory, ItemPocket } from "@/api/schemas";
-import { Box } from "@/components/Box";
-import { Combobox } from "@/components/Combobox";
-import { ItemCard, getItemColor } from "@/components/ItemCard";
+import { ItemCard } from "@/components/ItemCard";
 import { ItemImage } from "@/components/ItemImage";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
-import { getContrastTextColor } from "@/lib/colors";
-import { cn, formatEnumName } from "@/lib/utils";
+import { button } from "@/components/kit/button";
+import { Chip } from "@/components/kit/Controls";
+import { Picker } from "@/components/kit/Picker";
+import { Sheet } from "@/components/kit/Sheet";
+import { formatEnumName } from "@/lib/utils";
 import { type InventoryRow, useTrainer } from "@/pages/MyTrainers/context";
 
-/** The pocket and category comboboxes have no onChange, so a draft only ever gets a name and description. */
-type CustomItemDraft = Pick<T.Item, "id" | "name"> & Partial<Pick<T.Item, "description" | "pocket" | "category">>;
-
-interface InventoryItemRowProps {
-  item: InventoryRow;
-  onChange?: (item: InventoryRow) => void;
-  onDelete?: (item: InventoryRow) => void;
-  /** As a PopoverTrigger child this receives Radix's toggle handler, called with the row instead of the event. */
-  onClick?: (item: InventoryRow) => void;
-  className?: string;
-}
-
-const InventoryItemRow = React.forwardRef<HTMLDivElement, InventoryItemRowProps>(
-  ({ item, onChange, onDelete, onClick, className }, ref) => {
-    const [quantity, setQuantity] = React.useState(item.quantity);
-    const debouncedQuantity = useDebounce(quantity, 500);
-    React.useEffect(() => {
-      onChange?.({
-        ...item,
-        quantity: isNaN(debouncedQuantity) ? 0 : debouncedQuantity,
-      });
-    }, [debouncedQuantity]);
-    React.useEffect(() => {
-      setQuantity(item.quantity);
-    }, [item]);
-    return (
-      <div
-        className={cn(
-          `flex justify-between w-full p-1 border-b-2 border-pokerole-black-light/50 items-center ${onClick != null ? "cursor-pointer hover:bg-pokerole-black/10" : ""} rounded-t-md`,
-          className,
-        )}
-        ref={ref}
-      >
-        <div className="flex-grow" onClick={() => onClick?.(item)}>
-          <Text font="font-move" size="text-lg">
-            {item.item.name}
-          </Text>
-        </div>
-        <Input
+const InventoryItem = ({
+  entry,
+  onChange,
+  onDelete,
+}: {
+  entry: InventoryRow;
+  onChange: (quantity: number) => void;
+  onDelete: () => void;
+}) => {
+  const [draft, setDraft] = React.useState(String(entry.quantity));
+  const [detail, setDetail] = React.useState(false);
+  React.useEffect(() => setDraft(String(entry.quantity)), [entry.quantity]);
+  const commit = () => {
+    const quantity = Number.parseInt(draft, 10);
+    if (!Number.isNaN(quantity) && quantity >= 0 && quantity !== entry.quantity) onChange(quantity);
+  };
+  React.useEffect(() => {
+    const timer = setTimeout(commit, 400);
+    return () => clearTimeout(timer);
+  }, [draft]);
+  return (
+    <>
+      <div className="flex items-center gap-2 border-b border-hairline py-1 pr-2 pl-3 last:border-b-0">
+        <button
+          type="button"
+          onClick={() => setDetail(true)}
+          className="flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-lg text-left hover:bg-raised lg:min-h-10"
+        >
+          <ItemImage imageFileName={entry.item.image} className="size-8 shrink-0" />
+          <span className="truncate text-body">{entry.item.name}</span>
+        </button>
+        <input
+          aria-label={`Quantity of ${entry.item.name}`}
           type="number"
-          value={quantity}
-          className="text-lg font-move text-pokerole-black flex-grow-0 w-6"
-          styleLess={true}
-          onChange={(event) => {
-            setQuantity(parseInt(event.target.value));
-          }}
+          min={0}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          className="h-11 w-16 shrink-0 rounded-lg bg-fill px-2 text-center text-body tabular-nums lg:h-8"
         />
-        {onDelete != null && (
-          <Button
-            variant="transparent"
-            className="p-1"
-            onClick={() => {
-              onDelete(item);
-            }}
-          >
-            <FaTrashCan />
-          </Button>
-        )}
+        <button
+          type="button"
+          aria-label={`Remove ${entry.item.name}`}
+          onClick={onDelete}
+          className={button({ variant: "destructive", size: "icon" })}
+        >
+          <Trash2 aria-hidden className="size-4" />
+        </button>
       </div>
-    );
-  },
-);
-InventoryItemRow.displayName = "InventoryListItem";
+      <Sheet open={detail} onOpenChange={setDetail} title={entry.item.name} initialExpanded>
+        <div className="p-4">
+          <ItemCard item={entry.item} />
+        </div>
+      </Sheet>
+    </>
+  );
+};
 
 export const InventoryList = ({
   inventoryItems,
-  columnCount = 1,
   onChange,
-  onClick,
   onDelete,
 }: {
   inventoryItems: InventoryRow[];
-  columnCount?: number;
-  onChange?: (item: InventoryRow) => void;
-  onClick?: (item: InventoryRow) => void;
-  onDelete?: (item: InventoryRow) => void;
-}) => (
-  <div className={`grid grid-cols-${columnCount} gap-2`}>
-    {inventoryItems.map((item, index) => (
-      <Popover key={index}>
-        <PopoverTrigger asChild={true}>
-          <InventoryItemRow item={item} onChange={onChange} onClick={onClick} onDelete={onDelete} />
-        </PopoverTrigger>
-        <PopoverContent className="p-0 bg-transparent border-none shadow-none">
-          <ItemCard item={item.item} />
-        </PopoverContent>
-      </Popover>
-    ))}
-  </div>
-);
-
-const ItemPickerCard = ({
-  item,
-  onClick,
-  selected = false,
-}: {
-  item: T.Item;
-  onClick: () => void;
-  selected?: boolean;
-}) => {
-  const color = getItemColor(item.pocket, item.category);
-  const textColor = getContrastTextColor(color);
-  const [hoverRef, hovering] = useHover<HTMLDivElement>();
-  const highlighted = hovering || selected;
-  return (
-    <div ref={hoverRef}>
-      <Box
-        color={highlighted ? `bg-${color}-dark` : `bg-${color}`}
-        className="p-2 cursor-pointer"
-        onClick={onClick}
-      >
-        <Box
-          color={highlighted ? `bg-${color}` : `bg-${color}-light`}
-          className="p-2 min-w-16 min-h-16 flex justify-center items-center flex-col"
-        >
-          <ItemImage imageFileName={item.image} />
-          <Text
-            color={textColor}
-            size="text-xs"
-            className="text-center whitespace-nowrap"
-          >
-            {item.name}
-          </Text>
-        </Box>
-      </Box>
-    </div>
-  );
-};
-
-const ItemPicker = ({
-  onSelected,
-  selected,
-  scrollClassName,
-}: {
-  onSelected: (item: T.Item) => void;
-  selected: T.Item | null;
-  scrollClassName?: string;
-}) => {
-  const { data: items } = useItemsControllerFindAll({});
-  const [search, setSearch] = React.useState("");
-  const debouncedSearch = useDebounce(search, 200);
-  const sortedItems = React.useMemo(
-    () =>
-      items
-        ?.filter((item) => item.name.toLowerCase().includes(debouncedSearch.toLowerCase()))
-        .sort((a, b) => {
-          if (a.pocket == null) return 1;
-          if (b.pocket == null) return -1;
-          const byPocket = a.pocket.localeCompare(b.pocket);
-          if (byPocket !== 0) return byPocket;
-          if (a.category == null) return 1;
-          if (b.category == null) return -1;
-          const byCategory = a.category.localeCompare(b.category);
-          return byCategory !== 0 ? byCategory : a.name.localeCompare(b.name);
-        }),
-    [items, debouncedSearch],
-  );
-  return items === undefined || sortedItems === undefined ? (
-    <LoadingSpinner />
-  ) : (
-    <div className="flex flex-col gap-2 h-full">
-      <div className="flex flex-row gap-2">
-        <Input
-          className="rounded-3xl"
-          placeholder="Search..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
+  onChange: (index: number, quantity: number) => void;
+  onDelete: (index: number) => void;
+}) =>
+  inventoryItems.length ? (
+    <div>
+      {inventoryItems.map((entry, index) => (
+        <InventoryItem
+          key={entry.id ?? `draft-${index}`}
+          entry={entry}
+          onChange={(quantity) => onChange(index, quantity)}
+          onDelete={() => onDelete(index)}
         />
-        <Button className="rounded-3xl">Search</Button>
-      </div>
-      <ScrollArea className={`rounded-3xl ${scrollClassName ?? ""}`}>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {sortedItems.map((item) => (
-            <ItemPickerCard
-              key={item.id}
-              item={item}
-              onClick={() => {
-                onSelected(item);
-              }}
-              selected={selected?.id === item.id}
-            />
-          ))}
-        </div>
-      </ScrollArea>
+      ))}
     </div>
+  ) : (
+    <p className="p-4 text-subhead text-label-2">The bag is empty. Add an item to get started.</p>
   );
-};
 
-export const InventorySection = ({ buttonClassName }: { buttonClassName?: string }) => {
-  const [selectedItem, setSelectedItem] = React.useState<T.Item | null>(null);
-  const [customItem, setCustomItem] = React.useState<CustomItemDraft | null>(null);
-  const { updatedTrainer, updateTrainer } = useTrainer();
-  React.useEffect(() => {
-    if (customItem != null) setSelectedItem(null);
-  }, [customItem]);
-  const addItem = () => {
-    if (updatedTrainer == null) return;
-    if (selectedItem != null) {
-      const entry: InventoryRow = {
-        id: undefined,
-        item: selectedItem,
-        quantity: 1,
-      };
-      updateTrainer({
-        inventory: [...updatedTrainer.inventory, entry],
-      });
-    } else if (customItem != null && customItem.name !== "") {
-      const entry: InventoryRow = {
-        id: undefined,
-        // A draft lacks most Item fields; the inventory DTO sends them as undefined.
-        item: {
-          ...customItem,
+export const InventorySection = () => {
+  const [open, setOpen] = React.useState(false);
+  const [custom, setCustom] = React.useState(false);
+  const [itemId, setItemId] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [pocket, setPocket] = React.useState<T.ItemPocket>(ItemPocket.TRAINER_ITEMS);
+  const [category, setCategory] = React.useState<T.ItemCategory | "">("");
+  const { data: items, isFetching } = useItemsControllerFindAll({});
+  const { updatedTrainer: trainer, updateTrainer } = useTrainer();
+  const selected = items?.find((item) => item.id === itemId);
+  const add = () => {
+    if (!trainer) return;
+    const item = custom
+      ? ({
+          id: "",
+          name: name.trim(),
+          description,
+          pocket,
+          category: category || null,
           source: "custom",
-        } as T.Item,
-        quantity: 1,
-      };
-      updateTrainer({
-        inventory: [...updatedTrainer.inventory, entry],
-      });
-    }
+          oneUse: false,
+          PMD: false,
+          trainerPrice: null,
+          pmdPrice: null,
+          image: "pokedex.png",
+        } as T.Item)
+      : selected;
+    if (!item?.name) return;
+    updateTrainer({ inventory: [...trainer.inventory, { id: undefined, item, quantity: 1 }] });
+    setOpen(false);
   };
+  const fieldClass =
+    "h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9 lg:rounded-lg";
   return (
-    <Sheet>
-      <SheetTrigger asChild={true}>
-        <Button variant="transparent" className={buttonClassName}>
-          <Text className="text-center">+</Text>
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-full md:w-[600px]">
-        <SheetHeader>
-          <SheetTitle>Add items to inventory</SheetTitle>
-          <SheetDescription>
-            Add items to your inventory from the list of items or by creating a
-            new item.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="grid grid-cols-1 gap-2">
-          <div>
-            <ItemPicker
-              onSelected={(item) => {
-                setSelectedItem(item);
-                setCustomItem(null);
-              }}
-              selected={selectedItem}
-              scrollClassName="h-[50vh]"
-            />
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={button({ variant: "plain", size: "sm" })}>
+        <Plus aria-hidden className="size-4" />
+        Add item
+      </button>
+      <Sheet open={open} onOpenChange={setOpen} title="Add to inventory" initialExpanded>
+        <div className="flex flex-col gap-4 p-4">
+          <div role="group" aria-label="Item source" className="flex gap-2">
+            <Chip pressed={!custom} onClick={() => setCustom(false)}>
+              From catalog
+            </Chip>
+            <Chip pressed={custom} onClick={() => setCustom(true)}>
+              Custom item
+            </Chip>
           </div>
-          <div className="flex flex-col gap-2">
-            <Text className="text-center" size="text-xl">
-              - Or create a new item -
-            </Text>
-            <div className="flex flex-row items-center space-x-2">
-              <Text size="text-xl">{"Name: "}</Text>
-              <Input
-                placeholder="Enter name..."
-                onChange={(event) => {
-                  setCustomItem((current) => ({
-                    ...current,
-                    name: event.target.value ?? "",
-                    id: current?.id ?? "",
-                  }));
-                }}
-                value={customItem?.name ?? ""}
+          {custom ? (
+            <>
+              <label className="flex flex-col gap-1.5 text-subhead font-medium">
+                Name
+                <input value={name} onChange={(event) => setName(event.target.value)} className={fieldClass} />
+              </label>
+              <label className="flex flex-col gap-1.5 text-subhead font-medium">
+                Pocket
+                <select value={pocket} onChange={(event) => setPocket(event.target.value as T.ItemPocket)} className={fieldClass}>
+                  {Object.values(ItemPocket).map((entry) => (
+                    <option key={entry} value={entry}>
+                      {formatEnumName(entry)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5 text-subhead font-medium">
+                Category
+                <select
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as T.ItemCategory | "")}
+                  className={fieldClass}
+                >
+                  <option value="">None</option>
+                  {Object.values(ItemCategory).map((entry) => (
+                    <option key={entry} value={entry}>
+                      {formatEnumName(entry)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5 text-subhead font-medium">
+                Description
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  className="min-h-24 w-full rounded-xl bg-fill p-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus"
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <Picker
+                label="Item"
+                placeholder="Choose an item"
+                loading={isFetching}
+                items={(items ?? []).map((item) => ({ value: item.id, label: item.name, detail: formatEnumName(item.pocket) }))}
+                value={itemId}
+                onChange={setItemId}
               />
-            </div>
-            <div className="flex flex-row items-center space-x-2">
-              <Text size="text-xl">{"Pocket: "}</Text>
-              <Combobox
-                items={Object.values(ItemPocket).map((pocket) => ({
-                  label: formatEnumName(pocket),
-                  value: pocket.toLowerCase(),
-                }))}
-                className="text-md flex-grow p-1"
-                value={customItem?.pocket ?? ""}
-              />
-            </div>
-            <div className="flex flex-row items-center space-x-2">
-              <Text size="text-xl">{"Category: "}</Text>
-              <Combobox
-                items={Object.values(ItemCategory).map((category) => ({
-                  label: formatEnumName(category),
-                  value: category.toLowerCase(),
-                }))}
-                className="text-md flex-grow p-1"
-                value={customItem?.category ?? ""}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Text size="text-xl">{"Description: "}</Text>
-              <Textarea
-                placeholder="Enter your description here..."
-                value={customItem?.description ?? ""}
-                onChange={(event) => {
-                  setCustomItem((current) => ({
-                    ...current,
-                    description: event.target.value ?? "",
-                    id: current?.id ?? "",
-                    name: current?.name ?? "",
-                  }));
-                }}
-              />
-            </div>
-          </div>
+              {selected && <ItemCard item={selected} />}
+            </>
+          )}
+          <button type="button" disabled={custom ? !name.trim() : !selected} onClick={add} className={button({ variant: "filled" })}>
+            Add {custom ? name.trim() || "item" : (selected?.name ?? "item")}
+          </button>
         </div>
-        <SheetFooter>
-          <SheetClose asChild={true}>
-            <Button
-              type="submit"
-              variant="green"
-              onClick={addItem}
-              className="w-full mt-2"
-            >
-              Add {selectedItem?.name ?? customItem?.name ?? "nothing"}{" "}
-              to inventory
-            </Button>
-          </SheetClose>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+      </Sheet>
+    </>
   );
 };
