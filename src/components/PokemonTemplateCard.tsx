@@ -27,7 +27,7 @@ export const PokemonTemplateCard = ({
 }: PokemonTemplateCardProps) => (
   <Box
     color={`bg-type-${types[0].toLowerCase()}`}
-    className={`pokemon-card ${className} flex flex-col space-y-2 p-3 bg-gradient-to-br from-type-${types[0].toLowerCase()}-light justify-between ${onClick != null ? `hover:bg-type-${types[0].toLowerCase()}/80` : ""}`}
+    className={`pokemon-card ${className} flex flex-col space-y-2 p-3 bg-linear-to-br/srgb from-type-${types[0].toLowerCase()}-light justify-between ${onClick != null ? `hover:bg-type-${types[0].toLowerCase()}/80` : ""}`}
     onClick={onClick}
   >
     <div className="flex flex-row justify-between">

@@ -66,7 +66,7 @@ export const Sidebar = ({
         >
           <SessionIndicator displayText={drawerOpened} />
           <div id="nav-login-button" className="flex justify-center">
-            <AccountButton className="text-wrap p-1" />
+            <AccountButton className="whitespace-normal p-1" />
           </div>
         </div>
       </div>

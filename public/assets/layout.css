@@ -67,7 +67,7 @@
   .catalog-layout, .sheet-layout, .moves-layout, .generators-layout { padding: 16px 20px 0; }
   .catalog-layout, .sheet-layout { gap: 20px; }
   .app-layout .gap-2 { gap: 0.75rem; }
-  .app-layout .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
+  .app-layout .space-y-2 > :not(:last-child) { margin-block-end: 0.75rem; }
   .pokemon-sheet { gap: 1rem; padding-bottom: 1rem; }
   .sheet-main, .sheet-attributes, .sheet-socials, .sheet-skills { padding: 1rem; }
   .sheet-attributes, .sheet-socials { grid-column: span 6; }
@@ -120,7 +120,7 @@
     justify-content: flex-start;
     gap: 8px;
   }
-  .sidebar-links > :not([hidden]) ~ :not([hidden]) { margin-top: 0; }
+  .sidebar-links > :not(:last-child) { margin-block-end: 0; }
   .sidebar-links a > div > div:first-child { padding: 12px; }
   .sidebar-links svg { width: 24px; height: 24px; }
   .sidebar-links .text-xl { font-size: 1rem; }
@@ -217,3 +217,11 @@ button.dice-chip { position: relative; background: rgba(0, 0, 0, 0.12); box-shad
 button.dice-chip:hover { background: rgba(0, 0, 0, 0.22); }
 button.dice-chip:active { transform: scale(0.92); }
 .move-hint { cursor: help; }
+
+/* Tailwind v4 space-y puts the margin below every child but the last; the Home page's
+   first child is an absolutely positioned backdrop, so keep the v3 margin-above-siblings gap. */
+.app-layout .home-layout > :not(:last-child) { margin-block-end: 0; }
+.app-layout .home-layout > :not(:first-child) { margin-top: 0.5rem; }
+@media (min-width: 768px) {
+  .app-layout .home-layout > :not(:first-child) { margin-top: 0.75rem; }
+}

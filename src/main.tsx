@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 
 import { App } from "@/App";
+import "@/index.css";
 import { CampaignFilterProvider } from "@/hooks/use-campaign-filter";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
