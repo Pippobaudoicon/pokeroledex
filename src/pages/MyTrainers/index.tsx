@@ -49,7 +49,7 @@ const TrainerCard = ({
 }) => (
   <Box
     color="bg-pokerole-red"
-    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-gradient-to-br from-type-steel-light ${onClick != null ? "hover:bg-pokerole-red-light hover:from-pokerole-red-light" : ""}`}
+    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-linear-to-br/srgb from-type-steel-light ${onClick != null ? "hover:bg-pokerole-red-light hover:from-pokerole-red-light" : ""}`}
     onClick={onClick}
   >
     <div className="flex flex-row items-center gap-2">

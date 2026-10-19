@@ -1,0 +1,395 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: Square;
+  src: url(/fonts/Square.ttf) format("truetype");
+  font-weight: 600;
+  font-style: normal;
+}
+@font-face {
+  font-family: Prototype;
+  src: url(/fonts/Prototype.ttf) format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@theme {
+  --font-sans: "Trebuchet MS", sans-serif;
+  --breakpoint-2xs: 330px;
+  --breakpoint-xs: 400px;
+
+  --font-move: Prototype, sans-serif;
+  --font-square: Square, sans-serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+
+  /* shadcn */
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  /* Tailwind v3 values for the default colours the app uses */
+  --color-pokerole-beige: #d1c9b2;
+  --color-pokerole-beige-dark: #bfb595;
+  --color-pokerole-beige-light: #f5f5e6;
+  --color-pokerole-black: #3e3628;
+  --color-pokerole-black-light: #554936;
+  --color-pokerole-blue: #00b2c2;
+  --color-pokerole-blue-dark: #00a4b3;
+  --color-pokerole-blue-light: #00d3e6;
+  --color-pokerole-gray: #504e47;
+  --color-pokerole-gray-light: #5f5c54;
+  --color-pokerole-green: #22c55e;
+  --color-pokerole-green-dark: #16a34a;
+  --color-pokerole-green-light: #4ade80;
+  --color-pokerole-red: #e55035;
+  --color-pokerole-red-dark: #b7402a;
+  --color-pokerole-red-light: #ea735d;
+  --color-pokerole-yellow: #f59e0b;
+  --color-pokerole-yellow-dark: #d97706;
+  --color-pokerole-yellow-light: #fbbf24;
+  --color-attributes-blue: #00b2c2;
+  --color-attributes-blue-dark: #00a1af;
+  --color-green-500: #22c55e;
+  --color-green-700: #15803d;
+  --color-item-category-battle-item: #4880f0;
+  --color-item-category-battle-item-dark: #3a66c0;
+  --color-item-category-battle-item-light: #6d99f3;
+  --color-item-category-berry: #30b858;
+  --color-item-category-berry-dark: #269346;
+  --color-item-category-berry-light: #59c679;
+  --color-item-category-healing: #e88050;
+  --color-item-category-healing-dark: #ba6640;
+  --color-item-category-healing-light: #ed9973;
+  --color-item-category-mega-stone: #caad81;
+  --color-item-category-mega-stone-dark: #a28a67;
+  --color-item-category-mega-stone-light: #d5bd9a;
+  --color-item-category-mon-boosting: #d880a8;
+  --color-item-category-mon-boosting-dark: #ad6686;
+  --color-item-category-mon-boosting-light: #e099b9;
+  --color-item-category-status: #e88050;
+  --color-item-category-status-dark: #ba6640;
+  --color-item-category-status-light: #ed9973;
+  --color-item-category-type-boosting: #d880a8;
+  --color-item-category-type-boosting-dark: #ad6686;
+  --color-item-category-type-boosting-light: #e099b9;
+  --color-item-category-vitamin: #d880a8;
+  --color-item-category-vitamin-dark: #ad6686;
+  --color-item-category-vitamin-light: #e099b9;
+  --color-item-category-z-crystal: #caad81;
+  --color-item-category-z-crystal-dark: #a28a67;
+  --color-item-category-z-crystal-light: #d5bd9a;
+  --color-move-category-physical: #ec5523;
+  --color-move-category-physical-special: #9b5f7c;
+  --color-move-category-special: #4968d4;
+  --color-move-category-support: #838383;
+  --color-move-category-support-physical-special: #af83e1;
+  --color-pocket-evolution-items: #d880a8;
+  --color-pocket-evolution-items-dark: #ad6686;
+  --color-pocket-evolution-items-light: #e099b9;
+  --color-pocket-held-items: #d880a8;
+  --color-pocket-held-items-dark: #ad6686;
+  --color-pocket-held-items-light: #e099b9;
+  --color-pocket-medicine: #e88050;
+  --color-pocket-medicine-dark: #ba6640;
+  --color-pocket-medicine-light: #ed9973;
+  --color-pocket-pokeballs: #e0a038;
+  --color-pocket-pokeballs-dark: #b3802d;
+  --color-pocket-pokeballs-light: #e6b360;
+  --color-pocket-technical-machine: #4880f0;
+  --color-pocket-technical-machine-dark: #3a66c0;
+  --color-pocket-technical-machine-light: #6d99f3;
+  --color-pocket-trainer-items: #a058e8;
+  --color-pocket-trainer-items-dark: #b379ed;
+  --color-pocket-trainer-items-light: #8046ba;
+  --color-purple-700: #7e22ce;
+  --color-red-500: #ef4444;
+  --color-red-700: #b91c1c;
+  --color-skills-red: #c74b34;
+  --color-slate-400: #94a3b8;
+  --color-socials-beauty: #afc5df;
+  --color-socials-clever: #aed495;
+  --color-socials-cool: #f9ad8e;
+  --color-socials-cute: #f7b3c5;
+  --color-socials-tough: #f6e593;
+  --color-type-bug: #a1b030;
+  --color-type-bug-light: #c3d158;
+  --color-type-dark: #654e39;
+  --color-type-dark-light: #937153;
+  --color-type-dragon: #684181;
+  --color-type-dragon-light: #74488f;
+  --color-type-electric: #f9b636;
+  --color-type-electric-light: #fac764;
+  --color-type-fairy: #e49faa;
+  --color-type-fairy-light: #eab4bd;
+  --color-type-fighting: #9d4f34;
+  --color-type-fighting-light: #c77457;
+  --color-type-fire: #e65635;
+  --color-type-fire-light: #e96b4f;
+  --color-type-flying: #8a94ab;
+  --color-type-flying-dark: #838ea6;
+  --color-type-flying-light: #97a0b4;
+  --color-type-ghost: #5a5e8c;
+  --color-type-ghost-light: #5f6495;
+  --color-type-grass: #74b451;
+  --color-type-grass-light: #88bf6b;
+  --color-type-ground: #c8a34f;
+  --color-type-ground-light: #ccaa5d;
+  --color-type-ice: #51b8b3;
+  --color-type-ice-light: #68c1bd;
+  --color-type-normal: #9c9173;
+  --color-type-normal-dark: #7c7358;
+  --color-type-normal-light: #a79d83;
+  --color-type-poison: #a55684;
+  --color-type-poison-dark: #b6739a;
+  --color-type-poison-light: #b26994;
+  --color-type-psychic: #eb6e86;
+  --color-type-psychic-dark: #e54463;
+  --color-type-psychic-light: #f199aa;
+  --color-type-rock: #a98f4a;
+  --color-type-rock-light: #b89f5c;
+  --color-type-steel: #a9a9a9;
+  --color-type-steel-dark: #959595;
+  --color-type-steel-light: #b5b5b5;
+  --color-type-typeless: #787878;
+  --color-type-typeless-light: #969696;
+  --color-type-varies: #787878;
+  --color-type-varies-dark: #5a5a5a;
+  --color-type-varies-light: #969696;
+  --color-type-water: #4f90e8;
+  --color-type-water-light: #639deb;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+}
+
+/* Classes assembled at runtime (bg-type-*, bg-${item colour}-light, grid-cols-${n}) */
+@source inline("{bg,from}-{item-category-battle-item,item-category-battle-item-dark,item-category-battle-item-light,item-category-berry,item-category-berry-dark,item-category-berry-light,item-category-healing,item-category-healing-dark,item-category-healing-light,item-category-mega-stone,item-category-mega-stone-dark,item-category-mega-stone-light,item-category-mon-boosting,item-category-mon-boosting-dark,item-category-mon-boosting-light,item-category-status,item-category-status-dark,item-category-status-light,item-category-type-boosting,item-category-type-boosting-dark,item-category-type-boosting-light,item-category-vitamin,item-category-vitamin-dark,item-category-vitamin-light,item-category-z-crystal,item-category-z-crystal-dark,item-category-z-crystal-light,move-category-physical,move-category-physical-special,move-category-special,move-category-support,move-category-support-physical-special,pocket-evolution-items,pocket-evolution-items-dark,pocket-evolution-items-light,pocket-held-items,pocket-held-items-dark,pocket-held-items-light,pocket-medicine,pocket-medicine-dark,pocket-medicine-light,pocket-pokeballs,pocket-pokeballs-dark,pocket-pokeballs-light,pocket-technical-machine,pocket-technical-machine-dark,pocket-technical-machine-light,pocket-trainer-items,pocket-trainer-items-dark,pocket-trainer-items-light,type-bug,type-bug-light,type-dark,type-dark-light,type-dragon,type-dragon-light,type-electric,type-electric-light,type-fairy,type-fairy-light,type-fighting,type-fighting-light,type-fire,type-fire-light,type-flying,type-flying-dark,type-flying-light,type-ghost,type-ghost-light,type-grass,type-grass-light,type-ground,type-ground-light,type-ice,type-ice-light,type-normal,type-normal-dark,type-normal-light,type-poison,type-poison-dark,type-poison-light,type-psychic,type-psychic-dark,type-psychic-light,type-rock,type-rock-light,type-steel,type-steel-dark,type-steel-light,type-typeless,type-typeless-light,type-varies,type-varies-dark,type-varies-light,type-water,type-water-light}");
+@source inline("grid-cols-{1,2}");
+
+/* Keep v3 behaviour: hover on touch screens */
+@custom-variant hover (&:hover);
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 38.18, 21.57%, 20%;
+    --primary: 38.18, 21.57%, 20%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 38.18, 21.57%, 20%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+  }
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: rgb(80 78 71);
+    color: hsl(var(--foreground));
+    min-height: 100vh;
+  }
+  /* v3 faded gradients to their own colour at 0 alpha, v4 to transparent black */
+  [class*="from-"] {
+    --tw-gradient-to: rgb(from var(--tw-gradient-from) r g b / 0);
+  }
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  :disabled {
+    cursor: default;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+}
+
+/* tailwindcss-animate's enter/exit transitions (not installed for v4) */
+@keyframes enter {
+  0% {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1))
+      rotate(var(--tw-enter-rotate, 0));
+  }
+}
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))
+      rotate(var(--tw-exit-rotate, 0));
+  }
+}
+@utility animate-in {
+  animation-name: enter;
+  animation-duration: var(--tw-duration, 0.15s);
+  animation-timing-function: var(--tw-ease, ease);
+  --tw-enter-opacity: initial;
+  --tw-enter-scale: initial;
+  --tw-enter-rotate: initial;
+  --tw-enter-translate-x: initial;
+  --tw-enter-translate-y: initial;
+}
+@utility animate-out {
+  animation-name: exit;
+  animation-duration: var(--tw-duration, 0.15s);
+  animation-timing-function: var(--tw-ease, ease);
+  --tw-exit-opacity: initial;
+  --tw-exit-scale: initial;
+  --tw-exit-rotate: initial;
+  --tw-exit-translate-x: initial;
+  --tw-exit-translate-y: initial;
+}
+@utility fade-in-* {
+  --tw-enter-opacity: calc(--value(integer) / 100);
+}
+@utility fade-out-* {
+  --tw-exit-opacity: calc(--value(integer) / 100);
+}
+@utility zoom-in-* {
+  --tw-enter-scale: calc(--value(integer) / 100);
+}
+@utility zoom-out-* {
+  --tw-exit-scale: calc(--value(integer) / 100);
+}
+@utility slide-in-from-top {
+  --tw-enter-translate-y: -100%;
+}
+@utility slide-in-from-top-* {
+  --tw-enter-translate-y: calc(--value(integer) * var(--spacing) * -1);
+  --tw-enter-translate-y: calc(--value(ratio) * -100%);
+  --tw-enter-translate-y: calc(--value(percentage, length) * -1);
+}
+@utility slide-out-to-top {
+  --tw-exit-translate-y: -100%;
+}
+@utility slide-out-to-top-* {
+  --tw-exit-translate-y: calc(--value(integer) * var(--spacing) * -1);
+  --tw-exit-translate-y: calc(--value(ratio) * -100%);
+  --tw-exit-translate-y: calc(--value(percentage, length) * -1);
+}
+@utility slide-in-from-bottom {
+  --tw-enter-translate-y: 100%;
+}
+@utility slide-in-from-bottom-* {
+  --tw-enter-translate-y: calc(--value(integer) * var(--spacing) * 1);
+  --tw-enter-translate-y: calc(--value(ratio) * 100%);
+  --tw-enter-translate-y: calc(--value(percentage, length) * 1);
+}
+@utility slide-out-to-bottom {
+  --tw-exit-translate-y: 100%;
+}
+@utility slide-out-to-bottom-* {
+  --tw-exit-translate-y: calc(--value(integer) * var(--spacing) * 1);
+  --tw-exit-translate-y: calc(--value(ratio) * 100%);
+  --tw-exit-translate-y: calc(--value(percentage, length) * 1);
+}
+@utility slide-in-from-left {
+  --tw-enter-translate-x: -100%;
+}
+@utility slide-in-from-left-* {
+  --tw-enter-translate-x: calc(--value(integer) * var(--spacing) * -1);
+  --tw-enter-translate-x: calc(--value(ratio) * -100%);
+  --tw-enter-translate-x: calc(--value(percentage, length) * -1);
+}
+@utility slide-out-to-left {
+  --tw-exit-translate-x: -100%;
+}
+@utility slide-out-to-left-* {
+  --tw-exit-translate-x: calc(--value(integer) * var(--spacing) * -1);
+  --tw-exit-translate-x: calc(--value(ratio) * -100%);
+  --tw-exit-translate-x: calc(--value(percentage, length) * -1);
+}
+@utility slide-in-from-right {
+  --tw-enter-translate-x: 100%;
+}
+@utility slide-in-from-right-* {
+  --tw-enter-translate-x: calc(--value(integer) * var(--spacing) * 1);
+  --tw-enter-translate-x: calc(--value(ratio) * 100%);
+  --tw-enter-translate-x: calc(--value(percentage, length) * 1);
+}
+@utility slide-out-to-right {
+  --tw-exit-translate-x: 100%;
+}
+@utility slide-out-to-right-* {
+  --tw-exit-translate-x: calc(--value(integer) * var(--spacing) * 1);
+  --tw-exit-translate-x: calc(--value(ratio) * 100%);
+  --tw-exit-translate-x: calc(--value(percentage, length) * 1);
+}
+@utility slide-in-from-top-full {
+  --tw-enter-translate-y: -100%;
+}
+@utility slide-out-to-top-full {
+  --tw-exit-translate-y: -100%;
+}
+@utility slide-in-from-bottom-full {
+  --tw-enter-translate-y: 100%;
+}
+@utility slide-out-to-bottom-full {
+  --tw-exit-translate-y: 100%;
+}
+@utility slide-in-from-left-full {
+  --tw-enter-translate-x: -100%;
+}
+@utility slide-out-to-left-full {
+  --tw-exit-translate-x: -100%;
+}
+@utility slide-in-from-right-full {
+  --tw-enter-translate-x: 100%;
+}
+@utility slide-out-to-right-full {
+  --tw-exit-translate-x: 100%;
+}

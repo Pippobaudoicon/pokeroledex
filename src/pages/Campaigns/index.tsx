@@ -75,7 +75,7 @@ const CampaignCard = ({
 }) => (
   <Box
     color="bg-type-grass"
-    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-gradient-to-br from-type-grass-light ${onClick != null ? "hover:bg-type-grass-light hover:from-type-grass-light" : ""}`}
+    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-linear-to-br/srgb from-type-grass-light ${onClick != null ? "hover:bg-type-grass-light hover:from-type-grass-light" : ""}`}
     onClick={onClick}
   >
     <div className="flex flex-row items-center gap-2">
@@ -388,7 +388,7 @@ const CampaignHeader = () => {
   return (
     <Box
       color="bg-type-grass"
-      className="p-4 bg-gradient-to-br from-type-grass-light"
+      className="p-4 bg-linear-to-br/srgb from-type-grass-light"
     >
       <div className="flex flex-row items-center justify-between gap-4">
         <div className="flex flex-row items-center gap-2 flex-grow">

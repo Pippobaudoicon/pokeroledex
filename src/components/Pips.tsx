@@ -26,7 +26,7 @@ const Pip = ({ state, className }: { state: PipState; className?: string }) => {
       case "UNSET":
         return "bg-white";
       case "UNSELECTABLE":
-        return "bg-white bg-opacity-50";
+        return "bg-white/50";
     }
   }, [state]);
   return <div className={cn(`rounded-full w-6 h-6 ${stateClassName}`, className)} />;

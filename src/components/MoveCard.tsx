@@ -163,7 +163,7 @@ export const MoveCard = ({
           <Text
             color={textColor}
             size="text-base"
-            className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white bg-opacity-20 transition-all duration-500 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
+            className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white/20 transition-all duration-500 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
           >
             A: {pools ? <Hint hint={accuracyTitle}>{pools.accuracy}</Hint> : (<>
               {move.accuracy1.length > 0 ? abbreviateStat(move.accuracy1) : "-"}
@@ -175,7 +175,7 @@ export const MoveCard = ({
           <Text
             color={textColor}
             size="text-base"
-            className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white bg-opacity-20 transition-all duration-300 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
+            className={`p-2 flex-grow whitespace-nowrap rounded-full bg-white/20 transition-all duration-300 ease-in-out ${open ? "opacity-0 max-h-0 max-w-0" : "opacity-100 max-h-20 max-w-96"}`}
           >
             D:{" "}
             {pools ? (

@@ -35,7 +35,7 @@ const ItemListCard = ({
 }) => (
   <Box
     color={`bg-${getItemColor(pocket, category)}`}
-    className={`${className} flex flex-col space-y-2 p-3 bg-gradient-to-br from-${getItemColor(pocket, category)}-light justify-between ${onClick != null ? `hover:bg-${getItemColor(pocket, category)}/80` : ""}`}
+    className={`${className} flex flex-col space-y-2 p-3 bg-linear-to-br/srgb from-${getItemColor(pocket, category)}-light justify-between ${onClick != null ? `hover:bg-${getItemColor(pocket, category)}/80` : ""}`}
     onClick={onClick}
   >
     <div className="flex flex-row justify-between">
