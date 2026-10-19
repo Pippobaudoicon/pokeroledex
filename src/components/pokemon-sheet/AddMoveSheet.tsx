@@ -1,267 +1,148 @@
-import { useDebounce } from "@uidotdev/usehooks";
+import { Plus, Search } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
 import { useMovesControllerFindAll } from "@/api/components";
 import { Rank } from "@/api/schemas";
-import { AddNewBox } from "@/components/AddNewBox";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MoveCard } from "@/components/MoveCard";
+import { Switch } from "@/components/kit/Controls";
+import { CategoryIcon, categoryName } from "@/components/kit/MoveRow";
+import { RankBall, TypeDot } from "@/components/kit/Pills";
+import { Sheet } from "@/components/kit/Sheet";
 import { usePokemon } from "@/components/pokemon-sheet/context";
-import { RankIcon } from "@/components/RankIcon";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { fold } from "@/hooks/use-dex";
 import { getTotalStat } from "@/lib/stats";
-const MoveListItem = React.memo(
-  ({
-    move,
-    isSelected,
-    onClick,
-  }: {
-    move: T.PossibleMove;
-    isSelected: boolean;
-    onClick: (move: T.Move) => void;
-  }) => (
-    <div
-      className="col-span-full flex flex-row items-stretch space-x-1 rounded-3xl"
-      onClick={() => {
-        onClick(move.move);
-      }}
-    >
-      <div className="flex flex-row items-center space-x-2">
-        <RankIcon rank={move.rank} size="md" />
+
+const ranks = Object.keys(Rank);
+const LIMIT = 100;
+
+/** All moves in the database; mounted only when edit mode allows moves outside the learnset. */
+const AllMoves = ({ children }: { children: (moves: T.PossibleMove[] | undefined) => React.ReactNode }) => {
+  const { data } = useMovesControllerFindAll({});
+  const moves = React.useMemo(() => data?.map((move): T.PossibleMove => ({ id: move.id, move, rank: Rank.STARTER })), [data]);
+  return <>{children(moves)}</>;
+};
+
+const MoveList = ({
+  moves,
+  query,
+  showRank,
+  onPick,
+}: {
+  moves: T.PossibleMove[] | undefined;
+  query: string;
+  showRank: boolean;
+  onPick: (move: T.Move) => void;
+}) => {
+  const { updatedPokemon } = usePokemon();
+  const matches = React.useMemo(() => {
+    const needle = fold(query.trim());
+    return (moves ?? [])
+      .filter((possible) => !updatedPokemon?.moves.some((move) => move.id === possible.move.id) && (!needle || fold(possible.move.name).includes(needle)))
+      .sort((first, second) => first.move.name.localeCompare(second.move.name));
+  }, [moves, query, updatedPokemon?.moves]);
+  if (!moves)
+    return (
+      <div className="space-y-1 p-2">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <div key={index} className="skeleton h-12 rounded-lg" />
+        ))}
       </div>
-      <MoveCard
-        move={move.move}
-        className={isSelected ? "border-4 border-pokerole-black" : ""}
-      />
-    </div>
-  ),
-);
-MoveListItem.displayName = "MoveItem";
-const AddMoveSheet = ({ trigger, className }: { trigger: React.ReactNode; className?: string }) => {
-  const { updatedPokemon, updatePokemon, editingMode } = usePokemon();
-  const [selectedMove, setSelectedMove] = React.useState<T.Move | null>(null);
-  const { data: moves, isLoading } = useMovesControllerFindAll({});
-  const allMoves = React.useMemo(
-    () =>
-      moves
-        ?.map((move): T.PossibleMove => ({
-          id: move.id,
-          move,
-          rank: Rank.STARTER,
-        }))
-        .sort((a, b) => {
-          const byType = a.move.type.localeCompare(b.move.type);
-          return byType !== 0 ? byType : a.move.name.localeCompare(b.move.name);
-        }),
-    [moves],
-  );
-  /** Rank-up mode always offers only the species' learnable moves; edit mode can turn that off. */
-  const [learnableOnly, setLearnableOnly] = React.useState(true);
-  const restricted = editingMode === "rankUp" || learnableOnly;
-  const ranks = Object.keys(Rank);
-  // The current species/form's learnset up to the edited rank, each move once at its lowest rank.
-  const learnableMoves = React.useMemo(() => {
-    if (updatedPokemon === undefined) return undefined;
-    const byMove = new Map<string, T.PossibleMove>();
-    for (const possibleMove of updatedPokemon.pokemonTemplate.possibleMoves) {
-      const rank = ranks.indexOf(possibleMove.rank);
-      const known = byMove.get(possibleMove.move.id);
-      if (rank <= ranks.indexOf(updatedPokemon.rank) && (known === undefined || rank < ranks.indexOf(known.rank)))
-        byMove.set(possibleMove.move.id, possibleMove);
-    }
-    return [...byMove.values()].sort((a, b) => {
-      const byType = a.move.type.localeCompare(b.move.type);
-      return byType !== 0 ? byType : a.move.name.localeCompare(b.move.name);
-    });
-  }, [updatedPokemon?.pokemonTemplate, updatedPokemon?.rank]);
-  const [search, setSearch] = React.useState("");
-  const debouncedSearch = useDebounce(search, 200);
-  const availableMoves = (restricted ? learnableMoves : allMoves)?.filter(
-    (possibleMove) =>
-      updatedPokemon !== undefined &&
-      !updatedPokemon.moves.some((move) => move.id === possibleMove.move.id),
-  );
-  const filteredMoves = React.useMemo(
-    () =>
-      debouncedSearch === ""
-        ? availableMoves
-        : availableMoves?.filter((possibleMove) =>
-            possibleMove.move.name.toLowerCase().includes(debouncedSearch.toLowerCase()),
-          ),
-    [availableMoves, debouncedSearch],
-  );
-  React.useEffect(() => {
-    if (
-      selectedMove != null &&
-      (filteredMoves == null || !filteredMoves.some((possibleMove) => possibleMove.move.id === selectedMove.id))
-    )
-      setSelectedMove(null);
-  }, [filteredMoves, selectedMove]);
-  const batchSize = 30;
-  const [visibleCount, setVisibleCount] = React.useState(batchSize);
-  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
-  const [sheetOpen, setSheetOpen] = React.useState(false);
-  React.useEffect(() => {
-    setVisibleCount(batchSize);
-  }, [debouncedSearch, filteredMoves?.length]);
-  // Infinite scroll: show another batch whenever the sentinel below the list scrolls into view.
-  React.useEffect(() => {
-    // The sentinel lives inside the scroll area, so the scroll area is mounted whenever the sentinel is.
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-slot="scroll-area-viewport"]',
-    ) as Element | null;
-    if (viewport === null || sentinelRef.current === null) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries)
-          if (entry.isIntersecting)
-            setVisibleCount((count) => Math.min(filteredMoves?.length ?? 0, count + batchSize));
-      },
-      {
-        root: viewport,
-        rootMargin: "200px",
-      },
     );
-    observer.observe(sentinelRef.current);
-    // Keep adding batches while the list is too short to scroll (the observer would never fire).
-    const timeout = setTimeout(() => {
-      if (viewport === null) return;
-      let attempts = 0;
-      while (
-        viewport.scrollHeight <= viewport.clientHeight &&
-        (filteredMoves?.length ?? 0) > visibleCount &&
-        attempts < 20
-      ) {
-        setVisibleCount((count) => Math.min(filteredMoves?.length ?? 0, count + batchSize));
-        attempts++;
-      }
-    }, 50);
-    return () => {
-      observer.disconnect();
-      clearTimeout(timeout);
-    };
-  }, [filteredMoves, visibleCount, sheetOpen]);
-  const toggleSelected = React.useCallback((move: T.Move) => {
-    setSelectedMove((selected) => (selected?.id === move.id ? null : move));
-  }, []);
-  const moveListItems = React.useMemo(
-    () =>
-      filteredMoves
-        ?.slice(0, visibleCount)
-        .map((possibleMove) => (
-          <MoveListItem
-            key={possibleMove.move.id}
-            move={possibleMove}
-            isSelected={selectedMove?.id === possibleMove.move.id}
-            onClick={toggleSelected}
-          />
-        )),
-    [filteredMoves, visibleCount, selectedMove?.id, toggleSelected],
+  if (matches.length === 0) return <p className="p-6 text-center text-subhead text-label-2">No moves to add{query ? ` named “${query}”` : ""}.</p>;
+  return (
+    <ul>
+      {matches.slice(0, LIMIT).map((possible) => (
+        <li key={possible.move.id} className="group/row">
+          <button
+            type="button"
+            onClick={() => onPick(possible.move)}
+            className="flex w-full items-center gap-3 pl-4 text-left transition-colors hover:bg-raised active:bg-fill lg:pl-3"
+          >
+            <TypeDot type={possible.move.type} />
+            <span className="flex min-h-13 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0 lg:min-h-11">
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-body font-medium">
+                  {possible.move.name}
+                  {showRank && <RankBall rank={possible.rank} className="size-3.5" />}
+                </span>
+                <span className="flex items-center gap-1.5 text-footnote text-label-2">
+                  <CategoryIcon category={possible.move.category} className="size-3.5" />
+                  {categoryName(possible.move.category)}
+                </span>
+              </span>
+              <Plus aria-hidden className="size-5 text-tint" />
+            </span>
+          </button>
+        </li>
+      ))}
+      {matches.length > LIMIT && <li className="p-3 text-center text-footnote text-label-2">Keep typing to see the other {matches.length - LIMIT}.</li>}
+    </ul>
   );
-  const addMove = () => {
-    if (updatedPokemon !== undefined && selectedMove != null) {
-      updatePokemon({
-        moves: [...updatedPokemon.moves, selectedMove],
-      });
-      setSelectedMove(null);
+};
+
+/** Adds a move with one tap. Rank-up mode only offers the learnset up to the new rank. */
+export const AddMoveSheet = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const { updatedPokemon, updatePokemon, editingMode } = usePokemon();
+  const [learnableOnly, setLearnableOnly] = React.useState(true);
+  const [query, setQuery] = React.useState("");
+  const restricted = editingMode === "rankUp" || learnableOnly;
+  // The species' learnset up to the edited rank, each move once at its lowest rank.
+  const learnable = React.useMemo(() => {
+    if (!updatedPokemon) return undefined;
+    const byMove = new Map<string, T.PossibleMove>();
+    for (const possible of updatedPokemon.pokemonTemplate.possibleMoves) {
+      const rank = ranks.indexOf(possible.rank);
+      const known = byMove.get(possible.move.id);
+      if (rank <= ranks.indexOf(updatedPokemon.rank) && (known === undefined || rank < ranks.indexOf(known.rank))) byMove.set(possible.move.id, possible);
     }
+    return [...byMove.values()];
+  }, [updatedPokemon?.pokemonTemplate, updatedPokemon?.rank]);
+  if (!updatedPokemon) return null;
+  const pick = (move: T.Move) => {
+    updatePokemon({ moves: [...updatedPokemon.moves, move] });
+    onOpenChange(false);
+    setQuery("");
   };
   return (
-    <Sheet onOpenChange={setSheetOpen}>
-      <SheetTrigger asChild={true}>{trigger}</SheetTrigger>
-      <SheetContent className="w-full md:w-[600px]">
-        <SheetHeader>
-          <SheetTitle>Add move</SheetTitle>
-          <SheetDescription>
-            Add a move to your Pokémon's move list.
-          </SheetDescription>
-        </SheetHeader>
-        <div className={`grid grid-cols-1 gap-2 ${className} rounded-3xl`}>
-          <div className="col-span-full flex flex-row space-x-2 items-center">
-            <Input
-              placeholder="Search moves..."
-              aria-label="Search moves"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-              }}
-              className="rounded-3xl"
-            />
-          </div>
-          {editingMode === "edit" && (
-            <label className="col-span-full flex flex-row gap-2 items-center">
-              <Checkbox
-                checked={learnableOnly}
-                onCheckedChange={(checked) => {
-                  setLearnableOnly(checked === true);
-                }}
-              />
-              <span className="font-move text-base">
-                Only moves this Pokémon can learn at its current rank or below
-              </span>
-            </label>
-          )}
-          <ScrollArea ref={scrollAreaRef} className="md:h-[80vh] h-[60vh] rounded-3xl">
-            <div className="grid grid-cols-1 gap-2">
-              {isLoading && !restricted && (
-                <LoadingSpinner className="col-span-full items-center justify-center w-full" />
-              )}
-              {(restricted || !isLoading) && filteredMoves?.length === 0 && (
-                <div className="col-span-full text-muted-foreground text-center py-4">
-                  No moves found.
-                </div>
-              )}
-              {(restricted || !isLoading) && moveListItems}
-              <div ref={sentinelRef} className="h-1 w-full col-span-full" />
-            </div>
-          </ScrollArea>
-        </div>
-        <SheetFooter>
-          <SheetClose>
-            <Button
-              variant="green"
-              onClick={addMove}
-              type="submit"
-              className="w-full mt-2"
-            >
-              {"Add "}
-              {selectedMove?.name ?? "no move"}
-            </Button>
-          </SheetClose>
-        </SheetFooter>
-      </SheetContent>
+    <Sheet open={open} onOpenChange={onOpenChange} title="Add a move" initialExpanded>
+      <div className="sticky top-0 z-10 flex flex-col gap-3 bg-canvas/90 p-4 pb-3 backdrop-blur-xl">
+        <label className="relative flex items-center">
+          <span className="sr-only">Search moves</span>
+          <Search aria-hidden className="pointer-events-none absolute left-3 size-4 text-label-2" />
+          <input
+            type="search"
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search moves"
+            className="h-11 w-full rounded-xl bg-fill pr-3 pl-9 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-9 lg:rounded-lg"
+          />
+        </label>
+        {editingMode === "edit" && (
+          <label htmlFor="learnable-only" className="flex items-center justify-between gap-3 text-subhead">
+            Only moves it can learn by its rank
+            <Switch id="learnable-only" checked={learnableOnly} onChange={setLearnableOnly} />
+          </label>
+        )}
+      </div>
+      <div className="mx-4 overflow-hidden rounded-xl bg-surface shadow-card">
+        {restricted ? (
+          <MoveList moves={learnable} query={query} showRank onPick={pick} />
+        ) : (
+          <AllMoves>{(moves) => <MoveList moves={moves} query={query} showRank={false} onPick={pick} />}</AllMoves>
+        )}
+      </div>
     </Sheet>
   );
 };
-export const AddMoveButton = () => {
+
+/** Whether the Add move row shows: only while editing, and outside edit mode only with free slots and moves left to learn. */
+export const useCanAddMove = () => {
   const { updatedPokemon, editingMode } = usePokemon();
-  if (updatedPokemon === undefined) return <></>;
-  // Outside edit mode, hide the button once the move slots are full or nothing is left to learn.
-  if (updatedPokemon.moves.length >= getTotalStat(updatedPokemon, "insight") + 3 && editingMode !== "edit")
-    return <></>;
-  if (
-    updatedPokemon.pokemonTemplate.possibleMoves.filter(
-      (possibleMove) =>
-        !updatedPokemon.moves.some((move) => move.id === possibleMove.move.id) &&
-        Object.keys(Rank).indexOf(possibleMove.rank) <= Object.keys(Rank).indexOf(updatedPokemon.rank),
-    ).length === 0 &&
-    editingMode !== "edit"
-  )
-    return <></>;
-  if (editingMode === "view") return <></>;
-  return <AddMoveSheet trigger={<AddNewBox className="md:col-span-1 col-span-full flex" />} />;
+  if (!updatedPokemon || editingMode === "view") return false;
+  if (editingMode === "edit") return true;
+  const slotsFull = updatedPokemon.moves.length >= getTotalStat(updatedPokemon, "insight") + 3;
+  const leftToLearn = updatedPokemon.pokemonTemplate.possibleMoves.some(
+    (possible) => !updatedPokemon.moves.some((move) => move.id === possible.move.id) && ranks.indexOf(possible.rank) <= ranks.indexOf(updatedPokemon.rank),
+  );
+  return !slotsFull && leftToLearn;
 };

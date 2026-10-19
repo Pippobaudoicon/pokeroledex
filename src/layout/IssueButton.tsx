@@ -3,7 +3,6 @@ import * as React from "react";
 import type * as T from "../../shared/types";
 import { ISSUE_DESCRIPTION_LIMIT, ISSUE_TITLE_LIMIT } from "../../shared/types";
 import { useIssuesControllerCreate } from "@/api/components";
-import { Text } from "@/components/Text";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +27,7 @@ What problem would this solve during your game?
 Describe what should work when this is implemented.`;
 
 // The Worker opens the issue with its own token (worker/github.ts), so no GitHub account is needed.
-export const IssueButton = () => {
+export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
   const [open, setOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState(issueBody);
@@ -61,10 +60,12 @@ export const IssueButton = () => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild={true}>
-        <Button variant="beige" size="equalPadding" className="gap-2" title="Suggest a feature or report a problem">
-          <Github size={18} aria-hidden="true" />
-          Suggest a feature
-        </Button>
+        {trigger ?? (
+          <Button variant="beige" size="equalPadding" className="gap-2" title="Suggest a feature or report a problem">
+            <Github size={18} aria-hidden="true" />
+            Suggest a feature
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -75,10 +76,11 @@ export const IssueButton = () => {
         </DialogHeader>
         <div className="flex flex-col gap-4 p-1">
           <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
+            <label htmlFor="issue-title" className="block font-move text-sm font-medium">
               Title *
-            </Text>
+            </label>
             <Input
+              id="issue-title"
               placeholder="A short summary"
               value={title}
               maxLength={ISSUE_TITLE_LIMIT}
@@ -88,10 +90,11 @@ export const IssueButton = () => {
             />
           </div>
           <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
+            <label htmlFor="issue-description" className="block font-move text-sm font-medium">
               Description *
-            </Text>
+            </label>
             <Textarea
+              id="issue-description"
               value={description}
               maxLength={ISSUE_DESCRIPTION_LIMIT}
               rows={10}

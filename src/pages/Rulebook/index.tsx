@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Box } from "@/components/Box";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { Text } from "@/components/Text";
@@ -367,6 +368,15 @@ const QuickReference = ({ openPage }: { openPage: (page: number) => void }) => (
 export const RulebookPage = () => {
   const [tab, setTab] = React.useState("text");
   const [page, setPage] = React.useState(1);
+  // Search links open a page (?page=12) or a tab (?tab=quick).
+  const [params] = useSearchParams();
+  React.useEffect(() => {
+    const linked = Number(params.get("page"));
+    if (linked > 0) {
+      setPage(linked);
+      setTab("pages");
+    } else if (params.get("tab")) setTab(params.get("tab")!);
+  }, [params]);
   const { data: pages, isLoading } = useQuery({
     queryKey: ["rulebook-text"],
     queryFn: async () => {

@@ -1,265 +1,213 @@
-import { useDebounce } from "@uidotdev/usehooks";
 import * as React from "react";
-import { useItemsControllerFindAll } from "@/api/components";
+import type * as T from "../../../shared/types";
+import { Link } from "react-router-dom";
+import { useItemsControllerFindAll, useNaturesControllerFindAll, useTrainersControllerFindAll } from "@/api/components";
 import { Rank } from "@/api/schemas";
-import { ClickTooltip } from "@/components/ClickTooltip";
-import { Combobox } from "@/components/Combobox";
-import { ItemCard } from "@/components/ItemCard";
-import { ItemImage } from "@/components/ItemImage";
-import { LabeledField } from "@/components/LabeledField";
-import { NatureSelect } from "@/components/NatureSelect";
+import { Group, Row } from "@/components/kit/List";
+import { Picker } from "@/components/kit/Picker";
+import { RankBall } from "@/components/kit/Pills";
 import { usePokemon } from "@/components/pokemon-sheet/context";
-import { RankIcon } from "@/components/RankIcon";
-import { Text } from "@/components/Text";
-import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-/** Text input bound to one number field of the Pokemon; saves after 500ms of no typing and on blur. */
-export const EditableTextField = ({
-  property,
-  className,
-}: {
-  property: "currentHp" | "currentWill" | "trainingPoints";
-  className?: string;
-}) => {
+import { formatEnumName } from "@/lib/utils";
+
+type NumberField = "currentHp" | "currentWill" | "trainingPoints";
+
+/**
+ * Draft text for a number on the sheet. Typing and stepping update it at once; the Pokémon is updated
+ * 400ms after the last change (or on blur), because in view mode every update is saved to the server.
+ */
+export const useNumberDraft = (property: NumberField) => {
   const { updatedPokemon, updatePokemon } = usePokemon();
-  const [value, setValue] = React.useState<string | number>(
-    updatedPokemon != null ? updatedPokemon[property] : "",
-  );
-  const debouncedValue = useDebounce(value, 500);
-  React.useEffect(() => {
-    if (updatedPokemon === undefined) return;
-    let newValue =
-      typeof updatedPokemon[property] == "number"
-        ? parseInt(value?.toString() ?? "")
-        : debouncedValue;
-    if (typeof newValue == "number" && isNaN(newValue)) newValue = 0;
-    if (updatedPokemon[property] !== newValue)
-      updatePokemon({
-        [property]: newValue,
-      });
-  }, [debouncedValue]);
-  React.useEffect(() => {
-    if (updatedPokemon !== undefined) setValue(updatedPokemon[property]);
-  }, [updatedPokemon]);
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setValue(event.target.value);
+  const stored = updatedPokemon?.[property] ?? 0;
+  const [draft, setDraft] = React.useState(String(stored));
+  React.useEffect(() => setDraft(String(stored)), [stored]);
+  const commit = (text = draft) => {
+    const value = Number.parseInt(text, 10);
+    if (!Number.isNaN(value) && value !== stored) updatePokemon({ [property]: value });
   };
-  if (updatedPokemon === undefined) return <div>Loading...</div>;
-  if (typeof updatedPokemon[property] != "number" && typeof updatedPokemon[property] != "string")
-    throw new Error(
-      `Value ${JSON.stringify(updatedPokemon[property])} of ValueInput is not a number or text`,
-    );
+  React.useEffect(() => {
+    const timer = setTimeout(commit, 400);
+    return () => clearTimeout(timer);
+  }, [draft]);
+  return { draft, setDraft, commit, value: Number.parseInt(draft, 10) || 0 };
+};
+
+const fieldLabel = "w-28 shrink-0 text-body text-label lg:w-24";
+
+const FieldRow = ({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) => (
+  <div className="flex min-h-12 items-center gap-3 border-b border-hairline py-1.5 pr-2 pl-4 last:border-b-0 lg:min-h-10 lg:pl-3">
+    {htmlFor ? (
+      <label htmlFor={htmlFor} className={fieldLabel}>
+        {label}
+      </label>
+    ) : (
+      <span className={fieldLabel}>{label}</span>
+    )}
+    <div className="min-w-0 flex-1">{children}</div>
+  </div>
+);
+
+const abilitiesOf = (template: T.PokemonTemplate) =>
+  [template.abilityOne, template.abilityTwo, template.hiddenAbility, template.eventAbility].filter((ability): ability is T.Ability => ability != null);
+
+const NaturePicker = ({ pokemon }: { pokemon: T.Pokemon }) => {
+  const { updatePokemon } = usePokemon();
+  const { data, isFetching } = useNaturesControllerFindAll({});
+  const items = React.useMemo(() => (data ?? []).map((nature) => ({ value: nature.id, label: nature.name, detail: nature.nature })), [data]);
   return (
-    <Input
-      className={`border-none rounded-md p-0 text-3xl text-center leading-none ${className}`}
-      value={value}
-      onChange={handleChange}
-      onBlur={() =>
-        updatePokemon({
-          [property]: typeof updatedPokemon[property] === "number" ? parseInt(String(value)) || 0 : value,
-        })
-      }
+    <Picker
+      label="Nature"
+      items={items}
+      loading={isFetching}
+      value={pokemon.nature?.id ?? ""}
+      clearable={false}
+      onChange={(id) => {
+        const nature = data?.find((candidate) => candidate.id === id);
+        if (nature) updatePokemon({ nature });
+      }}
     />
   );
 };
-export const RankField = () => {
-  const { updatedPokemon, editingMode, updatePokemon } = usePokemon();
-  return (
-    <LabeledField
-      color="bg-pokerole-black"
-      label="Rank"
-      className="p-0"
-      valueClassName="p-0"
-    >
-      <div className="flex flex-row items-center">
-        <Combobox
-          items={Object.keys(Rank).map((rank) => ({
-            label: (
-              <div className="flex items-center space-x-1">
-                <RankIcon rank={Rank[rank as keyof typeof Rank]} size="md" />{" "}
-                <span className="xl:text-xl 2xl:text-3xl">{rank}</span>
-              </div>
-            ),
-            value: rank.toLowerCase(),
-            searchValue: rank,
-          }))}
-          value={updatedPokemon?.rank.toLowerCase()}
-          className="flex-grow"
-          disabled={editingMode !== "edit"}
-          onChange={(value) => {
-            if (updatedPokemon !== undefined)
-              updatePokemon({
-                rank: value.toUpperCase() as Rank,
-              });
-          }}
-        />
-      </div>
-    </LabeledField>
+
+const ItemPicker = ({ pokemon }: { pokemon: T.Pokemon }) => {
+  const { updatePokemon } = usePokemon();
+  const { data, isFetching } = useItemsControllerFindAll({});
+  const items = React.useMemo(
+    () =>
+      (data ?? [])
+        .map((item) => ({ value: item.id, label: item.name, detail: item.pocket ? formatEnumName(item.pocket) : undefined }))
+        .sort((first, second) => first.label.localeCompare(second.label)),
+    [data],
   );
-};
-export const AbilityField = () => {
-  const { updatedPokemon, editingMode, updatePokemon } = usePokemon();
-  const abilityItems = () => {
-    if (updatedPokemon == null) return [];
-    const { abilityOne, abilityTwo, hiddenAbility, eventAbility } = updatedPokemon.pokemonTemplate;
-    return [abilityOne, abilityTwo, hiddenAbility, eventAbility]
-      .filter((ability) => ability != null)
-      .map((ability) => ({
-        label: (
-          <React.Fragment key={ability?.id}>
-            <ClickTooltip
-              trigger={<span>{ability?.name}</span>}
-              content={
-                <div className="max-w-96 whitespace-normal">
-                  <span className="font-move text-lg">{ability?.effect}</span>
-                </div>
-              }
-            />
-          </React.Fragment>
-        ),
-        value: ability?.name.toLowerCase() ?? "",
-        searchValue: ability?.name ?? "",
-      }));
-  };
   return (
-    <LabeledField
-      color="bg-pokerole-black"
-      label="Ability"
-      className="p-0"
-      valueClassName="p-0"
-    >
-      <div className="flex flex-row items-center">
-        {editingMode !== "edit" ? (
-          <Text className="p-2 text-center items-center flex flex-grow">
-            <ClickTooltip
-              trigger={
-                <span className="xl:text-xl 2xl:text-3xl flex-grow">
-                  {updatedPokemon?.ability?.name ?? "-"}
-                </span>
-              }
-              content={
-                <div className="whitespace-normal max-md:max-w-[92vw] md:max-w-96">
-                  <span className="font-move text-lg">
-                    {updatedPokemon?.ability?.effect ?? "Please select an ability"}
-                  </span>
-                </div>
-              }
-            />
-          </Text>
-        ) : (
-          <Combobox
-            items={abilityItems()}
-            value={updatedPokemon?.ability?.name.toLowerCase()}
-            className="flex-grow"
-            disabled={editingMode !== "edit"}
-            onChange={(value) => {
-              if (updatedPokemon === undefined) return;
-              const { abilityOne, abilityTwo, hiddenAbility, eventAbility } =
-                updatedPokemon.pokemonTemplate;
-              const ability = [abilityOne, abilityTwo, hiddenAbility, eventAbility].find(
-                (candidate) => candidate?.name.toLowerCase() === value,
-              );
-              if (ability !== undefined)
-                updatePokemon({
-                  ability,
-                });
-            }}
-          />
-        )}
-      </div>
-    </LabeledField>
-  );
-};
-export const NatureField = () => {
-  const { updatedPokemon, editingMode, updatePokemon } = usePokemon();
-  return (
-    <LabeledField
-      color="bg-pokerole-black"
-      label="Nature"
-      className="p-0"
-      valueClassName="p-0"
-    >
-      <NatureSelect
-        nature={updatedPokemon?.nature}
-        setSelectNature={(nature) => {
-          if (updatedPokemon != null && nature != null)
-            updatePokemon({
-              nature,
-            });
-        }}
-        disabled={editingMode !== "edit"}
-        className="xl:text-xl 2xl:text-3xl"
-      />
-    </LabeledField>
-  );
-};
-export const HeldItemField = () => {
-  const { updatedPokemon, editingMode, updatePokemon } = usePokemon();
-  const { data: items } = useItemsControllerFindAll({});
-  if (updatedPokemon == null) return <></>;
-  const itemOptions = () =>
-    items == null
-      ? []
-      : [...items]
-          .sort((a, b) =>
-            (a?.name ?? "").localeCompare(b?.name ?? "", undefined, {
-              sensitivity: "base",
-            }),
-          )
-          .map((item) => ({
-            label: (
-              <div
-                key={item?.id}
-                className="flex flex-row gap-1 justify-center items-center flex-wrap"
-              >
-                <ItemImage imageFileName={item?.image} className="w-8" />
-                <span className="text-xl">{item?.name}</span>
-              </div>
-            ),
-            value: item?.name.toLowerCase() ?? "",
-            searchValue: item?.name ?? "",
-          }));
-  return (
-    <LabeledField
-      color="bg-pokerole-black"
+    <Picker
       label="Held item"
-      valueClassName={editingMode === "edit" ? "p-0" : ""}
-    >
-      {editingMode !== "edit" ? (
-        <Popover>
-          <PopoverTrigger asChild={true}>
-            <div className="flex flex-row gap-1 justify-center items-center">
-              {updatedPokemon.heldItem != null && (
-                <ItemImage imageFileName={updatedPokemon.heldItem?.image} className="w-8" />
-              )}
-              <Text size="text-xl">{updatedPokemon.heldItem?.name ?? "None"}</Text>
-            </div>
-          </PopoverTrigger>
-          {updatedPokemon.heldItem != null && (
-            <PopoverContent className="p-0 bg-transparent border-none shadow-none">
-              <ItemCard item={updatedPokemon.heldItem} />
-            </PopoverContent>
-          )}
-        </Popover>
-      ) : (
-        <Combobox
-          items={itemOptions()}
-          value={updatedPokemon.heldItem?.name.toLowerCase()}
-          className="flex-grow text-xl w-full"
-          disabled={editingMode !== "edit"}
-          onChange={(value) => {
-            const heldItem = items?.find((item) => item?.name.toLowerCase() === value);
-            if (updatedPokemon != null)
-              updatePokemon({
-                heldItem,
-              });
-          }}
-        />
+      items={items}
+      loading={isFetching}
+      value={pokemon.heldItem?.id ?? ""}
+      placeholder="None"
+      onChange={(id) => updatePokemon({ heldItem: data?.find((item) => item.id === id) ?? null })}
+    />
+  );
+};
+
+const TrainerPicker = ({ pokemon }: { pokemon: T.Pokemon }) => {
+  const { updatePokemon } = usePokemon();
+  const { data, isFetching } = useTrainersControllerFindAll({});
+  const items = React.useMemo(
+    () => (data ?? []).map((trainer) => ({ value: trainer.id, label: trainer.name })).sort((first, second) => first.label.localeCompare(second.label)),
+    [data],
+  );
+  return (
+    <div className="flex items-center gap-1">
+      <Picker
+        label="Trainer"
+        className="flex-1"
+        items={items}
+        loading={isFetching}
+        value={pokemon.trainer?.id ?? ""}
+        placeholder="No trainer"
+        onChange={(id) => updatePokemon({ trainer: data?.find((trainer) => trainer.id === id) ?? null })}
+      />
+      {pokemon.trainer && (
+        <Link to={`/myTrainers/${pokemon.trainer.id}`} className="shrink-0 rounded-lg px-2 py-2 text-subhead font-semibold text-tint hover:bg-tint/10">
+          Open
+        </Link>
       )}
-    </LabeledField>
+    </div>
+  );
+};
+
+const TrainingPoints = () => {
+  const { draft, setDraft, commit } = useNumberDraft("trainingPoints");
+  return (
+    <input
+      id="training-points"
+      type="number"
+      inputMode="numeric"
+      min={0}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => commit()}
+      className="h-11 w-20 rounded-xl bg-fill px-3 text-body tabular-nums lg:h-8 lg:rounded-lg"
+    />
+  );
+};
+
+/** Ability, nature, held item, trainer and rank. Pickers only appear in edit mode, as before. */
+export const InfoGroups = ({ showTrainer = true }: { showTrainer?: boolean }) => {
+  const { updatedPokemon: pokemon, editingMode, updatePokemon } = usePokemon();
+  if (!pokemon) return null;
+  const editing = editingMode === "edit";
+  const abilities = abilitiesOf(pokemon.pokemonTemplate);
+  return (
+    <div className="flex flex-col gap-6 @3xl:gap-5">
+      <Group title="Ability">
+        {editing ? (
+          <div className="p-2">
+            <Picker
+              label="Ability"
+              items={abilities.map((ability) => ({ value: ability.id, label: ability.name, detail: ability.effect }))}
+              value={pokemon.ability?.id ?? ""}
+              clearable={false}
+              placeholder="Choose an ability"
+              onChange={(id) => {
+                const ability = abilities.find((candidate) => candidate.id === id);
+                if (ability) updatePokemon({ ability });
+              }}
+            />
+          </div>
+        ) : null}
+        {pokemon.ability ? (
+          <div className="px-4 py-2.5 lg:px-3 lg:py-2">
+            <p className="text-body font-semibold">{pokemon.ability.name}</p>
+            <p className="mt-0.5 text-subhead text-label-2">{pokemon.ability.effect}</p>
+          </div>
+        ) : (
+          !editing && <p className="px-4 py-3 text-subhead text-label-2 lg:px-3">No ability chosen. Use Edit to pick one.</p>
+        )}
+      </Group>
+      <Group title="Details">
+        <FieldRow label="Rank">
+          {editing ? (
+            <Picker
+              label="Rank"
+              items={Object.values(Rank).map((rank) => ({ value: rank, label: formatEnumName(rank) }))}
+              value={pokemon.rank}
+              clearable={false}
+              onChange={(rank) => updatePokemon({ rank: rank as T.Rank })}
+            />
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-body text-label-2">
+              <RankBall rank={pokemon.rank} />
+              {formatEnumName(pokemon.rank)}
+            </span>
+          )}
+        </FieldRow>
+        <FieldRow label="Nature">
+          {editing ? <NaturePicker pokemon={pokemon} /> : <span className="text-body text-label-2">{pokemon.nature ? `${pokemon.nature.name} · ${pokemon.nature.nature}` : "None"}</span>}
+        </FieldRow>
+        <FieldRow label="Held item">
+          {editing ? <ItemPicker pokemon={pokemon} /> : <span className="text-body text-label-2">{pokemon.heldItem?.name ?? "None"}</span>}
+        </FieldRow>
+        {showTrainer && (
+          <FieldRow label="Trainer">
+            <TrainerPicker pokemon={pokemon} />
+          </FieldRow>
+        )}
+        <FieldRow label="Training points" htmlFor="training-points">
+          <TrainingPoints />
+        </FieldRow>
+      </Group>
+      {pokemon.heldItem?.description && (
+        <Group title={pokemon.heldItem.name}>
+          <p className="px-4 py-3 text-subhead text-label-2 lg:px-3">{pokemon.heldItem.description}</p>
+        </Group>
+      )}
+      <Group title="Species">
+        <Row title="Height" value={`${pokemon.pokemonTemplate.height} m`} />
+        <Row title="Weight" value={`${pokemon.pokemonTemplate.weight} kg`} />
+        <Row title="Pokédex entry" to={`/pokemon/${pokemon.pokemonTemplate.id}`} />
+      </Group>
+    </div>
   );
 };

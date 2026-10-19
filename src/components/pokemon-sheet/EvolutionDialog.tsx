@@ -1,108 +1,70 @@
-import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { useHover } from "@uidotdev/usehooks";
-import * as React from "react";
+import { ChevronRight } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { usePokemonTemplatesControllerFindMany } from "@/api/components";
-import { EvolutionDirection } from "@/api/schemas";
-import { Box } from "@/components/Box";
+import { Group } from "@/components/kit/List";
+import { TypePill } from "@/components/kit/Pills";
+import { Sheet } from "@/components/kit/Sheet";
+import { Sprite } from "@/components/kit/Sprite";
 import { usePokemon } from "@/components/pokemon-sheet/context";
-import { PokemonImage } from "@/components/PokemonImage";
-import { Text } from "@/components/Text";
-import { Popover, PopoverTrigger } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
-import { capitalize } from "@/lib/utils";
-export const EvolutionDialog = ({ trigger }: { trigger: React.ReactNode }) => {
+import { useToast } from "@/hooks/use-toast";
+import { formatEnumName } from "@/lib/utils";
+
+const condition = (evolution: T.Evolution) =>
+  [formatEnumName(evolution.kind), evolution.item ?? evolution.special ?? (evolution.value !== undefined ? String(evolution.value) : undefined)].filter(Boolean).join(" · ");
+
+/** Pick the species or form to change into; the sheet keeps its stats and moves. */
+export const EvolutionSheet = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
   const { updatedPokemon, updatePokemon } = usePokemon();
-  const { data: templates } = usePokemonTemplatesControllerFindMany({
-    pathParams: {
-      ids: updatedPokemon?.pokemonTemplate.evolutions.map((evolution) => evolution.targetId) ?? [],
-    },
-  });
-  const [open, setOpen] = React.useState(false);
-  const evolve = (evolution: T.Evolution) => {
-    const template = templates?.find((candidate) => candidate.id === evolution.targetId);
-    if (template != null) {
-      updatePokemon({
-        pokemonTemplate: template,
-      });
-      setOpen(false);
-    }
+  const { toast } = useToast();
+  const evolutions = updatedPokemon?.pokemonTemplate.evolutions ?? [];
+  const { data: templates } = usePokemonTemplatesControllerFindMany({ pathParams: { ids: evolutions.map((evolution) => evolution.targetId) } });
+  const evolve = (template: T.PokemonTemplate) => {
+    updatePokemon({ pokemonTemplate: template });
+    onOpenChange(false);
+    toast({ title: `Now a ${template.name}` });
   };
-  const evolvesFrom =
-    updatedPokemon?.pokemonTemplate.evolutions.filter(
-      (evolution) => evolution.type === EvolutionDirection.FROM,
-    ) ?? [];
-  const evolvesTo =
-    updatedPokemon?.pokemonTemplate.evolutions.filter(
-      (evolution) => evolution.type === EvolutionDirection.TO,
-    ) ?? [];
-  return templates === undefined ? (
-    <></>
-  ) : (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild={true}>{trigger}</PopoverTrigger>
-      <PopoverPrimitive.Content>
-        <Box
-          color="bg-pokerole-beige"
-          className="p-2 flex flex-row space-x-2 mt-2 flex-wrap max-w-[97vw] mr-2 justify-center"
-        >
-          {evolvesFrom.map((evolution, index) => (
-            <EvolutionCard
-              key={index}
-              evolution={evolution}
-              evolutionTemplate={templates.find((template) => template.id === evolution.targetId)}
-              onClick={evolve}
-            />
-          ))}
-          {evolvesFrom.length > 0 && evolvesTo.length > 0 && (
-            <Separator orientation="vertical" className="h-auto" />
-          )}
-          {evolvesTo.map((evolution, index) => (
-            <EvolutionCard
-              key={index}
-              evolution={evolution}
-              evolutionTemplate={templates.find((template) => template.id === evolution.targetId)}
-              onClick={evolve}
-            />
-          ))}
-        </Box>
-      </PopoverPrimitive.Content>
-    </Popover>
-  );
-};
-const EvolutionCard = ({
-  evolution,
-  evolutionTemplate,
-  onClick,
-}: {
-  evolution: T.Evolution;
-  evolutionTemplate: T.PokemonTemplate | undefined;
-  onClick?: (evolution: T.Evolution) => void;
-}) => {
-  const [ref, hovering] = useHover<HTMLDivElement>();
-  return evolutionTemplate === undefined ? (
-    <></>
-  ) : (
-    <div
-      className="flex flex-row space-x-2 items-center"
-      ref={ref}
-      onClick={() => onClick?.(evolution)}
-    >
-      <Box
-        color="bg-pokerole-beige"
-        className="p-2 flex flex-col items-center hover:bg-pokerole-black transition-colors duration-300 ease-in-out"
-      >
-        <PokemonImage
-          imageFileName={evolutionTemplate.image}
-          type="book"
-          className="w-20 h-20 image-rendering-pixelated"
-        />
-        <Text
-          size="text-sm"
-          color={`${hovering ? "text-white" : "text-pokerole-black"}`}
-          className="transition-colors duration-300"
-        >{`${capitalize(evolution.type)}: ${evolutionTemplate.name}`}</Text>
-      </Box>
-    </div>
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title="Evolve or change form" description="The sheet keeps its stats, moves and HP." initialExpanded>
+      <div className="flex flex-col gap-6 p-4">
+        {(["TO", "FROM"] as const).map((direction) => {
+          const list = evolutions.filter((evolution) => evolution.type === direction);
+          if (list.length === 0) return null;
+          return (
+            <Group key={direction} title={direction === "TO" ? "Evolves into" : "Evolves from"}>
+              {list.map((evolution, index) => {
+                const template = templates?.find((candidate) => candidate.id === evolution.targetId);
+                return template ? (
+                  <button
+                    key={`${evolution.targetId}-${index}`}
+                    type="button"
+                    onClick={() => evolve(template)}
+                    className="group/row flex w-full items-center gap-3 pl-3 text-left transition-colors hover:bg-raised active:bg-fill"
+                  >
+                    <Sprite image={template.image} set="book" className="size-14" />
+                    <span className="flex min-h-18 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-3 group-last/row:border-b-0">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-body font-semibold">{template.name}</span>
+                        <span className="block text-footnote text-label-2">{condition(evolution)}</span>
+                        <span className="mt-1 flex gap-1">
+                          {template.types.map((type) => (
+                            <TypePill key={type} type={type} size="sm" />
+                          ))}
+                        </span>
+                      </span>
+                      <ChevronRight aria-hidden className="size-4 text-label-3" />
+                    </span>
+                  </button>
+                ) : (
+                  <div key={`${evolution.targetId}-${index}`} className="flex h-18 items-center gap-3 px-3">
+                    <div className="skeleton size-14 rounded-xl" />
+                    <div className="skeleton h-4 w-32 rounded" />
+                  </div>
+                );
+              })}
+            </Group>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 };

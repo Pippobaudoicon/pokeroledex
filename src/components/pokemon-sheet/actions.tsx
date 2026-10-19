@@ -1,222 +1,170 @@
-import { type InvalidateQueryFilters, useQueryClient } from "@tanstack/react-query";
-import type * as React from "react";
-import { FaSave } from "react-icons/fa";
-import {
-  FaDna,
-  FaLock,
-  FaTrash,
-  FaUnlock,
-  FaWrench,
-  FaXmark,
-} from "react-icons/fa6";
-import { GrUpgrade } from "react-icons/gr";
-import { Link, useNavigate } from "react-router-dom";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowUpCircle, Dna, Lock, Unlock, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
-import {
-  usePokemonControllerCreate,
-  usePokemonControllerRemove,
-} from "@/api/components";
-import { queryKeyFn } from "@/api/context";
+import { usePokemonControllerCreate, usePokemonControllerRemove } from "@/api/components";
 import { Rank } from "@/api/schemas";
-import { CollapsableButton } from "@/components/CollapsableButton";
+import { button } from "@/components/kit/button";
 import { usePokemon } from "@/components/pokemon-sheet/context";
-import { EvolutionDialog } from "@/components/pokemon-sheet/EvolutionDialog";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { EvolutionSheet } from "@/components/pokemon-sheet/EvolutionDialog";
 import { useToast } from "@/hooks/use-toast";
-import { appRoutes } from "@/routes";
-const DeletePokemonDialog = ({
-  children,
-  pokemon,
-}: {
-  children: React.ReactNode;
-  pokemon: T.Pokemon;
-}) => {
+import { cn } from "@/lib/utils";
+
+/** iOS-style alert to confirm deleting the Pokémon. */
+const DeleteAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: boolean; onOpenChange: (open: boolean) => void }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { mutate } = usePokemonControllerRemove({
+  const { mutate, isPending } = usePokemonControllerRemove({
     onSuccess: () => {
-      toast({
-        title: "Pokemon deleted",
-        description: (
-          <>
-            <span>Your pokemon has been deleted.</span>
-          </>
-        ),
-      });
+      toast({ title: `${pokemon.pokemonTemplate.name} was deleted` });
+      onOpenChange(false);
       navigate("/myPokemon");
-      // Bare keys (not { queryKey }) make react-query v5 invalidate every query.
-      queryClient.invalidateQueries(
-        queryKeyFn({
-          path: "/pokemon/{id}",
-          operationId: "pokemonControllerFindOne",
-          variables: {
-            pathParams: {
-              id: pokemon.id,
-            },
-          },
-        }) as InvalidateQueryFilters,
-      );
-      queryClient.invalidateQueries(
-        queryKeyFn({
-          path: "/pokemon",
-          operationId: "pokemonControllerFindAll",
-          variables: {},
-        }) as InvalidateQueryFilters,
-      );
+      queryClient.invalidateQueries({ queryKey: ["pokemon"] });
     },
-    onError: (error) => {
-      toast({
-        title: "Failed to delete pokemon",
-        // apiFetch errors carry no payload, so this is always undefined (kept from the hosted build).
-        description: (error as Partial<T.ApiError>)?.payload,
-      });
-    },
+    onError: () => toast({ title: "Couldn’t delete the Pokémon", description: "Check your connection and try again." }),
   });
-  const deletePokemon = () => {
-    mutate({
-      pathParams: {
-        id: pokemon?.id,
-      },
-    });
-  };
   return (
-    <Dialog>
-      <DialogTrigger asChild={true}>{children}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            Are you sure you want to delete{" "}
-            {pokemon?.pokemonTemplate.name}?
-          </DialogTitle>
-          <DialogDescription>This action cannot be undone.</DialogDescription>
-        </DialogHeader>
-        <Button variant="red" onClick={deletePokemon}>
-          Delete
-        </Button>
-      </DialogContent>
-    </Dialog>
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content className="fixed top-1/2 left-1/2 z-50 w-[min(300px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-surface/95 text-center shadow-float backdrop-blur-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [--tw-duration:200ms]">
+          <div className="px-5 pt-5 pb-4">
+            <DialogPrimitive.Title className="text-headline font-semibold">Delete {pokemon.pokemonTemplate.name}?</DialogPrimitive.Title>
+            <DialogPrimitive.Description className="mt-1 text-footnote text-label-2">Its sheet, moves and stats are removed. This can’t be undone.</DialogPrimitive.Description>
+          </div>
+          <div className="grid grid-cols-2 border-t border-hairline">
+            <DialogPrimitive.Close className="h-11 border-r border-hairline text-body text-tint hover:bg-fill">Cancel</DialogPrimitive.Close>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => mutate({ pathParams: { id: pokemon.id } })}
+              className="h-11 text-body font-semibold text-[#d92d20] hover:bg-fill disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 };
-const DeletePokemonButton = () => {
-  const { updatedPokemon } = usePokemon();
-  if (updatedPokemon == null) return <></>;
-  return (
-    <>
-      <DeletePokemonDialog pokemon={updatedPokemon}>
-        <CollapsableButton
-          text="Delete Pokemon"
-          icon={<FaTrash size={20} />}
-          variant="red"
-        />
-      </DeletePokemonDialog>
-    </>
-  );
-};
+
+const MenuItem = ({ icon, children, onClick, destructive = false, disabled = false }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; destructive?: boolean; disabled?: boolean }) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={cn(
+      "flex min-h-11 w-full items-center justify-between gap-6 border-b border-hairline px-4 text-left text-body last:border-b-0 hover:bg-fill disabled:opacity-40 lg:min-h-9 lg:px-3",
+      destructive && "text-[#d92d20]",
+    )}
+  >
+    {children}
+    <span aria-hidden className="[&_svg]:size-4.5">
+      {icon}
+    </span>
+  </button>
+);
+
+/** View mode: Edit, plus a menu with Rank up, Evolve and Delete. Editing: Cancel and Save. */
 export const SheetActions = () => {
-  const {
-    updatedPokemon,
-    editingMode,
-    setEditingMode,
-    savePokemon,
-    cancelEdit,
-  } = usePokemon();
+  const { updatedPokemon, editingMode, setEditingMode, savePokemon, cancelEdit } = usePokemon();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [evolving, setEvolving] = React.useState(false);
+  if (!updatedPokemon) return null;
+  if (editingMode !== "view")
+    return (
+      <>
+        <button type="button" onClick={cancelEdit} className={button({ variant: "plain" })}>
+          Cancel
+        </button>
+        <button type="button" onClick={savePokemon} className={button({ variant: "filled" })}>
+          Save
+        </button>
+      </>
+    );
   return (
     <>
-      {editingMode === "view" ? (
-        <>
-          {updatedPokemon !== undefined && updatedPokemon.pokemonTemplate.evolutions.length > 0 && (
-            <EvolutionDialog
-              trigger={
-                <CollapsableButton
-                  text="Evolve"
-                  icon={<FaDna size={20} />}
-                  variant="green"
-                />
-              }
-            />
-          )}
-          <CollapsableButton
-            onClick={() => {
-              setEditingMode("rankUp");
-            }}
-            id="rank-up-button"
-            text="Rank Up"
-            icon={<GrUpgrade size={20} />}
-            variant="blue"
-            disabled={updatedPokemon?.rank === Rank.CHAMPION}
-          />
-          <CollapsableButton
-            onClick={() => {
-              setEditingMode("edit");
-            }}
-            id="edit-pokemon-button"
-            text="Edit"
-            icon={<FaWrench size={20} />}
-            variant="yellow"
-          />
-          <DeletePokemonButton />
-        </>
-      ) : (
-        <>
-          <CollapsableButton
-            onClick={() => {
-              savePokemon();
-            }}
-            text="Save"
-            icon={<FaSave size={20} />}
-            variant="green"
-          />
-          <CollapsableButton
-            onClick={() => {
-              cancelEdit();
-            }}
-            text="Cancel"
-            icon={<FaXmark size={20} />}
-            variant="red"
-          />
-        </>
-      )}
+      <button type="button" onClick={() => setEditingMode("edit")} className={button({ variant: "tinted" })}>
+        <Pencil aria-hidden className="size-4" />
+        Edit
+      </button>
+      <PopoverPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverPrimitive.Trigger aria-label="More actions" className={button({ variant: "gray", size: "icon" })}>
+          <MoreHorizontal className="size-5" />
+        </PopoverPrimitive.Trigger>
+        <PopoverPrimitive.Portal>
+          <PopoverPrimitive.Content
+            align="end"
+            sideOffset={6}
+            className="z-50 w-60 overflow-hidden rounded-xl border border-hairline bg-surface/95 shadow-float backdrop-blur-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [--tw-duration:150ms]"
+          >
+            <MenuItem
+              icon={<ArrowUpCircle />}
+              disabled={updatedPokemon.rank === Rank.CHAMPION}
+              onClick={() => {
+                setMenuOpen(false);
+                setEditingMode("rankUp");
+              }}
+            >
+              Rank up
+            </MenuItem>
+            {updatedPokemon.pokemonTemplate.evolutions.length > 0 && (
+              <MenuItem
+                icon={<Dna />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEvolving(true);
+                }}
+              >
+                Evolve or change form
+              </MenuItem>
+            )}
+            <MenuItem
+              icon={<Trash2 />}
+              destructive
+              onClick={() => {
+                setMenuOpen(false);
+                setDeleting(true);
+              }}
+            >
+              Delete Pokémon
+            </MenuItem>
+          </PopoverPrimitive.Content>
+        </PopoverPrimitive.Portal>
+      </PopoverPrimitive.Root>
+      <DeleteAlert pokemon={updatedPokemon} open={deleting} onOpenChange={setDeleting} />
+      {evolving && <EvolutionSheet open={evolving} onOpenChange={setEvolving} />}
     </>
   );
 };
+
+/** Saves a generated (unsaved) Pokémon to My Pokémon. */
 export const AddToMyPokemon = () => {
   const { updatedPokemon } = usePokemon();
   const { toast } = useToast();
-  const { mutate } = usePokemonControllerCreate({
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { mutate, isPending } = usePokemonControllerCreate({
     onSuccess: (pokemon) => {
+      queryClient.invalidateQueries({ queryKey: ["pokemon"] });
       toast({
-        title: "Pokemon created",
-        description: (
-          <>
-            <span>
-              Your new pokemon has been created.{" "}
-              <Link to={appRoutes.find((route) => route.name === "My Pokemon")?.path + `/${pokemon.id}`}>
-                <span className="text-attributes-blue-dark underline hover:text-attributes-blue">
-                  View it here
-                </span>
-              </Link>
-            </span>
-          </>
+        title: `${pokemon.pokemonTemplate?.name ?? "Pokémon"} joined your Pokémon`,
+        action: (
+          <button type="button" onClick={() => navigate(`/myPokemon/${pokemon.id}`)} className={button({ variant: "tinted", size: "sm" })}>
+            Open
+          </button>
         ),
       });
     },
-    onError: (error) => {
-      toast({
-        title: "Failed to create pokemon",
-        description: (error as Partial<T.ApiError>)?.payload,
-      });
-    },
+    onError: () => toast({ title: "Couldn’t add the Pokémon", description: "Check your connection and try again." }),
   });
-  const createPokemon = () => {
+  const create = () => {
     const body: T.CreatePokemonBody = {
       pokemonTemplateId: updatedPokemon?.pokemonTemplate.id ?? "",
       rank: updatedPokemon?.rank,
@@ -228,47 +176,23 @@ export const AddToMyPokemon = () => {
       currentHp: updatedPokemon?.currentHp,
       currentWill: updatedPokemon?.currentWill,
     };
-    mutate({
-      body,
-    });
+    mutate({ body });
   };
   return (
-    <div id="create-pokemon-button">
-      <CollapsableButton
-        id="create-pokemon-button"
-        text="Add to my pokemon"
-        icon={<FaSave size={20} />}
-        variant="green"
-        onClick={() => {
-          createPokemon();
-        }}
-      />
-    </div>
+    <button type="button" onClick={create} disabled={isPending} className={button({ variant: "filled" })}>
+      <Plus aria-hidden className="size-4" strokeWidth={2.5} />
+      Add to My Pokémon
+    </button>
   );
 };
+
+/** Keeps a generated Pokémon when the encounter is generated again. */
 export const LockButton = () => {
   const { isLocked, lockedPressed } = usePokemon();
   return (
-    <>
-      {isLocked ? (
-        <CollapsableButton
-          text="Unlock Pokemon"
-          icon={<FaLock size={20} />}
-          variant="green"
-          onClick={() => {
-            lockedPressed?.();
-          }}
-        />
-      ) : (
-        <CollapsableButton
-          text="Lock Pokemon"
-          icon={<FaUnlock size={20} />}
-          variant="green"
-          onClick={() => {
-            lockedPressed?.();
-          }}
-        />
-      )}
-    </>
+    <button type="button" aria-pressed={isLocked ?? false} onClick={() => lockedPressed?.()} className={button({ variant: isLocked ? "tinted" : "gray" })}>
+      {isLocked ? <Lock aria-hidden className="size-4" /> : <Unlock aria-hidden className="size-4" />}
+      {isLocked ? "Locked" : "Lock"}
+    </button>
   );
 };

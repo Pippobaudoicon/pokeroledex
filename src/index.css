@@ -14,7 +14,50 @@
 }
 
 @theme {
-  --font-sans: "Trebuchet MS", sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: Square, -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, "Segoe UI", sans-serif;
+
+  /* App palette: warm paper greys, Pokérole red as the tint (AA on white and canvas). */
+  --color-canvas: #f4f3ef;
+  --color-surface: #ffffff;
+  --color-raised: #faf9f6;
+  --color-fill: rgb(118 110 95 / 0.12);
+  --color-fill-strong: rgb(118 110 95 / 0.2);
+  --color-label: #1d1b17;
+  --color-label-2: #5d594f;
+  --color-label-3: #6b665c;
+  --color-hairline: rgb(60 55 45 / 0.13);
+  --color-tint: #c93d24;
+  --color-tint-hover: #b8361f;
+  --color-focus: #0a66d8;
+  --color-hp: #2f9e53;
+  --color-will: #3d6fd8;
+
+  /* Type scale (iOS text styles); desktop shrinks it below, see :root. */
+  --text-large-title: var(--ts-large-title);
+  --text-large-title--line-height: 1.12;
+  --text-title-1: var(--ts-title-1);
+  --text-title-1--line-height: 1.18;
+  --text-title-2: var(--ts-title-2);
+  --text-title-2--line-height: 1.22;
+  --text-title-3: var(--ts-title-3);
+  --text-title-3--line-height: 1.25;
+  --text-headline: var(--ts-headline);
+  --text-headline--line-height: 1.3;
+  --text-body: var(--ts-body);
+  --text-body--line-height: 1.4;
+  --text-callout: var(--ts-callout);
+  --text-callout--line-height: 1.38;
+  --text-subhead: var(--ts-subhead);
+  --text-subhead--line-height: 1.35;
+  --text-footnote: var(--ts-footnote);
+  --text-footnote--line-height: 1.35;
+  --text-caption: var(--ts-caption);
+  --text-caption--line-height: 1.3;
+
+  --shadow-card: 0 1px 2px rgb(40 32 20 / 0.06), 0 0 0 0.5px rgb(40 32 20 / 0.05);
+  --shadow-float: 0 18px 50px -12px rgb(40 32 20 / 0.32), 0 2px 10px rgb(40 32 20 / 0.08), 0 0 0 0.5px rgb(40 32 20 / 0.08);
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   --breakpoint-2xs: 330px;
   --breakpoint-xs: 400px;
 
@@ -234,10 +277,46 @@
   * {
     border-color: hsl(var(--border));
   }
+  :root {
+    --ts-large-title: 2.125rem;
+    --ts-title-1: 1.75rem;
+    --ts-title-2: 1.375rem;
+    --ts-title-3: 1.25rem;
+    --ts-headline: 1.0625rem;
+    --ts-body: 1.0625rem;
+    --ts-callout: 1rem;
+    --ts-subhead: 0.9375rem;
+    --ts-footnote: 0.8125rem;
+    --ts-caption: 0.75rem;
+  }
+  /* Desktop is read up close with a pointer: Mac-sized text, nothing oversized. */
+  @media (min-width: 1024px) {
+    :root {
+      --ts-large-title: 1.625rem;
+      --ts-title-1: 1.375rem;
+      --ts-title-2: 1.125rem;
+      --ts-title-3: 1rem;
+      --ts-headline: 0.875rem;
+      --ts-body: 0.875rem;
+      --ts-callout: 0.875rem;
+      --ts-subhead: 0.8125rem;
+      --ts-footnote: 0.75rem;
+      --ts-caption: 0.6875rem;
+    }
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
   body {
-    background-color: rgb(80 78 71);
-    color: hsl(var(--foreground));
+    background-color: var(--color-canvas);
+    color: var(--color-label);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
   /* v3 faded gradients to their own colour at 0 alpha, v4 to transparent black */
   [class*="from-"] {
@@ -392,4 +471,33 @@
 }
 @utility slide-out-to-right-full {
   --tw-exit-translate-x: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Skeleton shimmer for content that is on its way. */
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@utility skeleton {
+  background: linear-gradient(90deg, var(--color-fill) 25%, var(--color-fill-strong) 50%, var(--color-fill) 75%) 0 0 / 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 0.375rem;
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }

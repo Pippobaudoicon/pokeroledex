@@ -1,487 +1,358 @@
-import { useHover } from "@uidotdev/usehooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { Check, Plus, X } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
-import { CgPokemon } from "react-icons/cg";
-import { FaPlus } from "react-icons/fa6";
-import { Link } from "react-router-dom";
-import {
-  usePokemonControllerCreate,
-  usePokemonTemplatesControllerFindMany,
-  usePokemonTemplatesControllerFindOne,
-} from "@/api/components";
-import { EvolutionDirection, Rank } from "@/api/schemas";
-import { Box } from "@/components/Box";
-import { ClickTooltip } from "@/components/ClickTooltip";
-import { CollapsableButton } from "@/components/CollapsableButton";
-import { LabeledField } from "@/components/LabeledField";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MoveCard } from "@/components/MoveCard";
-import { PipRow, type PipRowProps } from "@/components/Pips";
-import { PokemonImage } from "@/components/PokemonImage";
-import { RankIcon } from "@/components/RankIcon";
-import { StatBox } from "@/components/StatBox";
-import { Text } from "@/components/Text";
-import { TypeBadges } from "@/components/TypeBadges";
-import { Separator } from "@/components/ui/separator";
+import { Link, useNavigate } from "react-router-dom";
+import { usePokemonControllerCreate, usePokemonTemplatesControllerFindOne } from "@/api/components";
+import { Rank } from "@/api/schemas";
+import { button } from "@/components/kit/button";
+import { Group, Row } from "@/components/kit/List";
+import { MoveRow } from "@/components/kit/MoveRow";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { RankBall, TypePill, typeColor } from "@/components/kit/Pills";
+import { Pokeball } from "@/components/kit/Pokeball";
+import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
+import { Sprite } from "@/components/kit/Sprite";
+import { useDex } from "@/hooks/use-dex";
 import { useToast } from "@/hooks/use-toast";
-import { capitalize } from "@/lib/utils";
-import { appRoutes } from "@/routes";
-const AddToMyPokemonButton = ({
-  pokemonTemplateId,
-}: {
-  pokemonTemplateId: string;
-}) => {
+import { useTypeEffectiveness } from "@/lib/type-chart";
+import { cn, formatEnumName } from "@/lib/utils";
+import { attributeNames } from "@/pages/PokemonCatalog/filters";
+
+type Summary = T.PokemonTemplateSummary;
+type Layout = "page" | "sheet" | "inspector";
+
+const ranks = Object.values(Rank);
+
+/** Type-tinted wash behind the artwork. */
+export const typeWash = (types: T.PokemonType[]) =>
+  `linear-gradient(160deg, color-mix(in oklab, ${typeColor(types[0])} 34%, white) 0%, color-mix(in oklab, ${typeColor(types[1] ?? types[0])} 16%, white) 70%, var(--color-surface) 100%)`;
+
+const AddButton = ({ template, className }: { template: Summary; className?: string }) => {
   const { toast } = useToast();
-  const { mutate: createPokemon } = usePokemonControllerCreate({
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [added, setAdded] = React.useState<string>();
+  const { mutate, isPending } = usePokemonControllerCreate({
     onSuccess: (pokemon) => {
+      setAdded(pokemon.id);
+      queryClient.invalidateQueries({ queryKey: ["pokemon"] });
       toast({
-        title: "Pokemon created",
-        description: (
-          <>
-            <span>
-              Your new pokemon has been created.{" "}
-              <Link
-                to={
-                  appRoutes.find((route) => route.name === "My Pokemon")?.path +
-                  `/${pokemon.id}`
-                }
-              >
-                <span className="text-attributes-blue-dark underline hover:text-attributes-blue">
-                  View it here
-                </span>
-              </Link>
-            </span>
-          </>
+        title: `${template.name} joined your Pokémon`,
+        description: "Its sheet is ready to fill in.",
+        action: (
+          <button type="button" onClick={() => navigate(`/myPokemon/${pokemon.id}`)} className={button({ variant: "tinted", size: "sm" })}>
+            Open
+          </button>
         ),
       });
     },
-    onError: () => {
-      toast({
-        title: "Failed to create pokemon",
-        // apiFetch discards the original payload, so the existing toast has no description.
-        description: undefined,
-      });
-    },
+    onError: () => toast({ title: "Couldn’t add the Pokémon", description: "Check your connection and try again." }),
   });
+  if (added)
+    return (
+      <Link to={`/myPokemon/${added}`} className={cn(button({ variant: "tinted", size: "lg" }), className)}>
+        <Check aria-hidden className="size-5 lg:size-4" />
+        Added · Open sheet
+      </Link>
+    );
   return (
-    <CollapsableButton
-      text="Create new"
-      icon={<FaPlus size={20} />}
-      variant="green"
-      onClick={() => {
-        createPokemon({
-          body: { pokemonTemplateId, rank: Rank.UNRANKED, moveIds: [] },
-        });
-      }}
-    />
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={() => mutate({ body: { pokemonTemplateId: template.id, rank: Rank.UNRANKED, moveIds: [] } })}
+      className={cn(button({ variant: "filled", size: "lg" }), className)}
+    >
+      <Plus aria-hidden className="size-5 lg:size-4" strokeWidth={2.5} />
+      {isPending ? "Adding…" : "Add to My Pokémon"}
+    </button>
   );
 };
-const PokemonDetailHeader = ({
-  pokemonTemplate,
-}: {
-  pokemonTemplate: T.PokemonTemplate;
-}) => (
-  <Box
-    color="bg-pokerole-black"
-    className="pokemon-detail-header p-2 col-span-full grid grid-cols-12 gap-2 items-center"
-  >
-    <div className="2xl:col-span-5 col-span-full flex flex-row space-x-1 items-center">
-      <Text color="text-white">
-        {"Name: "}
-        {pokemonTemplate.name}
-      </Text>
+
+const Hero = ({ template, layout, onClose }: { template: Summary; layout: Layout; onClose?: () => void }) => (
+  <div className="relative overflow-hidden" style={{ backgroundImage: typeWash(template.types) }}>
+    <Pokeball className="absolute -top-16 -right-16 size-72 text-white/50" strokeWidth={3.5} />
+    {layout === "inspector" && (
+      <div className="relative flex justify-end gap-1 p-2">
+        <button type="button" onClick={onClose} aria-label="Close details" className={cn(button({ variant: "gray", size: "icon" }), "bg-white/60 hover:bg-white/80")}>
+          <X className="size-4" />
+        </button>
+      </div>
+    )}
+    <div className={cn("relative flex items-end gap-3 px-4 pb-4 @lg:gap-5 @lg:px-6", layout === "page" && "pt-4", layout === "sheet" && "pt-10")}>
+      <div className="min-w-0 flex-1 pb-1">
+        <p className="text-subhead font-medium text-label-2 tabular-nums">
+          #{template.dexID || template.number}
+          {template.dexCategory && <span className="font-normal"> · {template.dexCategory}</span>}
+        </p>
+        <h2 className="font-display text-title-1 leading-tight break-words">{template.name}</h2>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {template.types.map((type) => (
+            <TypePill key={type} type={type} />
+          ))}
+          {template.legendary && <span className="inline-flex h-6 items-center rounded-full bg-white/70 px-2.5 text-footnote font-semibold">Legendary</span>}
+          {template.goodStarter && <span className="inline-flex h-6 items-center rounded-full bg-white/70 px-2.5 text-footnote font-semibold">Good starter</span>}
+        </div>
+      </div>
+      <Sprite image={template.image} set="book" eager className="size-32 drop-shadow-[0_8px_16px_rgb(0_0_0/0.18)] @lg:size-40" />
     </div>
-    <div className="text-white text-3xl font-square leading-none flex flex-row items-center space-x-2 xs:col-span-9 2xl:col-span-5 col-span-full">
-      <Text color="text-white">Type:</Text>
-      <TypeBadges
-        typeOne={pokemonTemplate.types[0]}
-        typeTwo={pokemonTemplate.types[1]}
-      />
-    </div>
-    <div className="flex flex-row xs:justify-end justify-center space-x-1 text-white leading-none xs:col-span-3 2xl:col-span-2 col-span-full">
-      <AddToMyPokemonButton pokemonTemplateId={pokemonTemplate.id} />
-    </div>
-  </Box>
+  </div>
 );
-const StaticPips = ({
-  numberOfPips,
-  numberOfSetPips,
-  numberOfSettablePips,
-  className,
-  pipClassName,
-}: Pick<
-  PipRowProps,
-  | "numberOfPips"
-  | "numberOfSetPips"
-  | "numberOfSettablePips"
-  | "className"
-  | "pipClassName"
->) => (
-  <>
-    <PipRow
-      numberOfPips={numberOfPips}
-      numberOfSetPips={numberOfSetPips}
-      numberOfSelectedPips={0}
-      numberOfSelectablePips={0}
-      numberOfSettablePips={numberOfSettablePips}
-      className={className}
-      pipClassName={pipClassName}
-    />
-  </>
+
+/** Base attribute as filled pips, the room to grow to its max as hollow ones. */
+const AttributeRow = ({ name, base, max }: { name: string; base: number; max: number }) => (
+  <div className="flex items-center gap-3 border-b border-hairline py-2 pr-4 pl-4 last:border-b-0 lg:py-1.5 lg:pr-3 lg:pl-3">
+    <span className="w-22 shrink-0 text-body">{name}</span>
+    <span className="flex flex-1 gap-1" aria-hidden>
+      {Array.from({ length: Math.max(max, base) }, (_, index) => (
+        <span
+          key={index}
+          className={cn("h-2.5 max-w-6 flex-1 rounded-full", index < base ? "bg-label" : "border-[1.5px] border-label/35 bg-transparent")}
+        />
+      ))}
+    </span>
+    <span className="w-12 shrink-0 text-right text-subhead text-label-2 tabular-nums">
+      <span className="sr-only">{`base ${base}, max ${max}`}</span>
+      <span aria-hidden>
+        <span className="font-semibold text-label">{base}</span>/{max}
+      </span>
+    </span>
+  </div>
 );
-const RANK_ORDER: Rank[] = [
-  Rank.UNRANKED,
-  Rank.STARTER,
-  Rank.ROOKIE,
-  Rank.STANDARD,
-  Rank.ADVANCED,
-  Rank.EXPERT,
-  Rank.ACE,
-  Rank.MASTER,
-  Rank.CHAMPION,
+
+const matchupLabels: [4 | 2 | 0.5 | 0.25 | 0, string][] = [
+  [4, "Very weak to"],
+  [2, "Weak to"],
+  [0.5, "Resists"],
+  [0.25, "Strongly resists"],
+  [0, "Immune to"],
 ];
-const rankIndex = (rank: Rank) => RANK_ORDER.indexOf(rank);
-const compareRanks = (first: Rank, second: Rank) =>
-  rankIndex(first) - rankIndex(second);
-const PokemonDetailBody = ({
-  pokemonTemplate,
-}: {
-  pokemonTemplate: T.PokemonTemplate;
-}) => {
-  const evolutionsFrom = pokemonTemplate.evolutions.filter(
-    (evolution) => evolution.type === EvolutionDirection.FROM,
-  );
-  const evolutionsTo = pokemonTemplate.evolutions.filter(
-    (evolution) => evolution.type === EvolutionDirection.TO,
-  );
-  const { data: evolutionTemplates } = usePokemonTemplatesControllerFindMany({
-    pathParams: {
-      ids: [
-        ...evolutionsFrom.map((evolution) => evolution.targetId),
-        ...evolutionsTo.map((evolution) => evolution.targetId),
-      ],
-    },
-  });
+
+const Matchups = ({ types }: { types: T.PokemonType[] }) => {
+  const { getDefensiveChart } = useTypeEffectiveness();
+  const chart = getDefensiveChart(types[0], types[1]);
   return (
-    <div className="pokemon-detail grid grid-flow-row grid-cols-12 gap-2">
-      <PokemonDetailHeader pokemonTemplate={pokemonTemplate} />
-      <Box
-        color="bg-pokerole-beige"
-        className="pokemon-overview p-2 grid grid-flow-row grid-cols-2 gap-2 xl:col-span-8 col-span-full"
-      >
-        <div className="flex flex-col space-y-2 flex-grow lg:col-span-1 col-span-full">
-          <Box
-            color="bg-pokerole-beige"
-            className="p-2 flex flex-col items-center flex-grow justify-center"
-            withBorder={true}
-          >
-            <PokemonImage
-              imageFileName={pokemonTemplate.image}
-              className="detail-artwork"
-              type="book"
-            />
-          </Box>
-        </div>
-        <div className="flex flex-col space-y-2 lg:col-span-1 col-span-full">
-          <LabeledField color="bg-pokerole-black" label="Rec. Rank">
-            <div className="flex flex-row items-center space-x-2 justify-center w-full">
-              <RankIcon rank={pokemonTemplate.recommendedRank} size="md" />
-              <Text
-                color="text-pokerole-black"
-                className="text-center lg:text-sm xl:text-3xl"
-              >
-                {pokemonTemplate.recommendedRank}
-              </Text>
-            </div>
-          </LabeledField>
-          <LabeledField color="bg-pokerole-black" label="Base HP">
-            <Text color="text-pokerole-black" className="text-center">
-              {pokemonTemplate.baseHp}
-            </Text>
-          </LabeledField>
-          <LabeledField color="bg-pokerole-black" label="Abilities">
-            <span className="text-center flex flex-row gap-x-1 flex-wrap lg:text-xl xl:text-3xl text-pokerole-black font-square">
-              {[
-                pokemonTemplate.abilityOne,
-                pokemonTemplate.abilityTwo,
-                pokemonTemplate.hiddenAbility,
-                pokemonTemplate.eventAbility,
-              ]
-                .filter((ability): ability is T.Ability => ability != null)
-                .map((ability, abilityIndex, abilities) => (
-                  <React.Fragment key={ability?.id}>
-                    <ClickTooltip
-                      trigger={<span>{ability?.name}</span>}
-                      content={
-                        <div className="max-w-96">
-                          <span className="font-move text-lg">
-                            {ability?.effect}
-                          </span>
-                        </div>
-                      }
-                    />
-                    {abilityIndex < abilities.length - 1 && ", "}
-                  </React.Fragment>
-                ))}
+    <Group title="Type matchups">
+      {matchupLabels
+        .filter(([multiplier]) => chart[multiplier].length > 0)
+        .map(([multiplier, label]) => (
+          <div key={multiplier} className="flex flex-col gap-1.5 border-b border-hairline px-4 py-2.5 last:border-b-0 lg:px-3 lg:py-2">
+            <span className="text-subhead text-label-2">{label}</span>
+            <span className="flex flex-wrap gap-1">
+              {chart[multiplier].map((type) => (
+                <TypePill key={type} type={type} size="sm" />
+              ))}
             </span>
-          </LabeledField>
-          <div className="flex flex-row space-x-2">
-            <LabeledField
-              color="bg-pokerole-black"
-              label="Height"
-              className="flex-grow"
-            >
-              <Text
-                color="text-pokerole-black"
-                className="text-center"
-                size="text-base"
-              >
-                {pokemonTemplate.height}
-                {" m"}
-              </Text>
-            </LabeledField>
-            <LabeledField
-              color="bg-pokerole-black"
-              label="Weight"
-              className="flex-grow"
-            >
-              <Text
-                color="text-pokerole-black"
-                className="text-center"
-                size="text-base"
-              >
-                {pokemonTemplate.weight}
-                {" kg"}
-              </Text>
-            </LabeledField>
           </div>
-        </div>
-        <div className="flex flex-col space-y-2 md:col-span-1 col-span-full px-2">
-          <Text color="text-pokerole-black" className="" size="text-lg">
-            {pokemonTemplate.dexCategory}
-            <br />
-            <span className="font-move">{pokemonTemplate.description}</span>
-          </Text>
-        </div>
-        <div className="flex flex-col space-y-1 md:col-span-1 col-span-full items-center">
-          <Text size="text-lg">Evolutions</Text>
-          {pokemonTemplate.evolutions.length === 0 ? (
-            <Text size="text-sm">None</Text>
-          ) : (
-            <div className="flex flex-row space-x-1">
-              {evolutionsFrom.map((evolution, evolutionIndex) => (
-                <EvolutionLink
-                  key={evolutionIndex}
-                  evolution={evolution}
-                  evolutionTemplate={evolutionTemplates?.find(
-                    (template) => template.id === evolution.targetId,
-                  )}
-                />
-              ))}
-              {evolutionsFrom.length > 0 && evolutionsTo.length > 0 && (
-                <Separator orientation="vertical" />
-              )}
-              {evolutionsTo.map((evolution, evolutionIndex) => (
-                <EvolutionLink
-                  key={evolutionIndex}
-                  evolution={evolution}
-                  evolutionTemplate={evolutionTemplates?.find(
-                    (template) => template.id === evolution.targetId,
-                  )}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </Box>
-      <Box
-        color="bg-pokerole-beige"
-        className="pokemon-stats p-2 space-y-2 xl:col-span-4 col-span-full"
-      >
-        <Text className="text-center">Stats</Text>
-        <StatBox
-          statName="Strength"
-          color="bg-attributes-blue"
-          textClassName="text-2xl"
-          pipRow={
-            <StaticPips
-              numberOfPips={12}
-              numberOfSetPips={pokemonTemplate.baseStats.strength}
-              numberOfSettablePips={
-                pokemonTemplate.maxStats.strength -
-                pokemonTemplate.baseStats.strength
-              }
-              pipClassName="max-lg:w-5 max-lg:h-5 max-xs:w-4 max-xs:h-4 w-5 h-5"
-              className="flex-wrap justify-center gap-y-0.5"
-            />
+        ))}
+    </Group>
+  );
+};
+
+const abilityList = (template: Summary) =>
+  (
+    [
+      [template.abilityOne, undefined],
+      [template.abilityTwo, undefined],
+      [template.hiddenAbility, "Hidden"],
+      [template.eventAbility, "Event"],
+    ] as const
+  ).filter((entry): entry is [T.Ability, "Hidden" | "Event" | undefined] => entry[0] != null);
+
+const Overview = ({ template }: { template: Summary }) => (
+  <div className="grid gap-6 @2xl:grid-cols-2 @2xl:gap-5">
+    <div className="flex flex-col gap-6 @2xl:gap-5">
+      <Group title="Attributes" footer="Filled: base. Hollow: room to grow up to the max.">
+        {(Object.keys(attributeNames) as T.Attribute[]).map((stat) => (
+          <AttributeRow key={stat} name={attributeNames[stat]} base={template.baseStats[stat]} max={template.maxStats[stat]} />
+        ))}
+      </Group>
+      <Group title="Abilities">
+        {abilityList(template).map(([ability, tag]) => (
+          <div key={ability.id} className="border-b border-hairline px-4 py-2.5 last:border-b-0 lg:px-3 lg:py-2">
+            <p className="flex items-center gap-2 text-body font-semibold">
+              {ability.name}
+              {tag && <span className="rounded-full bg-fill px-2 py-0.5 text-caption font-semibold text-label-2">{tag}</span>}
+            </p>
+            {ability.effect && <p className="mt-0.5 text-subhead text-label-2">{ability.effect}</p>}
+          </div>
+        ))}
+      </Group>
+    </div>
+    <div className="flex flex-col gap-6 @2xl:gap-5">
+      <Group title="Profile">
+        <Row title="Base HP" value={<span className="font-semibold text-label tabular-nums">{template.baseHp}</span>} />
+        <Row title="Recommended rank" value={<span className="inline-flex items-center gap-1.5"><RankBall rank={template.recommendedRank} />{formatEnumName(template.recommendedRank)}</span>} />
+        <Row title="Height" value={`${template.height} m`} />
+        <Row title="Weight" value={`${template.weight} kg`} />
+        {template.habitats.length > 0 && (
+          <Row title="Habitats" subtitle={template.habitats.map((habitat) => formatEnumName(habitat).replace(/ And /g, " & ")).join(", ")} />
+        )}
+      </Group>
+      <Matchups types={template.types} />
+      {template.description && (
+        <Group title="Pokédex entry">
+          <p className="px-4 py-3 text-body leading-relaxed text-label lg:px-3">{template.description}</p>
+        </Group>
+      )}
+    </div>
+  </div>
+);
+
+const Moves = ({ id }: { id: string }) => {
+  const { data, isError } = usePokemonTemplatesControllerFindOne({ pathParams: { id } });
+  if (isError) return <p className="rounded-xl bg-surface p-6 text-center text-subhead text-label-2 shadow-card">Moves didn’t load.</p>;
+  if (!data)
+    return (
+      <div className="overflow-hidden rounded-xl bg-surface shadow-card">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <div key={index} className="flex h-13 items-center gap-3 border-b border-hairline px-4 last:border-b-0">
+            <div className="skeleton size-6 rounded-full" />
+            <div className="skeleton h-4 w-40 rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  const byRank = ranks
+    .map((rank) => ({
+      rank,
+      moves: data.possibleMoves.filter((possible) => possible.rank === rank).sort((first, second) => first.move.name.localeCompare(second.move.name)),
+    }))
+    .filter((group) => group.moves.length > 0);
+  if (byRank.length === 0) return <p className="rounded-xl bg-surface p-6 text-center text-subhead text-label-2 shadow-card">No moves listed.</p>;
+  return (
+    <div className="flex flex-col gap-6 @2xl:gap-5">
+      {byRank.map((group) => (
+        <Group
+          key={group.rank}
+          title={
+            <span className="inline-flex items-center gap-1.5">
+              <RankBall rank={group.rank} className="size-3.5" />
+              {formatEnumName(group.rank)}
+            </span>
           }
-        />
-        <StatBox
-          statName="Dexterity"
-          color="bg-attributes-blue"
-          textClassName="text-2xl"
-          pipRow={
-            <StaticPips
-              numberOfPips={12}
-              numberOfSetPips={pokemonTemplate.baseStats.dexterity}
-              numberOfSettablePips={
-                pokemonTemplate.maxStats.dexterity -
-                pokemonTemplate.baseStats.dexterity
-              }
-              pipClassName="max-lg:w-5 max-lg:h-5 max-xs:w-4 max-xs:h-4 w-5 h-5"
-              className="flex-wrap justify-center gap-y-0.5"
-            />
-          }
-        />
-        <StatBox
-          statName="Vitality"
-          color="bg-attributes-blue"
-          textClassName="text-2xl"
-          pipRow={
-            <StaticPips
-              numberOfPips={12}
-              numberOfSetPips={pokemonTemplate.baseStats.vitality}
-              numberOfSettablePips={
-                pokemonTemplate.maxStats.vitality -
-                pokemonTemplate.baseStats.vitality
-              }
-              pipClassName="max-lg:w-5 max-lg:h-5 max-xs:w-4 max-xs:h-4 w-5 h-5"
-              className="flex-wrap justify-center gap-y-0.5"
-            />
-          }
-        />
-        <StatBox
-          statName="Special"
-          color="bg-attributes-blue"
-          textClassName="text-2xl"
-          pipRow={
-            <StaticPips
-              numberOfPips={12}
-              numberOfSetPips={pokemonTemplate.baseStats.special}
-              numberOfSettablePips={
-                pokemonTemplate.maxStats.special -
-                pokemonTemplate.baseStats.special
-              }
-              pipClassName="max-lg:w-5 max-lg:h-5 max-xs:w-4 max-xs:h-4 w-5 h-5"
-              className="flex-wrap justify-center gap-y-0.5"
-            />
-          }
-        />
-        <StatBox
-          statName="Insight"
-          color="bg-attributes-blue"
-          textClassName="text-2xl"
-          pipRow={
-            <StaticPips
-              numberOfPips={12}
-              numberOfSetPips={pokemonTemplate.baseStats.insight}
-              numberOfSettablePips={
-                pokemonTemplate.maxStats.insight -
-                pokemonTemplate.baseStats.insight
-              }
-              pipClassName="max-lg:w-5 max-lg:h-5 max-xs:w-4 max-xs:h-4 w-5 h-5"
-              className="flex-wrap justify-center gap-y-0.5"
-            />
-          }
-        />
-      </Box>
-      <Box
-        color="bg-pokerole-beige"
-        className="pokemon-moves p-2 col-span-full space-y-2"
-      >
-        <Text size="text-lg" className="text-center">
-          Moves
-        </Text>
-        <div className="grid grid-cols-2 gap-1">
-          {pokemonTemplate.possibleMoves
-            .sort((possibleMove, otherMove) => {
-              const byRank = compareRanks(possibleMove.rank, otherMove.rank);
-              return byRank !== 0
-                ? byRank
-                : possibleMove.move.name.localeCompare(otherMove.move.name);
-            })
-            .map((possibleMove) => (
-              <div
-                key={possibleMove.move.name}
-                className="xl:col-span-1 col-span-full flex flex-row items-stretch space-x-1"
-              >
-                <div className="flex flex-row items-center space-x-2">
-                  <RankIcon rank={possibleMove.rank} size="md" />
-                </div>
-                <MoveCard move={possibleMove.move} />
-              </div>
+        >
+          <ul>
+            {group.moves.map((possible) => (
+              <MoveRow key={possible.move.id} move={possible.move} />
             ))}
-        </div>
-      </Box>
+          </ul>
+        </Group>
+      ))}
     </div>
   );
 };
-const EvolutionLink = ({
-  evolution,
-  evolutionTemplate,
-}: {
-  evolution: T.Evolution;
-  evolutionTemplate?: T.PokemonTemplate;
-}) => {
-  const [hoverRef, isHovering] = useHover<HTMLDivElement>();
-  return evolutionTemplate === undefined ? (
-    <></>
-  ) : (
-    <Link to={`/pokemon/${evolutionTemplate.id}`}>
-      <div
-        className="p-2 flex flex-col items-center rounded-3xl hover:bg-pokerole-black transition-colors duration-300 ease-in-out"
-        ref={hoverRef}
-      >
-        <PokemonImage
-          imageFileName={evolutionTemplate.image}
-          type="book"
-          className="w-16 h-16 image-rendering-pixelated"
+
+const evolutionCondition = (evolution: T.Evolution) => {
+  const detail = evolution.item ?? evolution.special ?? (evolution.value !== undefined ? String(evolution.value) : undefined);
+  return [formatEnumName(evolution.kind), detail, evolution.speed && evolution.speed !== "Unknown" ? `${evolution.speed} pace` : undefined]
+    .filter(Boolean)
+    .join(" · ");
+};
+
+const Evolutions = ({ template, dex }: { template: Summary; dex: Summary[] }) => {
+  const groups = [
+    { title: "Evolves from", list: template.evolutions.filter((evolution) => evolution.type === "FROM") },
+    { title: "Evolves into", list: template.evolutions.filter((evolution) => evolution.type === "TO") },
+  ].filter((group) => group.list.length > 0);
+  if (groups.length === 0)
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-xl bg-surface p-8 text-center shadow-card">
+        <Pokeball className="size-10 text-label-3" />
+        <p className="text-subhead text-label-2">{template.name} doesn’t evolve.</p>
+      </div>
+    );
+  return (
+    <div className="flex flex-col gap-6">
+      {groups.map((group) => (
+        <Group key={group.title} title={group.title}>
+          {group.list.map((evolution, index) => {
+            const target = dex.find((pokemon) => pokemon.id === evolution.targetId);
+            return (
+              <Row
+                key={`${evolution.targetId}-${index}`}
+                to={target ? `/pokemon/${target.id}` : undefined}
+                replace
+                icon={<Sprite image={target?.image} set="box" className="h-11 w-14 -my-1" />}
+                title={target?.name ?? "Unknown Pokémon"}
+                subtitle={evolutionCondition(evolution)}
+              />
+            );
+          })}
+        </Group>
+      ))}
+    </div>
+  );
+};
+
+type Tab = "overview" | "moves" | "evolutions";
+
+/**
+ * A species' page. The summary already cached for the list renders at once; moves load on demand.
+ * `sheet` sits in the phone sheet, `inspector` beside the desktop grid, `page` stands alone.
+ */
+export const PokemonDetail = ({ id, layout, onClose }: { id: string; layout: Layout; onClose?: () => void }) => {
+  const { data: dex, isError } = useDex();
+  const [tab, setTab] = React.useState<Tab>("overview");
+  const template = dex?.find((pokemon) => pokemon.id === id);
+  const header = layout === "page" && <PageHeader compact title={template?.name ?? "Pokémon"} back={{ to: "/pokemon", label: "Pokédex" }} />;
+
+  if (!template)
+    return (
+      <>
+        {header}
+        {dex || isError ? (
+          <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <Pokeball className="size-14 text-label-3" />
+            <h2 className="text-title-3 font-semibold">Pokémon not found</h2>
+            <p className="max-w-xs text-subhead text-label-2">It may belong to a campaign that isn’t selected, or the link is out of date.</p>
+            <Link to="/pokemon" className={button({ variant: "tinted" })}>
+              Browse the Pokédex
+            </Link>
+          </div>
+        ) : (
+          <div aria-busy className="p-4">
+            <div className="skeleton h-44 rounded-2xl" />
+            <div className="skeleton mt-4 h-10 rounded-xl" />
+            <div className="skeleton mt-4 h-60 rounded-xl" />
+          </div>
+        )}
+      </>
+    );
+
+  const evolutionCount = template.evolutions.length;
+  return (
+    <article className="@container min-h-full bg-canvas" aria-label={template.name}>
+      {header}
+      <Hero template={template} layout={layout} onClose={onClose} />
+      <div className="flex flex-col gap-4 px-4 pt-3 pb-8 @lg:px-6">
+        <AddButton template={template} className="w-full lg:w-auto lg:self-start" />
+        <div
+          className={cn(
+            "z-20 -mx-4 bg-canvas/85 px-4 py-2 backdrop-blur-xl @lg:-mx-6 @lg:px-6",
+            // In the phone sheet the floating close button owns the top edge, so the control scrolls away there.
+            layout === "page" && "sticky top-[calc(52px+env(safe-area-inset-top))]",
+            layout === "inspector" && "sticky top-0",
+          )}
+        >
+        <Segmented
+          label="Section"
+          idPrefix="dex"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "overview", label: "Overview" },
+            { value: "moves", label: "Moves" },
+            { value: "evolutions", label: evolutionCount ? `Evolutions · ${evolutionCount}` : "Evolutions" },
+          ]}
         />
-        <Text
-          size="text-sm"
-          color={isHovering ? "text-white" : "text-pokerole-black"}
-          className="transition-colors duration-300"
-        >{`${capitalize(evolution.type)}: ${evolutionTemplate.name}`}</Text>
+        </div>
+        <div {...segmentPanelProps("dex", tab)} tabIndex={-1} className="outline-none animate-in fade-in-0 [--tw-duration:150ms]" key={tab}>
+          {tab === "overview" && <Overview template={template} />}
+          {tab === "moves" && <Moves id={id} />}
+          {tab === "evolutions" && <Evolutions template={template} dex={dex ?? []} />}
+        </div>
       </div>
-    </Link>
-  );
-};
-export const PokemonDetail = ({
-  pokemonTemplateId,
-}: {
-  pokemonTemplateId?: string;
-}) => {
-  const {
-    data: pokemonTemplate,
-    isLoading,
-    isError,
-  } = usePokemonTemplatesControllerFindOne(
-    {
-      pathParams: {
-        id: pokemonTemplateId ?? "",
-      },
-    },
-    {
-      enabled: pokemonTemplateId !== undefined,
-    },
-  );
-  return pokemonTemplateId === undefined ? (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="md:h-[80%] max-md:w-1/2">
-        <CgPokemon size="100%" color="#5f5c54" />
-      </div>
-    </div>
-  ) : isLoading ? (
-    <div className="flex flex-row flex-grow justify-center items-center h-full">
-      <LoadingSpinner />
-    </div>
-  ) : pokemonTemplate === undefined || isError ? (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="md:h-[80%] max-md:w-1/2">
-        <CgPokemon size="100%" color="#5f5c54" />
-      </div>
-    </div>
-  ) : (
-    <PokemonDetailBody pokemonTemplate={pokemonTemplate} />
+    </article>
   );
 };

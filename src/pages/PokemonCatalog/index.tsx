@@ -1,500 +1,276 @@
-import { useDebounce, useMediaQuery } from "@uidotdev/usehooks";
+import { useMediaQuery } from "@uidotdev/usehooks";
+import { ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
-import { Link, useParams } from "react-router-dom";
-import {
-  useNamesControllerFindByCampaigns,
-  usePokemonTemplatesControllerFindByCampaignsMinimal,
-  usePokemonTemplatesControllerFindLearners,
-} from "@/api/components";
-import { Habitat, PokemonType, Rank } from "@/api/schemas";
-import { FilterSection } from "@/components/FilterSection";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MultiSelect } from "@/components/MultiSelect";
-import { PokemonTemplateCard } from "@/components/PokemonTemplateCard";
-import { RankSelect } from "@/components/RankSelect";
-import { Text } from "@/components/Text";
-import { Combobox } from "@/components/Combobox";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useCampaignFilter } from "@/hooks/use-campaign-filter";
-import { type ListFilter, useRegisterFilter } from "@/hooks/use-register-filter";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { PokemonType } from "@/api/schemas";
+import { button } from "@/components/kit/button";
+import { Chip } from "@/components/kit/Controls";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { TypeDot, TypeIcon, TypePill, typeText } from "@/components/kit/Pills";
+import { Pokeball } from "@/components/kit/Pokeball";
+import { Sheet } from "@/components/kit/Sheet";
+import { Sprite } from "@/components/kit/Sprite";
+import { fold, useDex, useMoveIndex } from "@/hooks/use-dex";
+import { cn, formatEnumName } from "@/lib/utils";
+import { FilterForm, activeFilterChips, noFilters, useDexPredicate, type DexFilters } from "@/pages/PokemonCatalog/filters";
 import { PokemonDetail } from "@/pages/PokemonCatalog/PokemonDetail";
-import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 
-type PokemonFilter = ListFilter<T.PokemonTemplateSummary>;
+const types = Object.values(PokemonType).filter((type): type is T.PokemonType => type !== "TYPELESS" && type !== "VARIES");
 
-interface FilterProps {
-  filters: PokemonFilter[];
-  setFilters: React.Dispatch<React.SetStateAction<PokemonFilter[]>>;
-  className?: string;
-}
+const number = (pokemon: T.PokemonTemplateSummary) => `#${pokemon.dexID || String(pokemon.number).padStart(4, "0")}`;
 
-/** Searchable picker over the moves or abilities in the selected campaigns. */
-const EntryPicker = ({
-  collection,
-  value,
-  onChange,
-  placeholder,
-}: {
-  collection: "moves" | "abilities";
-  value: string;
-  onChange: (id: string) => void;
-  placeholder: string;
-}) => {
-  const { state: campaignFilter } = useCampaignFilter();
-  const { mutate, data: entries } = useNamesControllerFindByCampaigns();
-  React.useEffect(() => {
-    mutate({
-      pathParams: { collection },
-      body: {
-        campaignIds: campaignFilter.campaignIds,
-        includeCore: campaignFilter.includeCore,
-      },
-    });
-  }, [mutate, collection, campaignFilter.campaignIds, campaignFilter.includeCore]);
-  const items = React.useMemo(
-    () =>
-      (entries ?? [])
-        .map((entry) => {
-          const label = entry.campaignName
-            ? `${entry.name} (${entry.campaignName})`
-            : entry.name;
-          // The id keeps entries with the same name and campaign apart.
-          return { label, value: entry.id, searchValue: `${label} ${entry.id}` };
-        })
-        .sort((first, second) => first.label.localeCompare(second.label)),
-    [entries],
-  );
-  return (
-    <Combobox
-      items={items}
-      value={value}
-      onChange={onChange}
-      className="text-xl"
-      placeholder={placeholder}
-    />
-  );
-};
-
-const MoveFilter = ({ setFilters }: FilterProps) => {
-  const { state: campaignFilter } = useCampaignFilter();
-  const [moveId, setMoveId] = React.useState("");
-  const { mutate, data: learnerIds, reset } =
-    usePokemonTemplatesControllerFindLearners();
-  React.useEffect(() => {
-    reset();
-    if (moveId !== "")
-      mutate({
-        pathParams: { moveId },
-        body: {
-          campaignIds: campaignFilter.campaignIds,
-          includeCore: campaignFilter.includeCore,
-        },
-      });
-  }, [mutate, reset, moveId, campaignFilter.campaignIds, campaignFilter.includeCore]);
-  // Shows nothing until the learners arrive rather than every Pokémon.
-  const filter = React.useMemo(() => {
-    const learners = new Set(learnerIds);
-    return (pokemon: T.PokemonTemplateSummary) =>
-      moveId === "" || learners.has(pokemon.id);
-  }, [moveId, learnerIds]);
-  useRegisterFilter("move", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl" className="whitespace-nowrap">Learns:</Text>
-      <EntryPicker
-        collection="moves"
-        value={moveId}
-        onChange={setMoveId}
-        placeholder="Select move..."
-      />
-    </div>
-  );
-};
-
-const AbilityFilter = ({ setFilters }: FilterProps) => {
-  const [abilityId, setAbilityId] = React.useState("");
-  const filter = React.useCallback(
-    (pokemon: T.PokemonTemplateSummary) =>
-      abilityId === "" ||
-      [
-        pokemon.abilityOne,
-        pokemon.abilityTwo,
-        pokemon.hiddenAbility,
-        pokemon.eventAbility,
-      ].some((ability) => ability?.id === abilityId),
-    [abilityId],
-  );
-  useRegisterFilter("ability", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl" className="whitespace-nowrap">Ability:</Text>
-      <EntryPicker
-        collection="abilities"
-        value={abilityId}
-        onChange={setAbilityId}
-        placeholder="Select ability..."
-      />
-    </div>
-  );
-};
-
-const statLabels: Record<T.Attribute, string> = {
-  strength: "Str",
-  dexterity: "Dex",
-  vitality: "Vit",
-  special: "Spe",
-  insight: "Ins",
-};
-
-const BaseStatFilter = ({ setFilters }: FilterProps) => {
-  const [minimums, setMinimums] = React.useState<Partial<T.AttributeStats>>({});
-  const filter = React.useCallback(
-    (pokemon: T.PokemonTemplateSummary) =>
-      Object.entries(minimums).every(
-        ([stat, minimum]) => pokemon.baseStats[stat as T.Attribute] >= minimum,
-      ),
-    [minimums],
-  );
-  useRegisterFilter("base-stats", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl" className="whitespace-nowrap">Min. base:</Text>
-      <div className="grid grid-cols-5 gap-2">
-        {(Object.keys(statLabels) as T.Attribute[]).map((stat) => (
-          <label key={stat} className="flex flex-col gap-1 items-center">
-            <Text size="text-base">{statLabels[stat]}</Text>
-            <Input
-              type="number"
-              min={0}
-              max={10}
-              inputMode="numeric"
-              aria-label={`Minimum base ${stat}`}
-              className="w-full rounded-3xl px-2 text-center"
-              value={minimums[stat] ?? ""}
-              onChange={(event) => {
-                const value = event.target.value;
-                setMinimums(({ [stat]: _, ...others }) =>
-                  value === "" ? others : { ...others, [stat]: Number(value) },
-                );
-              }}
-            />
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const useHabitatFilter = () => {
-  const [selectedHabitats, setSelectedHabitats] = React.useState<Habitat[]>([]);
-  const filter = React.useCallback(
-    (pokemon: T.PokemonTemplateSummary) =>
-      selectedHabitats.length === 0 ||
-      selectedHabitats.some((habitat) => pokemon.habitats.includes(habitat)),
-    [selectedHabitats],
-  );
-  return {
-    filter,
-    selectedHabitats,
-    setSelectedHabitats,
-  };
-};
-const HabitatFilter = ({ setFilters }: FilterProps) => {
-  const { filter, selectedHabitats, setSelectedHabitats } = useHabitatFilter();
-  useRegisterFilter("habitat", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Habitat:</Text>
-      <MultiSelect
-        options={Object.values(Habitat)
-          .map((habitat) => ({
-            label: habitat.replace(/_/g, " "),
-            value: habitat,
-          }))
-          .sort((first, second) => first.label.localeCompare(second.label))}
-        selected={selectedHabitats}
-        onChange={setSelectedHabitats}
-        className="text-xl"
-        placeholder="Select habitats..."
-      />
-    </div>
-  );
-};
-
-const useTypeFilter = () => {
-  const [selectedTypes, setSelectedTypes] = React.useState<PokemonType[]>([]);
-  const filter = React.useCallback(
-    (pokemon: T.PokemonTemplateSummary) =>
-      selectedTypes.length === 0 ||
-      selectedTypes.some((type) =>
-        pokemon.types.some((pokemonType) => pokemonType === type),
-      ),
-    [selectedTypes],
-  );
-  return {
-    filter,
-    selectedTypes,
-    setSelectedTypes,
-  };
-};
-const TypeFilter = ({ setFilters }: FilterProps) => {
-  const { filter, selectedTypes, setSelectedTypes } = useTypeFilter();
-  useRegisterFilter("type", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Type:</Text>
-      <MultiSelect
-        options={Object.values(PokemonType)
-          .filter((type) => type !== PokemonType.TYPELESS)
-          .map((type) => ({ label: type, value: type }))}
-        selected={selectedTypes}
-        onChange={setSelectedTypes}
-        className="text-xl"
-        placeholder="Select types..."
-      />
-    </div>
-  );
-};
-
-const useRankFilter = () => {
-  const [selectedRank, setSelectedRank] = React.useState<Rank | undefined>(
-    undefined,
-  );
-  const [andLower, setAndLower] = React.useState<boolean | "indeterminate">(
-    false,
-  );
-  const filter = React.useCallback(
-    (pokemon: T.PokemonTemplateSummary) =>
-      selectedRank == null
-        ? true
-        : andLower
-          ? Object.values(Rank).indexOf(pokemon.recommendedRank) <=
-            Object.values(Rank).indexOf(selectedRank)
-          : Object.values(Rank).indexOf(pokemon.recommendedRank) ===
-            Object.values(Rank).indexOf(selectedRank),
-    [selectedRank, andLower],
-  );
-  return {
-    filter,
-    selectedRank,
-    setSelectedRank,
-    andLower,
-    setAndLower,
-  };
-};
-const RankFilter = ({ setFilters }: FilterProps) => {
-  const { filter, selectedRank, setSelectedRank, andLower, setAndLower } =
-    useRankFilter();
-  useRegisterFilter("rank", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Rank:</Text>
-      <RankSelect
-        onSelect={setSelectedRank}
-        rank={selectedRank}
-        placeholder="Select rank..."
-        comboBoxClassName="text-xl"
-      />
-      <Checkbox checked={andLower} onCheckedChange={setAndLower} />
-      <Text size="text-md">And lower</Text>
-    </div>
-  );
-};
-const PokemonFilters = ({ filters, setFilters, className }: FilterProps) => (
-  <div className={className}>
-    <TypeFilter setFilters={setFilters} filters={filters} />
-    <RankFilter setFilters={setFilters} filters={filters} />
-    <HabitatFilter setFilters={setFilters} filters={filters} />
-    <MoveFilter setFilters={setFilters} filters={filters} />
-    <AbilityFilter setFilters={setFilters} filters={filters} />
-    <BaseStatFilter setFilters={setFilters} filters={filters} />
-  </div>
+/** Phone list row: pixel sprite, name, number, types. */
+const DexRow = ({ pokemon, selected }: { pokemon: T.PokemonTemplateSummary; selected: boolean }) => (
+  <li className="group/row [contain-intrinsic-size:auto_60px] [content-visibility:auto]">
+    <Link
+      to={`/pokemon/${pokemon.id}`}
+      aria-current={selected ? "true" : undefined}
+      className="flex items-center gap-3 pl-2 transition-colors duration-150 hover:bg-raised active:bg-fill aria-[current]:bg-tint/8"
+    >
+      <Sprite image={pokemon.image} set="box" className="h-14 w-17 overflow-hidden [&_img]:scale-150" />
+      <span className="flex min-h-15 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-body font-medium">{pokemon.name}</span>
+          <span className="mt-1 flex items-center gap-1.5">
+            <span className="min-w-13 shrink-0 text-footnote text-label-2 tabular-nums">{number(pokemon)}</span>
+            {pokemon.types.map((type) => (
+              <TypePill key={type} type={type} size="sm" />
+            ))}
+          </span>
+        </span>
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-label-3" />
+      </span>
+    </Link>
+  </li>
 );
 
-const PokemonTemplateList = ({
-  onClick,
-  className,
-}: {
-  onClick?: (id: string) => void;
-  className?: string;
-}) => {
-  const { state: campaignFilter } = useCampaignFilter();
-  const [pokemonTemplates, setPokemonTemplates] = React.useState<
-    T.PokemonTemplateSummary[] | undefined
-  >(undefined);
-  const [isFetching, setIsFetching] = React.useState(false);
-  const { mutate: fetchPokemonTemplates } =
-    usePokemonTemplatesControllerFindByCampaignsMinimal({
-      onSuccess: (templates) => {
-        setPokemonTemplates(templates);
-        setIsFetching(false);
-      },
-      onError: () => setIsFetching(false),
-    });
-  const showSpinner = isFetching && pokemonTemplates == null;
-  const [search, setSearch] = React.useState("");
-  const [filters, setFilters] = React.useState<PokemonFilter[]>([]);
-  const debouncedSearch = useDebounce(search, 200);
-  const filteredPokemonTemplates = React.useMemo(
-    () =>
-      pokemonTemplates
-        ?.sort((first, second) =>
-          (first.dexID ?? "").localeCompare(second.dexID ?? ""),
-        )
-        .filter((template) =>
-          (template.name ?? "")
-            .toLowerCase()
-            .includes(debouncedSearch.toLowerCase()),
-        )
-        .filter((template) =>
-          filters.every((filter) => filter.filter(template)),
-        ),
-    [pokemonTemplates, debouncedSearch, filters],
-  );
-  React.useEffect(() => {
-    setIsFetching(true);
-    fetchPokemonTemplates({
-      body: {
-        campaignIds: campaignFilter.campaignIds,
-        includeCore: campaignFilter.includeCore,
-      },
-    });
-  }, [
-    campaignFilter.campaignIds,
-    campaignFilter.includeCore,
-    fetchPokemonTemplates,
-  ]);
-
-  const [visibleCount, setVisibleCount] = React.useState(60);
-  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    setVisibleCount(60);
-  }, [debouncedSearch, filters, pokemonTemplates]);
-  React.useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-slot="scroll-area-viewport"]',
-    );
-    if (viewport === null || sentinelRef.current === null) return;
-    const showMore = () =>
-      setVisibleCount((count) =>
-        Math.min(filteredPokemonTemplates?.length ?? 0, count + 60),
-      );
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) if (entry.isIntersecting) showMore();
-      },
-      { root: viewport, rootMargin: "200px" },
-    );
-    observer.observe(sentinelRef.current);
-    const timeout = setTimeout(() => {
-      if (viewport == null) return;
-      for (
-        let attempts = 0;
-        viewport.scrollHeight <= viewport.clientHeight &&
-        (filteredPokemonTemplates?.length ?? 0) > visibleCount &&
-        attempts < 20;
-        attempts++
-      ) {
-        showMore();
-      }
-    }, 50);
-    return () => {
-      observer.disconnect();
-      clearTimeout(timeout);
-    };
-  }, [filteredPokemonTemplates]);
-
-  const pokemonCards = React.useMemo(
-    () =>
-      filteredPokemonTemplates?.slice(0, visibleCount).map((template) => (
-        <Link
-          key={template.id}
-          to={`/pokemon/${template.id}`}
-          className="flex flex-col"
-        >
-          <PokemonTemplateCard
-            name={template.name}
-            image={template.image}
-            number={template.number}
-            types={template.types}
-            onClick={() => onClick?.(template.id)}
-            className="flex-grow"
-            numberClassName="md:hidden lg:block max-xs:hidden"
-          />
-        </Link>
-      )),
-    [filteredPokemonTemplates, visibleCount],
-  );
-  return (
-    <div
-      className={`flex flex-col gap-2 h-full overflow-hidden ${className}`}
+/** Desktop grid tile with the book artwork. */
+const DexTile = ({ pokemon, selected, replace }: { pokemon: T.PokemonTemplateSummary; selected: boolean; replace: boolean }) => (
+  <li className="[contain-intrinsic-size:auto_150px] [content-visibility:auto]">
+    <Link
+      to={`/pokemon/${pokemon.id}`}
+      replace={replace}
+      aria-current={selected ? "true" : undefined}
+      className="group flex h-full flex-col items-center rounded-xl bg-surface p-2 pb-2.5 text-center shadow-card transition-[box-shadow,transform] duration-200 ease-spring hover:-translate-y-0.5 hover:shadow-float aria-[current]:ring-2 aria-[current]:ring-tint"
     >
-      <div className="flex flex-row space-x-2 shrink-0">
-        <Input
-          id="pokemon-search-input"
-          className="rounded-3xl"
-          placeholder="Search..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
-        />
-        <Button id="pokemon-search-button" className="rounded-3xl">
-          Search
-        </Button>
-      </div>
-      <div className="shrink-0">
-        <FilterSection label="Filters">
-          <PokemonFilters
-            filters={filters}
-            setFilters={setFilters}
-            className="flex md:flex-row flex-col gap-2 mt-2 flex-wrap"
-          />
-        </FilterSection>
-      </div>
-      <ScrollArea
-        ref={scrollAreaRef}
-        className="md:rounded-t-3xl rounded-3xl flex-1"
-      >
-        <div className="pokemon-card-grid grid gap-2">
-          {showSpinner && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
-              <LoadingSpinner />
-            </div>
-          )}
-          {pokemonCards}
-          <div
-            ref={sentinelRef}
-            className="h-1 w-full col-span-full"
-          />
+      <span className="flex w-full items-center justify-between text-caption text-label-2 tabular-nums">
+        {number(pokemon)}
+        <span className="flex gap-0.5">
+          {pokemon.types.map((type) => (
+            <TypeDot key={type} type={type} className="size-4.5 [&_img]:size-2.5" />
+          ))}
+        </span>
+      </span>
+      <Sprite image={pokemon.image} set="book" className="my-1 size-20 transition-transform duration-300 ease-spring group-hover:scale-105" />
+      <span className="line-clamp-2 text-subhead font-semibold leading-tight">{pokemon.name}</span>
+    </Link>
+  </li>
+);
+
+const SkeletonList = ({ desktop }: { desktop: boolean }) =>
+  desktop ? (
+    <ul aria-hidden className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-3">
+      {Array.from({ length: 18 }, (_, index) => (
+        <li key={index} className="skeleton h-36 rounded-xl" />
+      ))}
+    </ul>
+  ) : (
+    <div aria-hidden className="overflow-hidden rounded-xl bg-surface shadow-card">
+      {Array.from({ length: 10 }, (_, index) => (
+        <div key={index} className="flex h-15 items-center gap-3 border-b border-hairline px-3 last:border-b-0">
+          <div className="skeleton size-11 rounded-lg" />
+          <div className="skeleton h-4 w-32 rounded" />
         </div>
-      </ScrollArea>
+      ))}
     </div>
   );
+
+const useFiltered = (dex: T.PokemonTemplateSummary[] | undefined, query: string, filters: DexFilters) => {
+  const predicate = useDexPredicate(filters);
+  const deferredQuery = React.useDeferredValue(query);
+  return React.useMemo(() => {
+    if (!dex || !predicate) return undefined;
+    const needle = fold(deferredQuery.trim()).replace(/^#/, "");
+    return dex.filter(
+      (pokemon) => (!needle || fold(pokemon.name).includes(needle) || pokemon.dexID?.startsWith(needle) || String(pokemon.number) === needle) && predicate(pokemon),
+    );
+  }, [dex, deferredQuery, predicate]);
 };
-export const PokemonCatalogPage = () => {
+
+export const PokedexPage = () => {
   const { id } = useParams();
-  const [selectedTemplateId, setSelectedTemplateId] = React.useState(id);
-  const detailRef = useScrollToDetail(selectedTemplateId);
-  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const navigate = useNavigate();
+  const desktop = useMediaQuery("(min-width: 1024px)");
+  const { data: dex, isError, refetch } = useDex();
+  const { data: moves } = useMoveIndex();
+  const [query, setQuery] = React.useState("");
+  const [filters, setFilters] = React.useState(noFilters);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const list = useFiltered(dex, query, filters);
+  // Whether the list was on screen before this Pokémon opened: then closing goes back to it.
+  const [listSeen, setListSeen] = React.useState(id === undefined);
   React.useEffect(() => {
-    setSelectedTemplateId(id);
+    if (id === undefined) setListSeen(true);
   }, [id]);
-  const DetailContainer = isDesktop ? ScrollArea : "div";
+
+  const close = () => (listSeen ? navigate(-1) : navigate("/pokemon", { replace: true }));
+  const chips = activeFilterChips(filters, {
+    move: moves?.find((move) => move.id === filters.moveId)?.name,
+    ability: dex
+      ?.flatMap((pokemon) => [pokemon.abilityOne, pokemon.abilityTwo, pokemon.hiddenAbility, pokemon.eventAbility])
+      .find((ability) => ability?.id === filters.abilityId)?.name,
+  });
+  const moreFilters = chips.length - filters.types.length;
+
+  // On a phone, a shared link opens the Pokémon as its own page; from the list it slides up as a sheet.
+  if (id && !desktop && !listSeen) return <PokemonDetail id={id} layout="page" />;
+
   return (
-    <div className="catalog-layout p-2 pb-0 grid md:h-[calc(100vh-1rem)] md:grid-rows-1 grid-cols-5 box-border gap-3">
-      <PokemonTemplateList
-        className="md:col-span-2 col-span-full max-md:min-h-[30vh] max-md:max-h-[50vh]"
-        onClick={setSelectedTemplateId}
-      />
-      <DetailContainer ref={detailRef} className="md:col-span-3 col-span-full max-md:pb-2 h-full">
-        <PokemonDetail pokemonTemplateId={selectedTemplateId} />
-      </DetailContainer>
+    <div className="lg:flex">
+      <div className="min-w-0 flex-1 pb-8">
+        <PageHeader title="Pokédex">
+          <div className="mt-3 flex gap-2">
+            <label className="relative flex min-w-0 flex-1 items-center lg:max-w-md">
+              <span className="sr-only">Search the Pokédex</span>
+              <Search aria-hidden className="pointer-events-none absolute left-3 size-4.5 text-label-2 lg:left-2.5 lg:size-4" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Name or number"
+                className="h-11 w-full rounded-xl bg-fill pr-3 pl-10 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg lg:pl-8"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(true)}
+              aria-haspopup="dialog"
+              className={cn(button({ variant: moreFilters ? "tinted" : "gray" }), "max-lg:px-3")}
+            >
+              <SlidersHorizontal aria-hidden className="size-4" />
+              Filters
+              {moreFilters > 0 && <span className="grid size-5 place-items-center rounded-full bg-tint text-caption text-white">{moreFilters}</span>}
+            </button>
+          </div>
+        </PageHeader>
+        <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 [mask-image:linear-gradient(to_right,black_calc(100%-32px),transparent)] lg:px-8" role="group" aria-label="Filter by type">
+          {types.map((type) => {
+            const pressed = filters.types.includes(type);
+            return (
+              <Chip
+                key={type}
+                pressed={pressed}
+                className={cn("pl-1.5", pressed && typeText(type))}
+                style={pressed ? { backgroundColor: `var(--color-type-${type.toLowerCase()})` } : undefined}
+                onClick={() =>
+                  setFilters((current) => ({
+                    ...current,
+                    types: pressed ? current.types.filter((entry) => entry !== type) : [...current.types, type].slice(-2),
+                  }))
+                }
+              >
+                <span className={cn("grid size-5 place-items-center rounded-full lg:size-4", pressed && "ring-1 ring-black/15")} style={{ backgroundColor: `var(--color-type-${type.toLowerCase()})` }}>
+                  <TypeIcon type={type} className="size-3 lg:size-2.5" />
+                </span>
+                {formatEnumName(type)}
+              </Chip>
+            );
+          })}
+        </div>
+        <div className="px-4 lg:px-8">
+          <div className="mb-2 flex min-h-8 flex-wrap items-center gap-1.5 px-1" aria-live="polite">
+            <p className="mr-1 text-footnote font-medium text-label-2">
+              {list ? `${list.length} Pokémon` : "Loading…"}
+              {filters.types.length === 2 && " · both types"}
+            </p>
+            {chips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => setFilters(chip.clear)}
+                aria-label={`Remove filter: ${chip.label}`}
+                className="inline-flex h-7 items-center gap-1 rounded-full bg-tint/10 pr-1.5 pl-2.5 text-footnote font-medium text-tint hover:bg-tint/15 lg:h-6"
+              >
+                {chip.label}
+                <X aria-hidden className="size-3.5" />
+              </button>
+            ))}
+            {chips.length > 0 && (
+              <button type="button" onClick={() => setFilters(noFilters)} className="h-7 rounded-full px-2 text-footnote font-semibold text-tint hover:bg-tint/10">
+                Clear all
+              </button>
+            )}
+          </div>
+          {isError ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl bg-surface p-8 text-center shadow-card">
+              <p className="text-body">The Pokédex didn’t load.</p>
+              <button type="button" onClick={() => refetch()} className={button({ variant: "tinted" })}>
+                Try again
+              </button>
+            </div>
+          ) : !list ? (
+            <SkeletonList desktop={desktop} />
+          ) : list.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl bg-surface px-6 py-10 text-center shadow-card">
+              <Pokeball className="size-12 text-label-3" />
+              <p className="text-headline">No Pokémon match</p>
+              <p className="max-w-xs text-subhead text-label-2">{query ? `Nothing named “${query}” with these filters.` : "Try removing a filter."}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setFilters(noFilters);
+                }}
+                className={button({ variant: "tinted" })}
+              >
+                Clear search and filters
+              </button>
+            </div>
+          ) : desktop ? (
+            <ul className={cn("grid gap-3", "grid-cols-[repeat(auto-fill,minmax(118px,1fr))]")}>
+              {list.map((pokemon) => (
+                <DexTile key={pokemon.id} pokemon={pokemon} selected={pokemon.id === id} replace={id !== undefined} />
+              ))}
+            </ul>
+          ) : (
+            <ul className="overflow-hidden rounded-xl bg-surface shadow-card">
+              {list.map((pokemon) => (
+                <DexRow key={pokemon.id} pokemon={pokemon} selected={pokemon.id === id} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {desktop && id && (
+        <aside
+          aria-label="Pokémon details"
+          className="sticky top-0 h-dvh w-[min(40vw,540px)] shrink-0 overflow-y-auto border-l border-hairline bg-surface animate-in fade-in-0 slide-in-from-right-4 [--tw-duration:200ms]"
+        >
+          <PokemonDetail key={id} id={id} layout="inspector" onClose={close} />
+        </aside>
+      )}
+      {!desktop && (
+        <Sheet open={id !== undefined} onOpenChange={(open) => !open && close()} title={dex?.find((pokemon) => pokemon.id === id)?.name ?? "Pokémon"} hideTitle>
+          {id && <PokemonDetail key={id} id={id} layout="sheet" />}
+        </Sheet>
+      )}
+
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} title="Filters" initialExpanded toolbar={
+        chips.length > 0 ? (
+          <button type="button" onClick={() => setFilters(noFilters)} className={button({ variant: "plain", size: "sm" })}>
+            Reset
+          </button>
+        ) : undefined
+      }>
+        <FilterForm filters={filters} setFilters={setFilters} dex={dex} />
+        <div className="sticky bottom-0 bg-canvas/90 px-4 pt-2 pb-2 backdrop-blur-xl">
+          <button type="button" onClick={() => setFiltersOpen(false)} className={cn(button({ variant: "filled", size: "lg" }), "w-full")}>
+            {list ? `Show ${list.length} Pokémon` : "Show results"}
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 };

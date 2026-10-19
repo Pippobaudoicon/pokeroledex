@@ -230,7 +230,9 @@ const EncounterCard = ({ entry }: { entry: EncounterEntry }) => {
       {expanded && (
         <StaticPokemonProvider pokemon={pokemon} onChange={isGenerating ? undefined : updatePokemon}>
           <p className="font-move">Nature: {pokemon.nature?.name ?? "—"} · Confidence: {pokemon.nature?.confidence ?? "—"}</p>
-          <PokemonSheet showButtons="add" showMovePools />
+          <div className="overflow-hidden rounded-2xl">
+            <PokemonSheet showButtons="add" embedded />
+          </div>
         </StaticPokemonProvider>
       )}
     </Box>
