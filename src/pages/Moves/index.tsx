@@ -1,98 +1,17 @@
-import { useDebounce } from "@uidotdev/usehooks";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
-import { useMovesControllerFindByCampaigns } from "@/api/components";
-import { MoveCategory, PokemonType } from "@/api/schemas";
-import { FilterSection } from "@/components/FilterSection";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MoveCard } from "@/components/MoveCard";
-import { MultiSelect } from "@/components/MultiSelect";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useCampaignFilter } from "@/hooks/use-campaign-filter";
-import { type ListFilter, useRegisterFilter } from "@/hooks/use-register-filter";
-
-type MoveFilter = ListFilter<T.Move>;
-
-interface FilterProps {
-  filters: MoveFilter[];
-  setFilters: React.Dispatch<React.SetStateAction<MoveFilter[]>>;
-}
-
-const useCategoryFilter = () => {
-  const [selectedCategories, setSelectedCategories] = React.useState<
-    MoveCategory[]
-  >([]);
-  const filter = React.useCallback(
-    (move: T.Move) =>
-      selectedCategories.length === 0 ||
-      selectedCategories.some((category) => move.category === category),
-    [selectedCategories],
-  );
-  return {
-    filter,
-    selectedCategories,
-    setSelectedCategories,
-  };
-};
-
-const CategoryFilter = ({ setFilters }: FilterProps) => {
-  const { filter, selectedCategories, setSelectedCategories } =
-    useCategoryFilter();
-  useRegisterFilter("category", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Category:</Text>
-      <MultiSelect
-        options={Object.values(MoveCategory).map((category) => ({
-          label: category,
-          value: category,
-        }))}
-        selected={selectedCategories}
-        onChange={setSelectedCategories}
-        className="text-xl"
-        placeholder="Select categories..."
-      />
-    </div>
-  );
-};
-
-const useTypeFilter = () => {
-  const [selectedTypes, setSelectedTypes] = React.useState<PokemonType[]>([]);
-  const filter = React.useCallback(
-    (move: T.Move) =>
-      selectedTypes.length === 0 || selectedTypes.some((type) => move.type === type),
-    [selectedTypes],
-  );
-  return {
-    filter,
-    selectedTypes,
-    setSelectedTypes,
-  };
-};
-
-const TypeFilter = ({ setFilters }: FilterProps) => {
-  const { filter, selectedTypes, setSelectedTypes } = useTypeFilter();
-  useRegisterFilter("type", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Type:</Text>
-      <MultiSelect
-        options={Object.values(PokemonType).map((type) => ({
-          label: type,
-          value: type,
-        }))}
-        selected={selectedTypes}
-        onChange={setSelectedTypes}
-        className="text-xl"
-        placeholder="Select types..."
-      />
-    </div>
-  );
-};
+import { MoveCategory } from "@/api/schemas";
+import { button } from "@/components/kit/button";
+import { Chip } from "@/components/kit/Controls";
+import { Group } from "@/components/kit/List";
+import { CategoryIcon, MoveRow, categoryName } from "@/components/kit/MoveRow";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { TypeIcon, TypePill, typeColor } from "@/components/kit/Pills";
+import { Sheet } from "@/components/kit/Sheet";
+import { fold, useMoveIndex } from "@/hooks/use-dex";
+import { cn, formatEnumName } from "@/lib/utils";
 
 // Structured added effects cover most core moves; the effect text covers the rest and custom moves.
 const statusAilments = /^(Paralyze|Poison|BadlyPoison|Burn\d?|Freeze|Sleep|Drowzy|Confuse|Flinch|Infatuat|Disable)/;
@@ -111,187 +30,244 @@ const areaTargets: T.MoveTarget[] = [
 ];
 const moveEffects = {
   "Status conditions": (move: T.Move) =>
-    (move.addedEffects?.Ailments ?? []).some(
-      (ailment) => ailment.Affects === "Targets" && statusAilments.test(ailment.Type),
-    ) || inflictsStatus.test(move.effect),
+    (move.addedEffects?.Ailments ?? []).some((ailment) => ailment.Affects === "Targets" && statusAilments.test(ailment.Type)) ||
+    inflictsStatus.test(move.effect),
   Healing: (move: T.Move) => move.addedEffects?.Heal != null || restoresHp.test(move.effect),
-  "Area / multiple targets": (move: T.Move) =>
-    areaTargets.includes(move.target) || /\barea move\b|\ball foes\b/i.test(move.effect),
+  "Area / multiple targets": (move: T.Move) => areaTargets.includes(move.target) || /\barea move\b|\ball foes\b/i.test(move.effect),
 };
 type MoveEffect = keyof typeof moveEffects;
 
-const EffectFilter = ({ setFilters }: FilterProps) => {
-  const [selectedEffects, setSelectedEffects] = React.useState<MoveEffect[]>([]);
-  const filter = React.useCallback(
-    (move: T.Move) =>
-      selectedEffects.length === 0 ||
-      selectedEffects.some((effect) => moveEffects[effect](move)),
-    [selectedEffects],
-  );
-  useRegisterFilter("effect", filter, setFilters);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Effect:</Text>
-      <MultiSelect
-        options={(Object.keys(moveEffects) as MoveEffect[]).map((effect) => ({
-          label: effect,
-          value: effect,
-        }))}
-        selected={selectedEffects}
-        onChange={setSelectedEffects}
-        className="text-xl"
-        placeholder="Select effects..."
-      />
-    </div>
-  );
-};
+const PAGE_SIZE = 60;
 
-const MoveFilters = ({
-  filters,
-  setFilters,
-  className,
-}: FilterProps & { className?: string }) => (
-  <div className={className}>
-    <TypeFilter setFilters={setFilters} filters={filters} />
-    <CategoryFilter setFilters={setFilters} filters={filters} />
-    <EffectFilter setFilters={setFilters} filters={filters} />
-  </div>
-);
-
-const PAGE_SIZE = 30;
-
-const MoveList = ({ className }: { className?: string }) => {
-  const { state: campaignFilter } = useCampaignFilter();
-  const [moves, setMoves] = React.useState<T.Move[] | undefined>(undefined);
-  const [isFetching, setIsFetching] = React.useState(false);
-  const { mutate: fetchMoves } = useMovesControllerFindByCampaigns({
-    onSuccess: (data) => {
-      setMoves(data);
-      setIsFetching(false);
-    },
-    onError: () => setIsFetching(false),
-  });
-  const showSpinner = isFetching && !moves;
+export const MovesPage = () => {
+  const { data: moves, isError, refetch } = useMoveIndex();
   const [params] = useSearchParams();
-  const [search, setSearch] = React.useState(params.get("search") ?? "");
-  // Search links (?search=Ember) fill the search box, also when already on this page.
-  React.useEffect(() => setSearch(params.get("search") ?? ""), [params]);
-  const [filters, setFilters] = React.useState<MoveFilter[]>([]);
-  const debouncedSearch = useDebounce(search, 200);
-  const filteredMoves = React.useMemo(
-    () =>
-      moves
-        ?.filter((move) =>
-          [move.name, move.effect, move.description].some((text) =>
-            (text ?? "").toLowerCase().includes(debouncedSearch.toLowerCase()),
-          ),
-        )
-        .filter((move) => filters.every((filter) => filter.filter(move)))
-        .sort((first, second) => {
-          const byType = (first.type ?? "").localeCompare(second.type ?? "");
-          return byType !== 0
-            ? byType
-            : (first.name ?? "").localeCompare(second.name ?? "");
-        }),
-    [moves, debouncedSearch, filters],
-  );
-  React.useEffect(() => {
-    setIsFetching(true);
-    fetchMoves({
-      body: {
-        campaignIds: campaignFilter.campaignIds,
-        includeCore: campaignFilter.includeCore,
-      },
-    });
-  }, [campaignFilter.campaignIds, campaignFilter.includeCore, fetchMoves]);
-
-  // Infinite scroll: render PAGE_SIZE more cards whenever the sentinel nears the viewport.
+  const [query, setQuery] = React.useState(params.get("search") ?? "");
+  React.useEffect(() => setQuery(params.get("search") ?? ""), [params]);
+  const deferredQuery = React.useDeferredValue(query);
+  const [types, setTypes] = React.useState<T.MoveType[]>([]);
+  const [categories, setCategories] = React.useState<T.MoveCategory[]>([]);
+  const [effects, setEffects] = React.useState<MoveEffect[]>([]);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
-  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [debouncedSearch, filters, moves]);
-  React.useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-slot="scroll-area-viewport"]',
-    );
-    if (viewport === null || sentinelRef.current === null) return;
-    const showMore = () =>
-      setVisibleCount((count) =>
-        Math.min(filteredMoves?.length ?? 0, count + PAGE_SIZE),
-      );
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) if (entry.isIntersecting) showMore();
-      },
-      { root: viewport, rootMargin: "200px" },
-    );
-    observer.observe(sentinelRef.current);
-    // Fill a viewport that is not yet scrollable.
-    const timeout = setTimeout(() => {
-      if (viewport == null) return;
-      for (
-        let attempts = 0;
-        viewport.scrollHeight <= viewport.clientHeight &&
-        (filteredMoves?.length ?? 0) > visibleCount &&
-        attempts < 20;
-        attempts++
+  const sentinel = React.useRef<HTMLButtonElement>(null);
+  const availableTypes = React.useMemo(() => [...new Set(moves?.map((move) => move.type))].sort(), [moves]);
+  const list = React.useMemo(() => {
+    const needle = fold(deferredQuery.trim());
+    return moves
+      ?.filter(
+        (move) =>
+          (!needle || [move.name, move.effect, move.description].some((text) => fold(text ?? "").includes(needle))) &&
+          (!types.length || types.includes(move.type)) &&
+          (!categories.length || categories.includes(move.category)) &&
+          (!effects.length || effects.some((effect) => moveEffects[effect](move))),
       )
-        showMore();
-    }, 50);
-    return () => {
-      observer.disconnect();
-      clearTimeout(timeout);
-    };
-  }, [filteredMoves]);
-  const moveCards = React.useMemo(
-    () =>
-      filteredMoves
-        ?.slice(0, visibleCount)
-        .map((move) => <MoveCard key={move.id} move={move} />),
-    [filteredMoves, visibleCount],
-  );
+      .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
+  }, [moves, deferredQuery, types, categories, effects]);
+  React.useEffect(() => setVisibleCount(PAGE_SIZE), [list]);
+  React.useEffect(() => {
+    if (!sentinel.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisibleCount((count) => count + PAGE_SIZE);
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [list, visibleCount]);
+  const groups = new Map<T.MoveType, T.Move[]>();
+  for (const move of list?.slice(0, visibleCount) ?? []) {
+    const group = groups.get(move.type);
+    if (group) group.push(move);
+    else groups.set(move.type, [move]);
+  }
+  const filterCount = categories.length + effects.length;
+  const clearFilters = () => {
+    setTypes([]);
+    setCategories([]);
+    setEffects([]);
+  };
   return (
-    <div className={`flex flex-col h-full ${className} gap-2`}>
-      <div className="flex flex-row space-x-2">
-        <Input
-          id="moves-search-input"
-          className="rounded-3xl"
-          placeholder="Search names and effects..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
-        />
-        <Button id="moves-search-button" className="rounded-3xl">
-          Search
-        </Button>
-      </div>
-      <FilterSection label="Filters">
-        <MoveFilters
-          filters={filters}
-          setFilters={setFilters}
-          className="flex md:flex-row flex-col gap-2 mt-2"
-        />
-      </FilterSection>
-      <ScrollArea ref={scrollAreaRef} className="rounded-t-3xl flex-1">
-        <div className="grid md:grid-cols-2 grid-cols-1 gap-2">
-          {showSpinner && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
-              <LoadingSpinner />
-            </div>
-          )}
-          {moveCards}
-          <div ref={sentinelRef} className="h-1 w-full col-span-full" />
+    <div className="mx-auto max-w-6xl pb-8">
+      <PageHeader title="Moves">
+        <p className="text-subhead text-label-2">Accuracy, damage and effects at a glance. Open a move for its full details.</p>
+        <div className="mt-3 flex gap-2">
+          <label className="relative flex min-w-0 flex-1 items-center lg:max-w-md">
+            <span className="sr-only">Search moves</span>
+            <Search aria-hidden className="pointer-events-none absolute left-3 size-4.5 text-label-2 lg:left-2.5 lg:size-4" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Names and effects"
+              className="h-11 w-full rounded-xl bg-fill pr-3 pl-10 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg lg:pl-8"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            aria-haspopup="dialog"
+            className={button({ variant: filterCount ? "tinted" : "gray" })}
+          >
+            <SlidersHorizontal aria-hidden className="size-4" />
+            Filters
+            {filterCount > 0 && (
+              <span className="grid size-5 place-items-center rounded-full bg-tint text-caption text-on-tint">{filterCount}</span>
+            )}
+          </button>
         </div>
-      </ScrollArea>
+      </PageHeader>
+      <div role="group" aria-label="Filter by type" className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 lg:px-8">
+        {availableTypes.map((type) => (
+          <Chip
+            key={type}
+            pressed={types.includes(type)}
+            onClick={() => setTypes(types.includes(type) ? types.filter((entry) => entry !== type) : [...types, type])}
+          >
+              <span className="grid size-5 shrink-0 place-items-center rounded-full" style={{ backgroundColor: typeColor(type) }}>
+                <TypeIcon type={type} className="size-3" />
+              </span>
+            {formatEnumName(type)}
+          </Chip>
+        ))}
+      </div>
+      <div className="px-4 lg:px-8">
+        <div className="mb-3 flex min-h-8 flex-wrap items-center gap-1.5 px-1" aria-live="polite">
+          <p className="mr-1 text-footnote font-medium text-label-2">{list ? `${list.length} moves` : "Loading…"}</p>
+          {categories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => setCategories(categories.filter((entry) => entry !== category))}
+              aria-label={`Remove filter: ${categoryName(category)}`}
+              className="inline-flex items-center gap-1 rounded-full bg-tint/10 px-2.5 py-1 text-footnote text-tint"
+            >
+              {categoryName(category)}
+              <X aria-hidden className="size-3" />
+            </button>
+          ))}
+          {effects.map((effect) => (
+            <button
+              key={effect}
+              type="button"
+              onClick={() => setEffects(effects.filter((entry) => entry !== effect))}
+              aria-label={`Remove filter: ${effect}`}
+              className="inline-flex items-center gap-1 rounded-full bg-tint/10 px-2.5 py-1 text-footnote text-tint"
+            >
+              {effect}
+              <X aria-hidden className="size-3" />
+            </button>
+          ))}
+          {(types.length > 0 || filterCount > 0) && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-full px-2 py-1 text-footnote font-semibold text-tint hover:bg-tint/10"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+        {isError ? (
+          <div className="rounded-2xl bg-surface p-8 text-center shadow-card">
+            <p className="mb-3 text-body">Moves couldn’t be loaded.</p>
+            <button type="button" className={button({ variant: "tinted" })} onClick={() => refetch()}>
+              Try again
+            </button>
+          </div>
+        ) : !list ? (
+          <div aria-hidden className="grid gap-4 lg:grid-cols-2">
+            {[0, 1, 2, 3].map((index) => (
+              <div key={index} className="skeleton h-48 rounded-xl" />
+            ))}
+          </div>
+        ) : list.length === 0 ? (
+          <div className="rounded-2xl bg-surface p-8 text-center shadow-card">
+            <p className="text-body">No moves match your search and filters.</p>
+            <button
+              type="button"
+              className={cn(button({ variant: "tinted" }), "mt-3")}
+              onClick={() => {
+                setQuery("");
+                clearFilters();
+              }}
+            >
+              Reset search
+            </button>
+          </div>
+        ) : (
+            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+            {[...groups].map(([type, entries]) => (
+              <Group key={type} title={<TypePill type={type} size="sm" />}>
+                <ul>
+                  {entries.map((move) => (
+                    <MoveRow key={move.id} move={move} />
+                  ))}
+                </ul>
+              </Group>
+            ))}
+          </div>
+        )}
+        {list && visibleCount < list.length && (
+          <button
+            ref={sentinel}
+            type="button"
+            className={cn(button({ variant: "gray" }), "mx-auto mt-6 flex")}
+            onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+          >
+            Load more moves
+          </button>
+        )}
+      </div>
+      <Sheet
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        title="Filter moves"
+        initialExpanded
+        toolbar={
+          <button type="button" className={button({ variant: "plain", size: "sm" })} onClick={clearFilters}>
+            Reset
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-6 p-4">
+          <Group title="Category" footer="Matches any of the selected categories.">
+            <div className="flex flex-wrap gap-2 p-3">
+              {Object.values(MoveCategory).map((category) => (
+                <Chip
+                  key={category}
+                  pressed={categories.includes(category)}
+                  onClick={() =>
+                    setCategories(
+                      categories.includes(category) ? categories.filter((entry) => entry !== category) : [...categories, category],
+                    )
+                  }
+                >
+                  <CategoryIcon category={category} />
+                  {categoryName(category)}
+                </Chip>
+              ))}
+            </div>
+          </Group>
+          <Group title="Effects" footer="Matches any of the selected effects.">
+            <div className="flex flex-wrap gap-2 p-3">
+              {(Object.keys(moveEffects) as MoveEffect[]).map((effect) => (
+                <Chip
+                  key={effect}
+                  pressed={effects.includes(effect)}
+                  onClick={() => setEffects(effects.includes(effect) ? effects.filter((entry) => entry !== effect) : [...effects, effect])}
+                >
+                  {effect}
+                </Chip>
+              ))}
+            </div>
+          </Group>
+          <button type="button" className={button({ variant: "filled" })} onClick={() => setFiltersOpen(false)}>
+            Show {list?.length ?? 0} moves
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 };
-
-export const MovesPage = () => (
-  <div className="moves-layout p-2 pb-0 md:h-[calc(100vh-1rem)] max-md:pb-2">
-    <MoveList className="overflow-hidden" />
-  </div>
-);

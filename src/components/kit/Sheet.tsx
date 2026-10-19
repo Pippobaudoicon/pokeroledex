@@ -102,7 +102,7 @@ export const Sheet = ({
               {hideTitle && <span className="flex-1" />}
               {toolbar}
               <DialogPrimitive.Close
-                className={cn(button({ variant: "gray", size: "icon" }), "size-9 lg:size-7", hideTitle && "bg-white/70 backdrop-blur-md hover:bg-white/90")}
+                className={cn(button({ variant: "gray", size: "icon" }), "size-9 lg:size-7", hideTitle && "bg-surface/70 backdrop-blur-md hover:bg-surface/90")}
                 aria-label="Close"
               >
                 <X className="size-4" />

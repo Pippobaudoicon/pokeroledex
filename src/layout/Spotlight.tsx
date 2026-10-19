@@ -177,14 +177,14 @@ const Results = ({ query, onPick }: { query: string; onPick: (to: string) => voi
                 key={hit.key}
                 value={hit.key.toLowerCase()}
                 onSelect={() => onPick(hit.to)}
-                className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 py-1.5 text-label aria-selected:bg-tint aria-selected:text-white lg:min-h-10 lg:rounded-lg lg:px-2.5 group/hit"
+                className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 py-1.5 text-label aria-selected:bg-tint aria-selected:text-on-tint lg:min-h-10 lg:rounded-lg lg:px-2.5 group/hit"
               >
                 <span className="grid size-9 shrink-0 place-items-center">{hit.visual}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-medium">{hit.title}</span>
-                  {hit.subtitle && <span className="block truncate text-footnote text-label-2 group-aria-selected/hit:text-white">{hit.subtitle}</span>}
+                  {hit.subtitle && <span className="block truncate text-footnote text-label-2 group-aria-selected/hit:text-on-tint">{hit.subtitle}</span>}
                 </span>
-                {hit.meta && <span className="shrink-0 text-footnote tabular-nums text-label-2 group-aria-selected/hit:text-white">{hit.meta}</span>}
+                {hit.meta && <span className="shrink-0 text-footnote tabular-nums text-label-2 group-aria-selected/hit:text-on-tint">{hit.meta}</span>}
                 <CornerDownLeft aria-hidden className="hidden size-4 shrink-0 opacity-0 group-aria-selected/hit:opacity-100 lg:block" />
               </Command.Item>
             ))}

@@ -28,7 +28,7 @@ const typeBg: Record<T.MoveType, string> = {
 };
 
 /** Text colour that reads on a type's colour. */
-export const typeText = (type: T.MoveType) => (WHITE_TEXT.has(type) ? "text-white" : "text-label");
+export const typeText = (type: T.MoveType) => (WHITE_TEXT.has(type) ? "text-white" : "text-[#1d1b17]");
 
 /** CSS colour of a type, for gradients and tints. */
 export const typeColor = (type: T.MoveType) => `var(--color-type-${type === "VARIES" ? "typeless" : type.toLowerCase()})`;
@@ -48,7 +48,7 @@ export const TypePill = ({ type, size = "md", className }: { type: T.MoveType; s
       "inline-flex items-center gap-1 rounded-full font-semibold uppercase tracking-wide",
       size === "md" ? "h-6 pl-1.5 pr-2.5 text-footnote" : "h-5 pl-1 pr-2 text-caption",
       typeBg[type],
-      WHITE_TEXT.has(type) ? "text-white" : "text-label",
+      typeText(type),
       className,
     )}
   >

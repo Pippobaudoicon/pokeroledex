@@ -6,7 +6,7 @@ export const button = cva(
   {
     variants: {
       variant: {
-        filled: "bg-tint text-white hover:bg-tint-hover",
+        filled: "bg-tint text-on-tint hover:bg-tint-hover",
         tinted: "bg-tint/10 text-tint hover:bg-tint/15",
         gray: "bg-fill text-label hover:bg-fill-strong",
         plain: "text-tint hover:bg-tint/10",

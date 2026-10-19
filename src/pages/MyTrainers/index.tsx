@@ -1,301 +1,229 @@
-import { type InvalidateQueryFilters, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@uidotdev/usehooks";
+import { Plus, Search, UserRound, Users } from "lucide-react";
 import * as React from "react";
-import { CgPokemon } from "react-icons/cg";
 import { Link, useParams } from "react-router-dom";
-import type * as T from "../../../shared/types";
-import {
-  useTrainersControllerCreate,
-  useTrainersControllerFindAll,
-} from "@/api/components";
-import { queryKeyFn } from "@/api/context";
+import { useNaturesControllerFindAll, useTrainersControllerCreate, useTrainersControllerFindAll } from "@/api/components";
 import { Rank } from "@/api/schemas";
-import { AddNewBox } from "@/components/AddNewBox";
-import { Box } from "@/components/Box";
-import { GenderIcon } from "@/components/GenderIcon";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { NatureSelect } from "@/components/NatureSelect";
-import { RankIcon } from "@/components/RankIcon";
-import { RankSelect } from "@/components/RankSelect";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { button } from "@/components/kit/button";
+import { Row } from "@/components/kit/List";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Picker } from "@/components/kit/Picker";
+import { RankBall, RankBadge } from "@/components/kit/Pills";
+import { Sheet } from "@/components/kit/Sheet";
+import { fold } from "@/hooks/use-dex";
 import { useToast } from "@/hooks/use-toast";
+import { cn, formatEnumName } from "@/lib/utils";
 import { TrainerProvider } from "@/pages/MyTrainers/context";
 import { TrainerSheet } from "@/pages/MyTrainers/TrainerSheet";
-import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
-const TrainerCard = ({
-  name,
-  gender,
-  rank,
-  className,
-  onClick,
-}: {
-  name: string;
-  gender: T.Gender;
-  rank: T.Rank;
-  className?: string;
-  onClick?: () => void;
-}) => (
-  <Box
-    color="bg-pokerole-red"
-    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-linear-to-br/srgb from-type-steel-light ${onClick != null ? "hover:bg-pokerole-red-light hover:from-pokerole-red-light" : ""}`}
-    onClick={onClick}
-  >
-    <div className="flex flex-row items-center gap-2">
-      <RankIcon rank={rank} size="md" />
-      <Text size="text-3xl" color="text-white">
-        {name}
-      </Text>
-      <GenderIcon gender={gender} />
-    </div>
-  </Box>
-);
-const CreateTrainerDialog = ({ trigger }: { trigger: React.ReactNode }) => {
+
+const CreateTrainer = () => {
   const [open, setOpen] = React.useState(false);
-  const { toast } = useToast();
+  const [name, setName] = React.useState("");
+  const [age, setAge] = React.useState(0);
+  const [natureId, setNatureId] = React.useState("");
+  const [rank, setRank] = React.useState<Rank>(Rank.UNRANKED);
+  const { data: natures } = useNaturesControllerFindAll({});
   const queryClient = useQueryClient();
-  const [newTrainer, setNewTrainer] = React.useState<{ name: string; age: number; natureId: string; rank: T.Rank }>({
-    name: "",
-    age: 0,
-    natureId: "",
-    rank: Rank.UNRANKED,
-  });
-  // The picked nature is only shown; it never reaches newTrainer.natureId (original behaviour).
-  const [nature, setNature] = React.useState<T.Nature | undefined>(undefined);
-  const { mutate } = useTrainersControllerCreate({
+  const { toast } = useToast();
+  const { mutate, isPending } = useTrainersControllerCreate({
     onSuccess: () => {
-      toast({
-        title: "Trainer added",
-        description: (
-          <>
-            <span>Your trainer has been added.</span>
-          </>
-        ),
-      });
-      // A bare query key is read as filters, so this invalidates every query (original behaviour).
-      queryClient.invalidateQueries(
-        queryKeyFn({
-          path: "/trainers",
-          operationId: "trainersControllerFindAll",
-          variables: {},
-        }) as InvalidateQueryFilters,
-      );
+      queryClient.invalidateQueries({ queryKey: ["trainers"] });
       setOpen(false);
+      setName("");
+      setAge(0);
+      setNatureId("");
+      setRank(Rank.UNRANKED);
+      toast({ title: "Trainer added" });
     },
-    onError: (error) => {
-      toast({
-        title: "Failed to add trainer",
-        // apiFetch errors carry no payload, so this is always undefined (kept from the hosted build).
-        description: (error as Partial<T.ApiError>)?.payload,
-      });
-    },
+    onError: () => toast({ title: "Trainer couldn’t be added", description: "Please try again." }),
   });
-  const createTrainer = () => {
-    if (newTrainer.name === "") {
-      toast({
-        title: "Failed to add trainer",
-        description: "Name is required.",
-      });
-      return;
-    }
-    mutate({
-      body: newTrainer,
-    });
-  };
+  const inputClass =
+    "h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9 lg:rounded-lg";
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Trainer</DialogTitle>
-          <DialogDescription>
-            Add a new trainer to your collection.
-          </DialogDescription>
-          <div className="flex flex-row space-x-2 items-center justify-between">
-            <Text className="text-xl flex-grow min-w-20">Name:</Text>
-            <Input
-              placeholder="Name"
-              value={newTrainer.name}
-              onChange={(event) => {
-                setNewTrainer({
-                  ...newTrainer,
-                  name: event.target.value,
-                });
-              }}
-            />
-          </div>
-          <div className="flex flex-row space-x-2 items-center justify-between">
-            <Text className="text-xl min-w-20">Age:</Text>
-            <Input
-              type="number"
-              placeholder="Age"
-              value={newTrainer.age}
-              onChange={(event) => {
-                setNewTrainer({
-                  ...newTrainer,
-                  age: parseInt(event.target.value),
-                });
-              }}
-            />
-          </div>
-          <div className="flex flex-row space-x-2 items-center justify-between">
-            <Text className="text-xl min-w-20">Nature:</Text>
-            <NatureSelect
-              nature={nature}
-              setSelectNature={(picked) => {
-                if (picked != null) setNature(picked);
-              }}
-              comboBoxClassName="text-xl"
-              className="flex-grow"
-              placeholder="Select Nature..."
-            />
-          </div>
-          <div className="flex flex-row space-x-2 items-center justify-between">
-            <Text className="text-xl min-w-20">Rank:</Text>
-            <RankSelect
-              rank={newTrainer.rank}
-              onSelect={(rank) => {
-                if (rank !== undefined)
-                  setNewTrainer({
-                    ...newTrainer,
-                    rank,
-                  });
-              }}
-              comboBoxClassName="text-xl"
-              placeholder="Select Rank..."
-              className="flex-grow"
-            />
-          </div>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="green"
-            onClick={() => {
-              createTrainer();
-            }}
-            className="flex-grow"
-          >
-            Add Trainer
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-const TrainerList = ({ className, onClick }: { className?: string; onClick?: (id: string) => void }) => {
-  const { data: trainers, isFetching } = useTrainersControllerFindAll({});
-  const isLoading = isFetching && trainers == null;
-  const [search, setSearch] = React.useState("");
-  // Sorts the cached query data in place (original behaviour).
-  const filteredTrainers = React.useMemo(
-    () =>
-      trainers
-        ?.sort((a, b) => a.name.localeCompare(b.name))
-        .filter((trainer) => trainer.name.toLowerCase().includes(search.toLowerCase())),
-    [trainers, search],
-  );
-  const trainerCards = React.useMemo(
-    () =>
-      filteredTrainers?.map((trainer) => (
-        // The key sits on the Link inside an unkeyed fragment, so React warns in dev (original behaviour).
-        <>
-          <Link
-            key={trainer.id}
-            to={`/myTrainers/${trainer.id}`}
-            className="flex flex-col"
-          >
-            <TrainerCard
-              key={trainer.id}
-              name={trainer.name}
-              gender={trainer.gender}
-              rank={trainer.rank}
-              onClick={() => onClick?.(trainer.id)}
-              className="flex-grow"
-            />
-          </Link>
-        </>
-      )),
-    [filteredTrainers],
-  );
-  return (
-    <div className={`flex flex-col space-y-2 h-full overflow-hidden ${className}`}>
-      <div className="flex flex-row space-x-2 shrink-0">
-        <Input
-          className="rounded-3xl"
-          placeholder="Search..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
+    <>
+      <button type="button" aria-label="Add trainer" onClick={() => setOpen(true)} className={button({ variant: "plain", size: "sm" })}>
+        <Plus aria-hidden className="size-4" />
+        Add
+      </button>
+      <Sheet open={open} onOpenChange={setOpen} title="Add trainer" initialExpanded>
+        <form
+          className="flex flex-col gap-4 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (name.trim()) mutate({ body: { name: name.trim(), age, rank, natureId: natureId || undefined } });
           }}
-        />
-        <Button className="rounded-3xl">Search</Button>
-      </div>
-      <ScrollArea className="rounded-t-3xl flex-1">
-        <div className="grid grid-cols-2 md:grid-cols-1 2xl:grid-cols-2 gap-2">
-          {isLoading && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
-              <LoadingSpinner />
-            </div>
-          )}
-          {trainerCards}
-          {!isLoading && (
-            <div id="create-trainer-button" className="flex">
-              <CreateTrainerDialog
-                trigger={
-                  <AddNewBox
-                    id="trainer-add-button"
-                    className="p-0 flex-grow"
-                  />
-                }
-              />
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-    </div>
+        >
+          <label className="flex flex-col gap-1.5 text-subhead font-medium">
+            Name
+            <input
+              required
+              autoComplete="off"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className={inputClass}
+              placeholder="Trainer name"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-subhead font-medium">
+            Age
+            <input type="number" min={0} value={age} onChange={(event) => setAge(Number(event.target.value))} className={inputClass} />
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-subhead font-medium">Nature</span>
+            <Picker
+              label="Nature"
+              items={(natures ?? []).map((nature) => ({ value: nature.id, label: nature.name }))}
+              value={natureId}
+              onChange={setNatureId}
+            />
+          </div>
+          <label className="flex flex-col gap-1.5 text-subhead font-medium">
+            Rank
+            <select value={rank} onChange={(event) => setRank(event.target.value as Rank)} className={inputClass}>
+              {Object.values(Rank).map((entry) => (
+                <option key={entry} value={entry}>
+                  {formatEnumName(entry)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" disabled={isPending || !name.trim()} className={button({ variant: "filled" })}>
+            {isPending ? "Adding…" : "Add trainer"}
+          </button>
+        </form>
+      </Sheet>
+    </>
   );
 };
-export const MyTrainersPage = () => {
-  const { id } = useParams();
-  const [selectedId, setSelectedId] = React.useState(id);
-  const detailRef = useScrollToDetail(selectedId);
-  const isDesktop = useMediaQuery("(min-width: 768px)");
-  React.useEffect(() => {
-    setSelectedId(id);
-  }, [id]);
-  const SheetContainer: React.ElementType = isDesktop ? ScrollArea : "div";
+
+const TrainerList = ({ compact = false, selectedId }: { compact?: boolean; selectedId?: string }) => {
+  const { data: trainers, isError, refetch } = useTrainersControllerFindAll({});
+  const [query, setQuery] = React.useState("");
+  const list = React.useMemo(
+    () => trainers?.filter((trainer) => fold(trainer.name).includes(fold(query.trim()))).sort((a, b) => a.name.localeCompare(b.name)),
+    [trainers, query],
+  );
   return (
-    <div className="sheet-layout grid grid-cols-4 gap-4 pl-2 pt-2 pr-2 md:h-[calc(100vh-1rem)] md:grid-rows-1">
-      <TrainerList
-        className="md:col-span-1 col-span-full max-md:min-h-[15vh] max-md:max-h-[35vh]"
-        onClick={(trainerId) => {
-          setSelectedId(trainerId);
-        }}
-      />
-      <SheetContainer ref={detailRef} className="md:col-span-3 col-span-full h-full">
-        {selectedId === undefined ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="md:h-[80%] max-md:w-1/2">
-              <CgPokemon size="100%" color="#5f5c54" />
-            </div>
+    <>
+      <PageHeader title="Trainers" compact={compact} actions={<CreateTrainer />}>
+        <p className="text-subhead text-label-2">Your trainers, their party and everything they carry.</p>
+        <label className="relative mt-3 flex items-center lg:max-w-md">
+          <span className="sr-only">Search trainers</span>
+          <Search aria-hidden className="pointer-events-none absolute left-3 size-4.5 text-label-2 lg:left-2.5 lg:size-4" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search trainers"
+            className="h-11 w-full rounded-xl bg-fill pr-3 pl-10 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg lg:pl-8"
+          />
+        </label>
+      </PageHeader>
+      {compact && (
+        <label className="mx-3 my-3 block">
+          <span className="sr-only">Search trainers</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search trainers"
+            className="h-8 w-full rounded-lg bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus"
+          />
+        </label>
+      )}
+      <div className={cn("px-4 pb-8", compact ? "lg:px-3" : "lg:px-8")}>
+        {isError ? (
+          <div className="rounded-xl bg-surface p-6 text-center shadow-card">
+            <p className="mb-3 text-body">Trainers couldn’t be loaded.</p>
+            <button type="button" className={button({ variant: "tinted" })} onClick={() => refetch()}>
+              Try again
+            </button>
+          </div>
+        ) : !list ? (
+          <div aria-hidden className="skeleton h-40 rounded-xl" />
+        ) : !trainers?.length ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-8 text-center shadow-card">
+            <Users aria-hidden className="size-12 text-tint" />
+            <h2 className="text-title-3 font-semibold">No trainers yet</h2>
+            <p className="max-w-sm text-subhead text-label-2">Create a trainer to keep their party, stats and inventory together.</p>
+            <CreateTrainer />
+          </div>
+        ) : !list.length ? (
+          <div className="rounded-xl bg-surface p-6 text-center shadow-card">
+            <p className="text-body">No trainers named “{query}”.</p>
+            <button type="button" onClick={() => setQuery("")} className={cn(button({ variant: "tinted" }), "mt-3")}>
+              Clear search
+            </button>
           </div>
         ) : (
-          <TrainerProvider id={selectedId} editingMode="view">
-            <TrainerSheet />
-          </TrainerProvider>
+          <>
+            <p className="mb-3 px-1 text-footnote font-medium text-label-2" aria-live="polite">
+              {list.length} {list.length === 1 ? "trainer" : "trainers"}
+            </p>
+            {compact ? (
+              <div className="overflow-hidden rounded-xl bg-surface shadow-card">
+                {list.map((trainer) => (
+                  <Row
+                    key={trainer.id}
+                    to={`/myTrainers/${trainer.id}`}
+                    replace
+                    title={trainer.name}
+                    subtitle={`${trainer.pokemon.length} Pokémon · ${formatEnumName(trainer.rank)}`}
+                    icon={<RankBall rank={trainer.rank} className="size-6" />}
+                    className={trainer.id === selectedId ? "bg-tint/10" : undefined}
+                  />
+                ))}
+              </div>
+            ) : (
+              <ul className="grid grid-cols-[repeat(auto-fill,220px)] justify-center gap-4 sm:justify-start">
+                {list.map((trainer) => (
+                  <li key={trainer.id}>
+                    <Link
+                      to={`/myTrainers/${trainer.id}`}
+                      className="flex h-full flex-col items-center gap-3 rounded-2xl bg-surface p-5 text-center shadow-card transition-colors hover:bg-raised"
+                    >
+                      <span className="grid size-16 place-items-center rounded-full bg-tint/10 text-tint">
+                        <UserRound aria-hidden className="size-8" />
+                      </span>
+                      <span className="line-clamp-2 w-full text-body font-semibold">{trainer.name}</span>
+                      <RankBadge rank={trainer.rank} />
+                      <span className="text-footnote text-label-2">
+                        {trainer.pokemon.length} Pokémon · Age {trainer.age}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
-      </SheetContainer>
+      </div>
+    </>
+  );
+};
+
+export const MyTrainersPage = () => {
+  const { id } = useParams();
+  const desktop = useMediaQuery("(min-width: 1024px)");
+  if (!id)
+    return (
+      <div className="mx-auto max-w-6xl">
+        <TrainerList />
+      </div>
+    );
+  const sheet = (
+    <TrainerProvider key={id} id={id} editingMode="view">
+      <TrainerSheet />
+    </TrainerProvider>
+  );
+  if (!desktop) return sheet;
+  return (
+    <div className="flex">
+      <aside aria-label="Trainers" className="sticky top-0 h-dvh w-80 shrink-0 overflow-y-auto border-r border-hairline xl:w-88">
+        <TrainerList compact selectedId={id} />
+      </aside>
+      <div className="min-w-0 flex-1">{sheet}</div>
     </div>
   );
 };

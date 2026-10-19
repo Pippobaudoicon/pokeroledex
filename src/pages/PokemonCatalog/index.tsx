@@ -28,7 +28,7 @@ const DexRow = ({ pokemon, selected }: { pokemon: T.PokemonTemplateSummary; sele
       aria-current={selected ? "true" : undefined}
       className="flex items-center gap-3 pl-2 transition-colors duration-150 hover:bg-raised active:bg-fill aria-[current]:bg-tint/8"
     >
-      <Sprite image={pokemon.image} set="box" className="h-14 w-17 overflow-hidden [&_img]:scale-150" />
+      <Sprite image={pokemon.image} set="box" className="h-14 w-17" />
       <span className="flex min-h-15 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0">
         <span className="min-w-0 flex-1">
           <span className="block truncate text-body font-medium">{pokemon.name}</span>
@@ -150,7 +150,7 @@ export const PokedexPage = () => {
             >
               <SlidersHorizontal aria-hidden className="size-4" />
               Filters
-              {moreFilters > 0 && <span className="grid size-5 place-items-center rounded-full bg-tint text-caption text-white">{moreFilters}</span>}
+              {moreFilters > 0 && <span className="grid size-5 place-items-center rounded-full bg-tint text-caption text-on-tint">{moreFilters}</span>}
             </button>
           </div>
         </PageHeader>

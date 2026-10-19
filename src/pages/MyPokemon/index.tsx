@@ -22,7 +22,7 @@ const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected
       aria-current={selected ? "page" : undefined}
       className="flex items-center gap-3 pl-2 transition-colors duration-150 hover:bg-raised active:bg-fill aria-[current]:bg-tint/10"
     >
-      <Sprite image={pokemon.image} set="box" className="h-14 w-17 overflow-hidden [&_img]:scale-150" />
+      <Sprite image={pokemon.image} set="box" className="h-14 w-17" />
       <span className="flex min-h-15 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0 lg:pr-3">
         <span className="min-w-0 flex-1">
           <span className="block truncate text-body font-medium">{pokemon.name}</span>
@@ -35,6 +35,28 @@ const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected
           </span>
         </span>
         <ChevronRight aria-hidden className="size-4 shrink-0 text-label-3" />
+      </span>
+    </Link>
+  </li>
+);
+
+const PokemonCard = ({ pokemon }: { pokemon: T.PokemonMinimal }) => (
+  <li>
+    <Link
+      to={`/myPokemon/${pokemon.id}`}
+      title={pokemon.name}
+      className="flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-4 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill"
+    >
+      <Sprite image={pokemon.image} set="book" className="size-24 lg:size-28" />
+      <span className="line-clamp-2 min-h-[2.8em] w-full text-body font-semibold">{pokemon.name}</span>
+      <span className="flex items-center justify-center gap-1.5 text-footnote text-label-2">
+        <RankBall rank={pokemon.rank} className="size-3.5" />
+        {formatEnumName(pokemon.rank)}
+      </span>
+      <span className="mt-auto flex flex-wrap justify-center gap-1">
+        {pokemon.types.map((type) => (
+          <TypePill key={type} type={type} size="sm" />
+        ))}
       </span>
     </Link>
   </li>
@@ -127,9 +149,11 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
             <p className="mb-2 px-1 text-footnote font-medium text-label-2" aria-live="polite">
               {list?.length} {list?.length === 1 ? "Pokémon" : "Pokémon"}
             </p>
-            <ul className={cn("overflow-hidden rounded-xl bg-surface shadow-card", !compact && "lg:grid lg:grid-cols-2 lg:gap-x-0 2xl:grid-cols-3")}>
-              {list?.map((pokemon) => (
+            <ul className={compact ? "overflow-hidden rounded-xl bg-surface shadow-card" : "grid grid-cols-[repeat(auto-fill,220px)] justify-center gap-4 sm:justify-start"}>
+              {list?.map((pokemon) => compact ? (
                 <PokemonRow key={pokemon.id} pokemon={pokemon} selected={pokemon.id === selectedId} />
+              ) : (
+                <PokemonCard key={pokemon.id} pokemon={pokemon} />
               ))}
             </ul>
           </>

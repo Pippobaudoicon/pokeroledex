@@ -1,365 +1,304 @@
-import { useDebounce, useMediaQuery } from "@uidotdev/usehooks";
+import { useMediaQuery } from "@uidotdev/usehooks";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import * as React from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
-import { CgPokemon } from "react-icons/cg";
-import { Link, useParams } from "react-router-dom";
-import {
-  useItemsControllerFindByCampaigns,
-  useItemsControllerFindOne,
-} from "@/api/components";
+import { useItemsControllerFindOne } from "@/api/components";
 import { ItemCategory, ItemPocket } from "@/api/schemas";
-import { Box } from "@/components/Box";
-import { FilterSection } from "@/components/FilterSection";
-import { ItemCard, getItemColor } from "@/components/ItemCard";
+import { getItemColor } from "@/components/ItemCard";
 import { ItemImage } from "@/components/ItemImage";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MultiSelect } from "@/components/MultiSelect";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useCampaignFilter } from "@/hooks/use-campaign-filter";
-import { formatEnumName } from "@/lib/utils";
-import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
-const ItemListCard = ({
-  name,
-  source,
-  pocket,
-  category,
-  image,
-  className,
-  onClick,
-}: Pick<T.Item, "name" | "source" | "pocket" | "category" | "image"> & {
-  className?: string;
-  onClick?: () => void;
-}) => (
-  <Box
-    color={`bg-${getItemColor(pocket, category)}`}
-    className={`${className} flex flex-col space-y-2 p-3 bg-linear-to-br/srgb from-${getItemColor(pocket, category)}-light justify-between ${onClick != null ? `hover:bg-${getItemColor(pocket, category)}/80` : ""}`}
-    onClick={onClick}
-  >
-    <div className="flex flex-row justify-between">
-      <Text size="text-xl" color="text-white">
-        {name}
-      </Text>
-      <Text
-        size="text-xl"
-        color="text-white"
-        className="opacity-50"
-      >{`${source}`}</Text>
-    </div>
-    <div className="flex flex-row space-x-2 justify-between">
-      <div className="flex flex-col items-center justify-end space-y-1">
-        <Text size="text-xl" color="text-white">
-          {"Pocket: "}
-          {formatEnumName(pocket ?? "-")}
-        </Text>
+import { button } from "@/components/kit/button";
+import { Chip } from "@/components/kit/Controls";
+import { Group, Row } from "@/components/kit/List";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Sheet } from "@/components/kit/Sheet";
+import { fold, useItemIndex } from "@/hooks/use-dex";
+import { cn, formatEnumName } from "@/lib/utils";
+
+const ItemDetail = ({ id }: { id: string }) => {
+  const { data: item, isError, refetch } = useItemsControllerFindOne({ pathParams: { id } });
+  if (isError)
+    return (
+      <div className="p-6 text-center">
+        <p className="mb-3 text-body">This item couldn’t be loaded.</p>
+        <button type="button" className={button({ variant: "tinted" })} onClick={() => refetch()}>
+          Try again
+        </button>
       </div>
-      <ItemImage imageFileName={image} className="w-20 h-20" />
-    </div>
-  </Box>
-);
-
-interface ItemFilter {
-  id: string;
-  filter: (item: T.Item) => boolean;
-}
-
-interface FilterProps {
-  filters: ItemFilter[];
-  setFilters: (filters: ItemFilter[]) => void;
-  className?: string;
-}
-
-const useCategoryFilter = () => {
-  const [selectedCategories, setSelectedCategories] = React.useState<
-    ItemCategory[]
-  >([]);
-  return {
-    filter: (item: T.Item) =>
-      selectedCategories.length === 0 ||
-      selectedCategories.some((category) => item.category === category),
-    selectedCategories,
-    setSelectedCategories,
-  };
-};
-const CategoryFilter = ({ filters, setFilters }: FilterProps) => {
-  const { filter, selectedCategories, setSelectedCategories } =
-    useCategoryFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "category");
-    otherFilters.push({ filter, id: "category" });
-    setFilters(otherFilters);
-  }, [filter]);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Category:</Text>
-      <MultiSelect
-        options={Object.values(ItemCategory).map((category) => ({
-          label: category.replace(/(_)/g, " "),
-          value: category,
-        }))}
-        selected={selectedCategories}
-        onChange={setSelectedCategories}
-        className="text-xl"
-        placeholder="Select categories..."
-      />
-    </div>
-  );
-};
-
-const usePocketFilter = () => {
-  const [selectedPockets, setSelectedPockets] = React.useState<ItemPocket[]>(
-    [],
-  );
-  return {
-    filter: (item: T.Item) =>
-      selectedPockets.length === 0 ||
-      selectedPockets.some((pocket) => item.pocket === pocket),
-    selectedPockets,
-    setSelectedPockets,
-  };
-};
-const PocketFilter = ({ filters, setFilters }: FilterProps) => {
-  const { filter, selectedPockets, setSelectedPockets } = usePocketFilter();
-  React.useEffect(() => {
-    const otherFilters = filters.filter((other) => other.id !== "pocket");
-    otherFilters.push({ filter, id: "pocket" });
-    setFilters(otherFilters);
-  }, [filter]);
-  return (
-    <div className="flex flex-row gap-2 items-center">
-      <Text size="text-xl">Pocket:</Text>
-      <MultiSelect
-        options={Object.values(ItemPocket).map((pocket) => ({
-          label: pocket.replace(/(_)/g, " "),
-          value: pocket,
-        }))}
-        selected={selectedPockets}
-        onChange={setSelectedPockets}
-        className="text-xl"
-        placeholder="Select pockets..."
-      />
-    </div>
-  );
-};
-
-const ItemFilters = ({ filters, setFilters, className }: FilterProps) => (
-  <div className={className}>
-    <CategoryFilter setFilters={setFilters} filters={filters} />
-    <PocketFilter setFilters={setFilters} filters={filters} />
-  </div>
-);
-const ItemList = ({
-  onClick,
-  className,
-}: {
-  onClick?: (id: string) => void;
-  className?: string;
-}) => {
-  const { state: campaignFilter } = useCampaignFilter();
-  const [items, setItems] = React.useState<T.Item[] | undefined>(undefined);
-  const [isFetching, setIsFetching] = React.useState(false);
-  const { mutate: fetchItems } = useItemsControllerFindByCampaigns({
-    onSuccess: (items) => {
-      setItems(items);
-      setIsFetching(false);
-    },
-    onError: () => setIsFetching(false),
-  });
-  const showSpinner = isFetching && !items;
-  const [search, setSearch] = React.useState("");
-  const [filters, setFilters] = React.useState<ItemFilter[]>([]);
-  const debouncedSearch = useDebounce(search, 200);
-  React.useEffect(() => {
-    setIsFetching(true);
-    fetchItems({
-      body: {
-        campaignIds: campaignFilter.campaignIds,
-        includeCore: campaignFilter.includeCore,
-      },
-      headers: {},
-    });
-  }, [campaignFilter.campaignIds, campaignFilter.includeCore, fetchItems]);
-  const filteredItems = React.useMemo(
-    () =>
-      items
-        ?.filter((item) =>
-          (item.name ?? "")
-            .toLowerCase()
-            .includes(debouncedSearch.toLowerCase()),
-        )
-        .filter((item) => filters.every((filter) => filter.filter(item)))
-        .sort((first, second) => {
-          if (first.pocket == null) return 1;
-          if (second.pocket == null) return -1;
-          const byPocket = first.pocket.localeCompare(second.pocket);
-          if (byPocket !== 0) return byPocket;
-          if (first.category == null) return 1;
-          if (second.category == null) return -1;
-          const byCategory = first.category.localeCompare(second.category);
-          return byCategory !== 0
-            ? byCategory
-            : (first.name ?? "").localeCompare(second.name ?? "");
-        }),
-    [items, debouncedSearch, filters],
-  );
-
-  const [visibleCount, setVisibleCount] = React.useState(30);
-  const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-  const sentinelRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    setVisibleCount(30);
-  }, [debouncedSearch, filters, items]);
-  React.useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-slot="scroll-area-viewport"]',
     );
-    if (viewport === null || sentinelRef.current === null) return;
-    const showMore = () =>
-      setVisibleCount((count) =>
-        Math.min(filteredItems?.length ?? 0, count + 30),
-      );
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) if (entry.isIntersecting) showMore();
-      },
-      { root: viewport, rootMargin: "200px" },
-    );
-    observer.observe(sentinelRef.current);
-    const timeout = setTimeout(() => {
-      if (viewport == null) return;
-      for (
-        let attempts = 0;
-        viewport.scrollHeight <= viewport.clientHeight &&
-        (filteredItems?.length ?? 0) > visibleCount &&
-        attempts < 20;
-        attempts++
-      ) {
-        showMore();
-      }
-    }, 50);
-    return () => {
-      observer.disconnect();
-      clearTimeout(timeout);
-    };
-  }, [filteredItems]);
-
-  const itemCards = React.useMemo(
-    () =>
-      filteredItems?.slice(0, visibleCount).map((item) => (
-        <Link key={item.id} to={`/items/${item.id}`} className="flex flex-col">
-          <ItemListCard
-            name={item.name}
-            source={item.source}
-            pocket={item.pocket}
-            category={item.category}
-            image={item.image}
-            onClick={() => onClick?.(item.id)}
-            className="flex-grow"
-          />
-        </Link>
-      )),
-    [filteredItems, visibleCount],
-  );
-  return (
-    <div className={`flex flex-col gap-2 h-full ${className}`}>
-      <div className="flex flex-row space-x-2">
-        <Input
-          id="items-search-input"
-          className="rounded-3xl"
-          placeholder="Search..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
-        />
-        <Button id="items-search-button" className="rounded-3xl">
-          Search
-        </Button>
+  if (!item)
+    return (
+      <div aria-hidden className="space-y-4 p-4">
+        <div className="skeleton h-40 rounded-xl" />
+        <div className="skeleton h-24 rounded-xl" />
       </div>
-      <FilterSection label="Filters">
-        <ItemFilters
-          filters={filters}
-          setFilters={setFilters}
-          className="flex md:flex-row flex-col gap-2 mt-2"
-        />
-      </FilterSection>
-      <ScrollArea
-        ref={scrollAreaRef}
-        className="md:rounded-t-3xl rounded-3xl flex-1"
+    );
+  return (
+    <div className="flex flex-col gap-6 p-4">
+      <div
+        className="flex flex-col items-center gap-3 rounded-2xl p-5 text-center"
+        style={{
+          background: `linear-gradient(150deg, color-mix(in oklab, var(--color-${getItemColor(item.pocket, item.category)}) 20%, var(--color-surface)), var(--color-surface))`,
+        }}
       >
-        <div className="grid xs:grid-cols-2 2xl:grid-cols-3 md:grid-cols-1 lg:grid-cols-2 grid-cols-1 gap-2">
-          {showSpinner && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
-              <LoadingSpinner />
-            </div>
-          )}
-          {itemCards}
-          <div
-            ref={sentinelRef}
-            className="h-1 w-full col-span-full"
-          />
-        </div>
-      </ScrollArea>
+        <ItemImage imageFileName={item.image} className="size-24" />
+        <h2 className="font-display text-title-1">{item.name}</h2>
+        <p className="text-subhead text-label-2">
+          {formatEnumName(item.pocket ?? "Unassigned")}
+          {item.category && ` · ${formatEnumName(item.category)}`}
+        </p>
+      </div>
+      <Group title="Description">
+        <p className="p-4 text-body whitespace-pre-wrap">{item.description || "No description available."}</p>
+      </Group>
+      <Group title="Details">
+        <Row title="Pocket" value={formatEnumName(item.pocket ?? "Unassigned")} />
+        {item.category && <Row title="Category" value={formatEnumName(item.category)} />}
+        <Row title="Trainer price" value={item.trainerPrice ?? "—"} />
+        <Row title="PMD price" value={item.pmdPrice ?? "—"} />
+        <Row title="Single use" value={item.oneUse ? "Yes" : "No"} />
+        <Row title="PMD item" value={item.PMD ? "Yes" : "No"} />
+        {item.source && <Row title="Source" subtitle={item.source} />}
+      </Group>
     </div>
   );
 };
-const ItemDetail = ({ itemId }: { itemId?: string }) => {
-  const {
-    data: item,
-    isLoading,
-    isError,
-  } = useItemsControllerFindOne(
-    {
-      pathParams: {
-        id: itemId ?? "",
-      },
-    },
-    {
-      enabled: itemId !== undefined,
-    },
-  );
-  return itemId === undefined ? (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="md:h-[80%] max-md:w-1/2">
-        <CgPokemon size="100%" color="#5f5c54" />
-      </div>
-    </div>
-  ) : isLoading ? (
-    <div className="flex flex-row flex-grow justify-center items-center h-full">
-      <LoadingSpinner />
-    </div>
-  ) : item === undefined || isError ? (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="md:h-[80%] max-md:w-1/2">
-        <CgPokemon size="100%" color="#5f5c54" />
-      </div>
-    </div>
-  ) : (
-    <div className="flex flex-col items-center justify-center h-full">
-      <ItemCard item={item} />
-    </div>
-  );
-};
+
+const PAGE_SIZE = 60;
+
 export const ItemsPage = () => {
   const { id } = useParams();
-  const [selectedItemId, setSelectedItemId] = React.useState(id);
-  const detailRef = useScrollToDetail(selectedItemId);
-  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const navigate = useNavigate();
+  const desktop = useMediaQuery("(min-width: 1024px)");
+  const { data: items, isError, refetch } = useItemIndex();
+  const [params] = useSearchParams();
+  const search = params.toString();
+  const [query, setQuery] = React.useState(params.get("search") ?? "");
+  React.useEffect(() => setQuery(params.get("search") ?? ""), [params]);
+  const deferredQuery = React.useDeferredValue(query);
+  const [pockets, setPockets] = React.useState<T.ItemPocket[]>([]);
+  const [categories, setCategories] = React.useState<T.ItemCategory[]>([]);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [listSeen, setListSeen] = React.useState(!id);
   React.useEffect(() => {
-    setSelectedItemId(id);
+    if (!id) setListSeen(true);
   }, [id]);
-  const DetailContainer = isDesktop ? ScrollArea : "div";
+  const close = () => (listSeen ? navigate(-1) : navigate("/items", { replace: true }));
+  const list = React.useMemo(() => {
+    const needle = fold(deferredQuery.trim());
+    return items
+      ?.filter(
+        (item) =>
+          (!needle || fold(`${item.name} ${item.description}`).includes(needle)) &&
+          (!pockets.length || pockets.includes(item.pocket)) &&
+          (!categories.length || (item.category !== null && categories.includes(item.category))),
+      )
+      .sort((a, b) =>
+        (a.pocket ?? "\uffff").localeCompare(b.pocket ?? "\uffff") ||
+        (a.category ?? "\uffff").localeCompare(b.category ?? "\uffff") ||
+        a.name.localeCompare(b.name),
+      );
+  }, [items, deferredQuery, pockets, categories]);
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+  const sentinel = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => setVisibleCount(PAGE_SIZE), [list]);
+  React.useEffect(() => {
+    if (!sentinel.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisibleCount((count) => count + PAGE_SIZE);
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [list, visibleCount]);
+  const clearFilters = () => {
+    setPockets([]);
+    setCategories([]);
+  };
   return (
-    <div className="catalog-layout p-2 pb-0 grid md:h-[calc(100vh-1rem)] md:grid-rows-1 grid-cols-5 box-border gap-3">
-      <ItemList
-        className="md:col-span-2 col-span-full max-md:min-h-[30vh] max-md:max-h-[50vh] overflow-hidden"
-        onClick={setSelectedItemId}
-      />
-      <DetailContainer ref={detailRef} className="md:col-span-3 col-span-full max-md:pb-2 h-full">
-        <ItemDetail itemId={selectedItemId} />
-      </DetailContainer>
+    <div className="lg:flex">
+      <div className="mx-auto min-w-0 max-w-6xl flex-1 pb-8">
+        <PageHeader title="Items">
+          <p className="text-subhead text-label-2">Equipment, medicine and everything in your bag.</p>
+          <div className="mt-3 flex gap-2">
+            <label className="relative flex min-w-0 flex-1 items-center lg:max-w-md">
+              <span className="sr-only">Search items</span>
+              <Search aria-hidden className="pointer-events-none absolute left-3 size-4.5 text-label-2 lg:left-2.5 lg:size-4" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Name or description"
+                className="h-11 w-full rounded-xl bg-fill pr-3 pl-10 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg lg:pl-8"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(true)}
+              aria-haspopup="dialog"
+              className={button({ variant: categories.length ? "tinted" : "gray" })}
+            >
+              <SlidersHorizontal aria-hidden className="size-4" />
+              Filters
+              {categories.length > 0 && (
+                <span className="grid size-5 place-items-center rounded-full bg-tint text-caption text-on-tint">{categories.length}</span>
+              )}
+            </button>
+          </div>
+        </PageHeader>
+        <div role="group" aria-label="Filter by pocket" className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 lg:px-8">
+          {Object.values(ItemPocket).map((pocket) => (
+            <Chip
+              key={pocket}
+              pressed={pockets.includes(pocket)}
+              onClick={() => setPockets(pockets.includes(pocket) ? pockets.filter((entry) => entry !== pocket) : [...pockets, pocket])}
+            >
+              {formatEnumName(pocket)}
+            </Chip>
+          ))}
+        </div>
+        <div className="px-4 lg:px-8">
+          <div className="mb-3 flex min-h-8 flex-wrap items-center gap-1.5 px-1" aria-live="polite">
+            <p className="mr-1 text-footnote font-medium text-label-2">{list ? `${list.length} items` : "Loading…"}</p>
+            {categories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                aria-label={`Remove filter: ${formatEnumName(category)}`}
+                onClick={() => setCategories(categories.filter((entry) => entry !== category))}
+                className="inline-flex items-center gap-1 rounded-full bg-tint/10 px-2.5 py-1 text-footnote text-tint"
+              >
+                {formatEnumName(category)}
+                <X aria-hidden className="size-3" />
+              </button>
+            ))}
+            {(pockets.length > 0 || categories.length > 0) && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded-full px-2 py-1 text-footnote font-semibold text-tint hover:bg-tint/10"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+          {isError ? (
+            <div className="rounded-2xl bg-surface p-8 text-center shadow-card">
+              <p className="mb-3 text-body">Items couldn’t be loaded.</p>
+              <button type="button" className={button({ variant: "tinted" })} onClick={() => refetch()}>
+                Try again
+              </button>
+            </div>
+          ) : !list ? (
+            <div aria-hidden className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {[0, 1, 2, 3, 4, 5].map((index) => (
+                <div key={index} className="skeleton h-40 rounded-xl" />
+              ))}
+            </div>
+          ) : list.length === 0 ? (
+            <div className="rounded-2xl bg-surface p-8 text-center shadow-card">
+              <p className="text-body">No items match your search and filters.</p>
+              <button
+                type="button"
+                className={cn(button({ variant: "tinted" }), "mt-3")}
+                onClick={() => {
+                  setQuery("");
+                  clearFilters();
+                }}
+              >
+                Reset search
+              </button>
+            </div>
+          ) : (
+            <ul className="grid grid-cols-[repeat(auto-fill,160px)] justify-center gap-3 sm:grid-cols-[repeat(auto-fill,180px)] sm:justify-start">
+              {list.slice(0, visibleCount).map((item) => (
+                <li key={item.id}>
+                  <Link
+                    to={{ pathname: `/items/${item.id}`, search: search ? `?${search}` : "" }}
+                    replace={!!id}
+                    aria-current={item.id === id ? "true" : undefined}
+                    className="flex h-full flex-col items-center gap-2 rounded-xl bg-surface p-3 text-center shadow-card transition-colors hover:bg-raised aria-[current]:ring-2 aria-[current]:ring-tint"
+                  >
+                    <ItemImage imageFileName={item.image} className="my-1 size-16" />
+                    <span className="line-clamp-2 min-h-[2.8em] w-full text-body font-semibold">{item.name}</span>
+                    <span className="mt-auto text-caption text-label-2">{formatEnumName(item.category ?? item.pocket ?? "Item")}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {list && visibleCount < list.length && (
+            <button
+              ref={sentinel}
+              type="button"
+              className={cn(button({ variant: "gray" }), "mx-auto mt-6 flex")}
+              onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+            >
+              Load more items
+            </button>
+          )}
+        </div>
+      </div>
+      {id && desktop && (
+        <aside
+          aria-label="Item details"
+          className="sticky top-0 h-dvh w-88 shrink-0 overflow-y-auto border-l border-hairline bg-canvas xl:w-96"
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-hairline bg-canvas/90 px-4 py-2 backdrop-blur-xl">
+            <span className="text-headline font-semibold">Item details</span>
+            <button type="button" onClick={close} aria-label="Close item details" className={button({ variant: "gray", size: "icon" })}>
+              <X aria-hidden className="size-4" />
+            </button>
+          </div>
+          <ItemDetail id={id} />
+        </aside>
+      )}
+      <Sheet
+        open={!!id && !desktop}
+        onOpenChange={(open) => {
+          if (!open) close();
+        }}
+        title="Item details"
+        initialExpanded
+      >
+        {id && <ItemDetail id={id} />}
+      </Sheet>
+      <Sheet
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        title="Filter items"
+        initialExpanded
+        toolbar={
+          <button type="button" className={button({ variant: "plain", size: "sm" })} onClick={clearFilters}>
+            Reset
+          </button>
+        }
+      >
+        <div className="flex flex-col gap-6 p-4">
+          <Group title="Category" footer="Matches any of the selected categories.">
+            <div className="flex flex-wrap gap-2 p-3">
+              {Object.values(ItemCategory).map((category) => (
+                <Chip
+                  key={category}
+                  pressed={categories.includes(category)}
+                  onClick={() =>
+                    setCategories(
+                      categories.includes(category) ? categories.filter((entry) => entry !== category) : [...categories, category],
+                    )
+                  }
+                >
+                  {formatEnumName(category)}
+                </Chip>
+              ))}
+            </div>
+          </Group>
+          <button type="button" className={button({ variant: "filled" })} onClick={() => setFiltersOpen(false)}>
+            Show {list?.length ?? 0} items
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 };
