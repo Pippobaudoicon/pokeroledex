@@ -1,5 +1,6 @@
 import { useDebounce } from "@uidotdev/usehooks";
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
 import { useMovesControllerFindByCampaigns } from "@/api/components";
 import { MoveCategory, PokemonType } from "@/api/schemas";
@@ -171,7 +172,10 @@ const MoveList = ({ className }: { className?: string }) => {
     onError: () => setIsFetching(false),
   });
   const showSpinner = isFetching && !moves;
-  const [search, setSearch] = React.useState("");
+  const [params] = useSearchParams();
+  const [search, setSearch] = React.useState(params.get("search") ?? "");
+  // Search links (?search=Ember) fill the search box, also when already on this page.
+  React.useEffect(() => setSearch(params.get("search") ?? ""), [params]);
   const [filters, setFilters] = React.useState<MoveFilter[]>([]);
   const debouncedSearch = useDebounce(search, 200);
   const filteredMoves = React.useMemo(

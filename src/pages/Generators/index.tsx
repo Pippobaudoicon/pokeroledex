@@ -113,7 +113,9 @@ const GeneratedPokemonList = () => {
         else setLockedPokemon([...lockedPokemon, pokemon]);
       }}
     >
-      <PokemonSheet showButtons="addAndLock" />
+      <div className="overflow-hidden rounded-2xl">
+        <PokemonSheet showButtons="addAndLock" embedded />
+      </div>
     </StaticPokemonProvider>
   );
   return (
