@@ -3,8 +3,18 @@
   "name": "pokeroledex",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-25",
-  // Required by Workers Builds' `wrangler preview` command for pull requests.
-  "previews": {},
+  // PR previews keep user records in a separate database. Rulebook resources are read-only.
+  "previews": {
+    "vars": {
+      "ACCESS_TEAM_DOMAIN": "lopiparo.cloudflareaccess.com",
+      "GITHUB_REPO": "Pippobaudoicon/pokeroledex"
+    },
+    "d1_databases": [
+      { "binding": "DB", "database_name": "pokeroledex-preview", "database_id": "1245dcf9-4027-4691-bb80-3bfaedebad4c", "migrations_dir": "migrations" }
+    ],
+    "r2_buckets": [{ "binding": "RULEBOOK", "bucket_name": "pokeroledex-rulebook" }],
+    "ai_search": [{ "binding": "RULEBOOK_SEARCH", "instance_name": "pokeroledex-corebook", "remote": true }]
+  },
   "routes": [{ "pattern": "pokeroledex.tommasolopiparo.com", "custom_domain": true }],
   "assets": {
     // Files are served first. Requests that match no file go to the Worker, which
