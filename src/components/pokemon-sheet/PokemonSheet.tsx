@@ -61,6 +61,8 @@ const GenderButton = ({ pokemon }: { pokemon: T.Pokemon }) => {
 
 const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
   const template = pokemon.pokemonTemplate;
+  const { editingMode, updatePokemon } = usePokemon();
+  const nicknameId = React.useId();
   return (
     <div className="relative overflow-hidden rounded-2xl shadow-card" style={{ backgroundImage: typeWash(template.types) }}>
       <Pokeball className="absolute -top-10 -right-10 size-48 text-surface/50" strokeWidth={4} />
@@ -69,9 +71,23 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
         <div className="min-w-0 flex-1">
           <p className="text-footnote font-medium text-label-2 tabular-nums">#{template.dexID || template.number}</p>
           <div className="flex items-center gap-1">
-            <h2 className="min-w-0 font-display text-title-2 leading-tight break-words">{template.name}</h2>
+            <h2 className="min-w-0 font-display text-title-2 leading-tight break-words">{pokemon.nickname || template.name}</h2>
             <GenderButton pokemon={pokemon} />
           </div>
+          {pokemon.nickname && <p className="text-footnote text-label-2">{template.name}</p>}
+          {editingMode === "edit" && (
+            <div className="mt-2">
+              <label htmlFor={nicknameId} className="text-footnote text-label-2">Nickname (optional)</label>
+              <input
+                id={nicknameId}
+                type="text"
+                value={pokemon.nickname ?? ""}
+                placeholder={template.name}
+                onChange={(event) => updatePokemon({ nickname: event.target.value })}
+                className="mt-1 h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg"
+              />
+            </div>
+          )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {template.types.map((type) => (
               <TypePill key={type} type={type} size="sm" />
@@ -329,16 +345,16 @@ export const PokemonSheet = ({
     );
   const sectionClass = (name: Section) => cn("flex flex-col gap-6 @3xl:gap-5", section !== name && "@max-3xl:hidden");
   return (
-    <article className="@container min-h-full bg-canvas" aria-label={`${pokemon.pokemonTemplate.name} sheet`}>
+    <article className="@container min-h-full bg-canvas" aria-label={`${pokemon.nickname || pokemon.pokemonTemplate.name} sheet`}>
       {embedded ? (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-4 py-3 @lg:px-6">
-          <h2 className="min-w-0 text-headline font-semibold break-words">{pokemon.pokemonTemplate.name}</h2>
+          <h2 className="min-w-0 text-headline font-semibold break-words">{pokemon.nickname || pokemon.pokemonTemplate.name}</h2>
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
         </header>
       ) : (
         <PageHeader
           compact
-          title={editingMode === "rankUp" ? "Rank up" : editingMode === "edit" ? "Edit" : pokemon.pokemonTemplate.name}
+          title={editingMode === "rankUp" ? "Rank up" : editingMode === "edit" ? "Edit" : pokemon.nickname || pokemon.pokemonTemplate.name}
           back={editingMode === "view" ? back : undefined}
           leading={editingMode !== "view" ? <span /> : undefined}
           actions={actions}

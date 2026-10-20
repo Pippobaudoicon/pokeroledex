@@ -226,6 +226,7 @@ export interface PokemonRecord {
   id: string;
   userId: string;
   pokemonTemplateId: string;
+  nickname?: string;
   rank: Rank;
   gender: Gender;
   noOfBattles: number;

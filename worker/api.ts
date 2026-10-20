@@ -288,10 +288,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', gender: 'N',
         noOfBattles: 0, trainingPoints: 0, moveIds: [], abilityId: species.abilityOne?.id ?? species.abilityOneId,
         natureId: null, heldItemId: null, trainerId: null, cityId: null,
-        ...body, stats,
+        ...body, ...nicknameFields(body), stats,
         currentHp: body.currentHp ?? species.baseHp + species.baseStats.vitality + stats.vitality,
         currentWill: body.currentWill ?? 3 + species.baseStats.insight + stats.insight,
       };
+    }
+
+    function nicknameFields(body: Json): Json {
+      if (!('nickname' in body)) return {};
+      if (typeof body.nickname !== 'string') fail(400, 'Pokemon nickname must be text.');
+      return { nickname: body.nickname.trim() };
     }
 
     function cityFields(body: Json): Json {
@@ -430,8 +436,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const records = referenceNames.includes(name) ? [...referenceRows[name], ...db[name]] :
           name === 'pokemon' ? db.pokemon.filter(record => !record.cityId) : db[name];
         if (name === 'pokemon' && action === 'minimal') return reply(records.map(record => {
-          const species = lookup('pokemon-templates', record.pokemonTemplateId)!;
-          return { id: record.id, name: species.name, number: species.number, dexID: species.dexID,
+          const species = find('pokemon-templates', record.pokemonTemplateId)!;
+          return { id: record.id, name: record.nickname || species.name, number: species.number, dexID: species.dexID,
             image: species.image, types: species.types, rank: record.rank };
         }));
         return reply(records.map(record => hydrate(name, record)));
@@ -493,6 +499,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         Object.assign(update, destination);
         delete update.takeOwnership;
       }
+      if (name === 'pokemon') Object.assign(update, assignment(body), nicknameFields(body));
       if (name === 'trainers') {
         if ('pokemonIds' in body) {
           if (!Array.isArray(body.pokemonIds) || body.pokemonIds.some((id: unknown) => typeof id !== 'string' || !db.pokemon.some(p => p.id === id))) fail(400, 'Choose valid Pokemon for this trainer.');

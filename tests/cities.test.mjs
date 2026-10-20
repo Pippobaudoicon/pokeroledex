@@ -62,6 +62,38 @@ function harness() {
   };
 }
 
+test('Pokemon nicknames persist in sheets, parties and collection names and can be cleared', async () => {
+  const h = harness();
+  try {
+    const trainer = (await h.request('trainers', 'POST', { name: 'Red' })).body;
+    const created = await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, trainerId: trainer.id });
+    assert.equal(created.status, 201);
+    const id = created.body.id;
+    const patch = body => h.request('pokemon', 'PATCH', { id, ...body });
+    assert.equal((await h.request('pokemon/minimal')).body[0].name, species.name);
+    const updated = await patch({ nickname: '  Sparky  ' });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.nickname, 'Sparky');
+    assert.equal(updated.body.pokemonTemplate.name, species.name);
+    assert.equal((await h.request(`pokemon/${id}`)).body.nickname, 'Sparky');
+    assert.equal((await h.request(`trainers/${trainer.id}`)).body.pokemon[0].nickname, 'Sparky');
+    assert.equal((await h.request('pokemon/minimal')).body[0].name, 'Sparky');
+    await patch({ trainingPoints: 5 });
+    assert.equal((await h.request(`pokemon/${id}`)).body.nickname, 'Sparky');
+    assert.equal((await h.request('pokemon', 'PATCH', { id, nickname: 'Stolen' }, 'bob')).status, 404);
+    for (const nickname of [null, 42, {}, []]) {
+      assert.equal((await patch({ nickname })).status, 400);
+      assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, nickname })).status, 400);
+    }
+    assert.equal((await h.request(`pokemon/${id}`)).body.nickname, 'Sparky');
+    assert.equal((await patch({ nickname: '   ' })).body.nickname, '');
+    assert.equal((await h.request('pokemon/minimal')).body[0].name, species.name);
+    const named = await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, nickname: ' Ember ' });
+    assert.equal(named.status, 201);
+    assert.equal((await h.request(`pokemon/${named.body.id}`)).body.nickname, 'Ember');
+  } finally { h.close(); }
+});
+
 test('city counts group ranks separately and count each distinct type once', () => {
   const pokemonTemplate = { ...species, types: ['FIRE', 'FLYING', 'FIRE'] };
   assert.deepEqual(cityTypeCounts([

@@ -20,7 +20,7 @@ const DeleteAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open
   const navigate = useNavigate();
   const { mutate, isPending } = usePokemonControllerRemove({
     onSuccess: () => {
-      toast({ title: `${pokemon.pokemonTemplate.name} was deleted` });
+      toast({ title: `${pokemon.nickname || pokemon.pokemonTemplate.name} was deleted` });
       onOpenChange(false);
       navigate("/myPokemon");
       queryClient.invalidateQueries({ queryKey: ["pokemon"] });
@@ -33,7 +33,7 @@ const DeleteAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content className="fixed top-1/2 left-1/2 z-50 w-[min(300px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-surface/95 text-center shadow-float backdrop-blur-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [--tw-duration:200ms]">
           <div className="px-5 pt-5 pb-4">
-            <DialogPrimitive.Title className="text-headline font-semibold">Delete {pokemon.pokemonTemplate.name}?</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="text-headline font-semibold">Delete {pokemon.nickname || pokemon.pokemonTemplate.name}?</DialogPrimitive.Title>
             <DialogPrimitive.Description className="mt-1 text-footnote text-label-2">Its sheet, moves and stats are removed. This can’t be undone.</DialogPrimitive.Description>
           </div>
           <div className="grid grid-cols-2 border-t border-hairline">
