@@ -1,7 +1,7 @@
 // JSON API. Reference data is read-only; user records live in D1 under the owner's
 // email (migrations/, worker/access.ts). Each request loads the owner's records,
 // works on them in memory and writes back only the records it changed.
-import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { ATTRIBUTES, CITY_SKILLS, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import type { Env } from './index.ts';
@@ -16,7 +16,7 @@ type Row = Json & { id: string };
 type Collections = Record<string, Row[]>;
 
 const referenceNames = ['pokemon-templates', 'moves', 'items', 'abilities', 'natures'];
-const collectionNames = ['pokemon', 'trainers', 'campaigns', 'feedback', 'issues', ...referenceNames];
+const collectionNames = ['pokemon', 'trainers', 'cities', 'campaigns', 'feedback', 'issues', ...referenceNames];
 const blankStats = () => Object.fromEntries([...ATTRIBUTES, ...SOCIALS, ...SKILLS, ...TRAINER_SKILLS, 'happiness', 'loyalty', 'will'].map(key => [key, 0])) as Stats;
 
 class HttpError extends Error {
@@ -45,8 +45,11 @@ async function readBody(request: Request): Promise<Json> {
     if (text.length > 2_000_000) fail(413, 'Request is too large.');
   }
   text += decoder.decode();
-  try { return text ? JSON.parse(text) : {}; }
+  let body: unknown;
+  try { body = text ? JSON.parse(text) : {}; }
   catch { fail(400, 'Invalid JSON.'); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'Request body must be an object.');
+  return body as Json;
 }
 
 function reply(value: unknown, status = 200) {
@@ -168,14 +171,49 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     function newPokemon(body: Json): Row {
       const species = find('pokemon-templates', body.pokemonTemplateId);
       if (!species) fail(400, 'Choose a valid Pokemon template.');
+      if (body.rank !== undefined && !(RANKS as readonly unknown[]).includes(body.rank)) fail(400, 'Choose a valid rank.');
       const stats = { ...blankStats(), ...body.stats };
       return { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', gender: 'N',
         noOfBattles: 0, trainingPoints: 0, moveIds: [], abilityId: species.abilityOne?.id ?? species.abilityOneId,
-        natureId: null, heldItemId: null, trainerId: null,
+        natureId: null, heldItemId: null, trainerId: null, cityId: null,
         ...body, stats,
         currentHp: body.currentHp ?? species.baseHp + species.baseStats.vitality + stats.vitality,
         currentWill: body.currentWill ?? 3 + species.baseStats.insight + stats.insight,
       };
+    }
+
+    function cityFields(body: Json): Json {
+      const fields: Json = {};
+      if ('name' in body) {
+        if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 100) fail(400, 'City name must be 1 to 100 characters.');
+        fields.name = body.name.trim();
+      }
+      if ('skills' in body) {
+        if (!body.skills || typeof body.skills !== 'object' || Array.isArray(body.skills)) fail(400, 'City skills must be an object.');
+        for (const [key, value] of Object.entries(body.skills)) {
+          if (!(CITY_SKILLS as readonly string[]).includes(key) || !Number.isInteger(value) || Number(value) < 0 || Number(value) > 5) fail(400, 'City skills must be whole numbers from 0 to 5.');
+        }
+        fields.skills = Object.fromEntries(CITY_SKILLS.map(key => [key, body.skills[key] ?? 0]));
+      }
+      if ('tags' in body) {
+        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 80)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters.');
+        fields.tags = [...new Set(body.tags.map((tag: string) => tag.trim()))];
+      }
+      return fields;
+    }
+
+    function assignment(body: Json): Json {
+      const update: Json = {};
+      for (const [key, collection] of [['cityId', 'cities'], ['trainerId', 'trainers']]) {
+        if (!(key in body)) continue;
+        const value = body[key];
+        if (value !== null && (typeof value !== 'string' || !db[collection].some(record => record.id === value))) fail(400, `Choose a valid ${collection === 'cities' ? 'city' : 'trainer'}.`);
+        update[key] = value;
+      }
+      if (update.cityId && update.trainerId) fail(400, 'A Pokemon cannot belong to both a city and a trainer.');
+      if (update.cityId) update.trainerId = null;
+      if (update.trainerId) update.cityId = null;
+      return update;
     }
 
     function generate(name: string, body: Json, isEncounter = false) {
@@ -279,7 +317,13 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
     if (method === 'POST' && !action) {
       let record: Row = { ...body, id: body.id ?? body._id ?? crypto.randomUUID(), userId: owner };
-      if (name === 'pokemon') record = newPokemon(record);
+      if (name === 'pokemon') record = newPokemon({ ...record, ...assignment(body) });
+      if (name === 'cities') {
+        const fields = cityFields(body);
+        if (!fields.name) fail(400, 'Choose a city name.');
+        record = { id: crypto.randomUUID(), userId: owner,
+          skills: Object.fromEntries(CITY_SKILLS.map(key => [key, 0])), tags: [], ...fields };
+      }
       if (name === 'trainers') record = { rank: 'UNRANKED', name: '', age: 0, gender: 'N', money: 0,
         natureId: null, inventory: [], ...record, stats: { ...blankStats(), ...body.stats }, currentHp: 5, currentWill: 4 };
       if (name === 'campaigns') record = { allowedUserIds: [], ...record, isCore: false };
@@ -296,13 +340,25 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const record = db[name].find(record => record.id === (action ?? body.id ?? body._id));
       if (!record) fail(404, 'Local record not found. Reference data is read-only; create a custom entry in a campaign.');
       if (name === 'pokemon' && body.pokemonTemplateId && !find('pokemon-templates', body.pokemonTemplateId)) fail(400, 'Pokemon template not found.');
+      if (name === 'pokemon' && body.rank !== undefined && !(RANKS as readonly unknown[]).includes(body.rank)) fail(400, 'Choose a valid rank.');
       const update = { ...body };
       delete update.id; delete update.userId;
+      if (name === 'cities') {
+        Object.assign(record, cityFields(body));
+        put(name, record);
+        return reply(record);
+      }
+      if (name === 'pokemon') Object.assign(update, assignment(body));
       if (name === 'trainers') {
-        if (body.pokemonIds) {
+        if ('pokemonIds' in body) {
+          if (!Array.isArray(body.pokemonIds) || body.pokemonIds.some((id: unknown) => typeof id !== 'string' || !db.pokemon.some(p => p.id === id))) fail(400, 'Choose valid Pokemon for this trainer.');
           for (const p of db.pokemon) {
             const trainerId = body.pokemonIds.includes(p.id) ? record.id : p.trainerId === record.id ? null : p.trainerId;
-            if (trainerId !== p.trainerId) { p.trainerId = trainerId; put('pokemon', p); }
+            if (trainerId !== p.trainerId || (trainerId === record.id && p.cityId)) {
+              p.trainerId = trainerId;
+              if (trainerId === record.id) p.cityId = null;
+              put('pokemon', p);
+            }
           }
           delete update.pokemonIds;
         }
@@ -327,7 +383,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       for (const [kind, id] of removed) drop(kind, id);
       for (const p of db.pokemon) {
         let changed = false;
-        for (const key of ['trainerId', 'abilityId', 'heldItemId']) if (removedIds.has(p[key])) { p[key] = null; changed = true; }
+        for (const key of ['trainerId', 'cityId', 'abilityId', 'heldItemId']) if (removedIds.has(p[key])) { p[key] = null; changed = true; }
         const moveIds = p.moveIds.filter((id: string) => !removedIds.has(id));
         if (moveIds.length !== p.moveIds.length) { p.moveIds = moveIds; changed = true; }
         if (changed && !removedIds.has(p.id)) put('pokemon', p);

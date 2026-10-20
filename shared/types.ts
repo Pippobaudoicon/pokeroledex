@@ -12,6 +12,16 @@ export type Attribute = typeof ATTRIBUTES[number];
 export type Social = typeof SOCIALS[number];
 export type Skill = typeof SKILLS[number];
 export type TrainerSkill = typeof TRAINER_SKILLS[number];
+export const CITY_SKILLS = [...SKILLS, ...TRAINER_SKILLS] as const;
+export type CitySkills = Record<Skill | TrainerSkill, number>;
+export interface City {
+  id: string;
+  userId: string;
+  name: string;
+  skills: CitySkills;
+  tags: string[];
+}
+export type CityBody = Pick<City, 'name' | 'skills' | 'tags'>;
 export type StatKey = Attribute | Social | Skill | TrainerSkill | 'happiness' | 'loyalty' | 'will';
 export type Stats = Record<StatKey, number>;
 export type AttributeStats = Record<Attribute, number>;
@@ -221,6 +231,8 @@ export interface PokemonRecord {
   natureId: string | null;
   heldItemId: string | null;
   trainerId: string | null;
+  /** Missing on older records; a Pokemon can belong to a city or a trainer, not both. */
+  cityId?: string | null;
   stats: Stats;
   currentHp: number;
   currentWill: number;

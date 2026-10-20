@@ -22,6 +22,7 @@ Without access to this Cloudflare account, run `pnpm dev:offline` instead: no lo
 | `pnpm dev` | Local development (frontend + Worker + local D1) |
 | `pnpm dev:offline` | The same without a Cloudflare login; the rulebook bucket is local and Ask is unavailable |
 | `pnpm typecheck` | Strict type check of the app, the Worker and the build scripts |
+| `pnpm test` | City counting, persistence, assignment and validation regression tests |
 | `pnpm build` | Production build into `dist/` |
 | `pnpm preview` | Serve the production build locally (its API needs the Access login, see below) |
 | `pnpm deploy` | Build, apply migrations to the remote D1 database, deploy |
@@ -48,6 +49,38 @@ Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behi
 
 `pnpm dev` has no Access in front of it and uses a single local user. Records made before logins existed belong to `local-user`; give them to someone with `pnpm exec wrangler d1 execute pokeroledex --remote --command "UPDATE records SET owner = 'you@example.com' WHERE owner = 'local-user'"`.
 
+## My City
+
+Open **My City** from the sidebar, Home, or app search. Each account can create
+multiple named cities and switch between them. The overview counts residents by
+type **and rank** (for example, 3 Fire Rookie and 2 Ice Ace). A dual-type resident
+counts once under each type, so the sum of type counts can exceed the population.
+
+**Add Pokémon** creates a sheet from a core or campaign species, or moves an
+existing sheet from My Pokémon, a trainer, or another city. A Pokémon belongs to
+at most one city or trainer; transfers preserve its ID, stats and moves. New sheets
+use the selected rank but start with unallocated stats and moves, editable in
+My Pokémon. The **Pokémon roster** links to each sheet and can move it to a
+trainer, another city, or unassigned My Pokémon. Removing a resident or deleting
+a city never deletes its Pokémon sheets.
+
+**Skills & actions** edits the city's name, common Pokémon/trainer skills (whole
+numbers from 0 to 5), and up to 50 custom action tags such as "Can heal" or
+"Can produce food". Save explicitly; skills are manual city ratings, not
+automatically derived from residents. Crafting suggestions and dual-type weighting
+are not part of this version.
+
+Cities use the existing owner-scoped D1 records collection (`cities`) and optional
+`cityId` on Pokémon, so no schema migration is needed. Existing Pokémon without
+`cityId` remain unassigned to a city. `/api/cities` supports GET/POST and
+`/api/cities/:id` supports GET/PATCH/DELETE. Assignment changes use the existing
+Pokémon PATCH endpoint and validate destinations within the signed-in account.
+
+City regression tests run with `pnpm test`.
+They exercise the actual API handler against an isolated in-memory SQLite
+database and reference fixtures, without accessing Cloudflare or changing local
+development records.
+
 ## Issue reports
 
 The **Suggest a feature** button opens a form; the Worker turns it into a GitHub issue (`worker/github.ts`), so people need no GitHub account. The token stays a Worker secret and never reaches the browser. Each person can send 5 reports a day; their email is kept with the report in D1 but not published on GitHub. Issues get the `from-app` label.
@@ -61,7 +94,7 @@ The **Suggest a feature** button opens a form; the Worker turns it into a GitHub
 
 | Path | Purpose |
 | --- | --- |
-| `src/pages/<Page>/` | One folder per screen: Home, PokemonCatalog, Moves, Items, MyPokemon, MyTrainers, Campaigns, Generators, Import |
+| `src/pages/<Page>/` | One folder per screen: Home, PokemonCatalog, Moves, Items, MyPokemon, MyTrainers, MyCity, Campaigns, Generators, Import |
 | `src/components/` | Shared app components; `ui/` holds the shadcn/ui primitives, `pokemon-sheet/` the Pokémon sheet |
 | `src/layout/` | App shell: sidebar, mobile nav, guided tour, notes panel |
 | `src/api/` | API client and typed react-query hooks |
