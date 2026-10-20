@@ -34,7 +34,7 @@ export const ChoiceGroup = <V extends string>({
   onChange,
 }: {
   label: string;
-  options: { label: string; value: V }[];
+  options: { label: string; value: V; icon?: React.ReactNode }[];
   selected: V[];
   onChange: (values: V[]) => void;
 }) => (
@@ -52,8 +52,9 @@ export const ChoiceGroup = <V extends string>({
           onClick={() =>
             onChange(selected.includes(option.value) ? selected.filter((value) => value !== option.value) : [...selected, option.value])
           }
-          className="h-auto min-h-9 py-1.5 text-left whitespace-normal lg:min-h-7"
+          className="h-auto min-h-9 gap-1.5 py-1.5 text-left whitespace-normal lg:min-h-7"
         >
+          {option.icon}
           {option.label}
         </Chip>
       ))}
@@ -133,4 +134,32 @@ export const habitatNames: Record<Habitat, string> = {
   TROPICAL_SEAS_AND_CORAL_REEFS: "Tropical Seas and Coral Reefs",
   OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF: "Open Ocean and the Continental Shelf",
   DESERTS: "Deserts",
+};
+
+export const habitatEmoji: Record<Habitat, string> = {
+  CITIES: "🏙️",
+  TEMPERATE_DECIDUOUS_FORESTS: "🍂",
+  BADLANDS_SCRUBLANDS_AND_WASTELANDS: "🏜️",
+  ELECTROMAGNETICALLY_ACTIVE_AREAS: "⚡",
+  WOODLANDS: "🌲",
+  TROPICAL_JUNGLES: "🌴",
+  CAVES: "🦇",
+  FIELDS_AND_MEADOWS: "🌼",
+  SWAMPS_BOGS_AND_MARSHES: "🐸",
+  GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES: "🌾",
+  MOUNTAINS: "⛰️",
+  RUINS_AND_CEMETERIES: "🪦",
+  TUNDRAS_AND_BOREAL_FORESTS: "🌨️",
+  LAKESIDES_AND_RIVERSIDES: "🏞️",
+  GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES: "🧊",
+  VOLCANOES: "🌋",
+  LAKES: "🛶",
+  BEACHES: "🏖️",
+  PONDS: "🪷",
+  STREAMS_AND_RIVERS: "💧",
+  OCEANIC_ABYSSES: "🦑",
+  POLAR_SEAS: "🐧",
+  TROPICAL_SEAS_AND_CORAL_REEFS: "🪸",
+  OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF: "🌊",
+  DESERTS: "🌵",
 };

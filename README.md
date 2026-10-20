@@ -80,8 +80,8 @@ transfers: another city, a trainer, or **Assign to me (My Pokémon)**.
 Residents cannot simply be removed or deleted, and a city must be empty before
 it can be deleted.
 
-**Skills & actions** edits the city's name, common Pokémon/trainer skills (whole
-numbers from 0 to 5), and up to 50 custom action tags such as "Can heal" or
+**Skills & actions** edits the city's name, city skills (Generating Electricity, Mining, Handiwork, Medicine Production, Transporting, Farming, Planting, Science; whole
+numbers from 0 to 10), and up to 50 custom action tags such as "Can heal" or
 "Can produce food". Save explicitly; skills are manual city ratings, not
 automatically derived from residents. Crafting suggestions and dual-type weighting
 are not part of this version.

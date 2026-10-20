@@ -30,7 +30,7 @@ Describe what should work when this is implemented.`;
 export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
   const [open, setOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState(issueBody);
+  const [description, setDescription] = React.useState("");
   const { toast } = useToast();
   const { mutate, isPending } = useIssuesControllerCreate({
     onSuccess: (issue) => {
@@ -44,7 +44,7 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
       });
       setOpen(false);
       setTitle("");
-      setDescription(issueBody);
+      setDescription("");
     },
     onError: (error) => {
       toast({
@@ -67,16 +67,16 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl border-hairline bg-surface text-label">
         <DialogHeader>
-          <DialogTitle>Suggest a feature</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-label">Suggest a feature</DialogTitle>
+          <DialogDescription className="text-label-2">
             Your suggestion is published as a public GitHub issue. Your email is not included.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 p-1">
           <div className="space-y-2">
-            <label htmlFor="issue-title" className="block font-move text-sm font-medium">
+            <label htmlFor="issue-title"             className="block font-move text-sm font-medium text-label">
               Title *
             </label>
             <Input
@@ -90,11 +90,13 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="issue-description" className="block font-move text-sm font-medium">
+            <label htmlFor="issue-description"             className="block font-move text-sm font-medium text-label">
               Description *
             </label>
             <Textarea
               id="issue-description"
+              className="text-pokerole-black"
+              placeholder={issueBody}
               value={description}
               maxLength={ISSUE_DESCRIPTION_LIMIT}
               rows={10}
