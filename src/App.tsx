@@ -70,7 +70,7 @@ const router = createBrowserRouter([
       { path: "myTrainers/:id?", element: <MyTrainersPage /> },
       { path: "campaigns/:id?", element: <Legacy><CampaignsPage /></Legacy> },
       { path: "import", element: <Legacy><ImportPage /></Legacy> },
-      { path: "rulebook", element: <Legacy><RulebookPage /></Legacy> },
+      { path: "rulebook", element: <RulebookPage /> },
       { path: "ui-test", element: <UiTestPage /> },
       { path: "*", element: <ErrorPage notFound /> },
     ],

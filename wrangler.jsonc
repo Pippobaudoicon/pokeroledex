@@ -28,7 +28,7 @@
     // Issue reports (worker/github.ts). The token is a secret: `wrangler secret put GITHUB_TOKEN`.
     "GITHUB_REPO": "Pippobaudoicon/pokeroledex" },
   // The Pokérole corebook and its text (worker/index.ts, scripts/upload-rulebook.ts).
-  "r2_buckets": [{ "binding": "RULEBOOK", "bucket_name": "pokeroledex-rulebook" }],
+  "r2_buckets": [{ "binding": "RULEBOOK", "bucket_name": "pokeroledex-rulebook", "remote": true }],
   // "Ask the rulebook" (worker/ask.ts). Local dev needs the real instance.
   "ai_search": [{ "binding": "RULEBOOK_SEARCH", "instance_name": "pokeroledex-corebook", "remote": true }],
   "d1_databases": [
