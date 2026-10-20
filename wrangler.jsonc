@@ -3,6 +3,8 @@
   "name": "pokeroledex",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-25",
+  // Required by Workers Builds' `wrangler preview` command for pull requests.
+  "previews": {},
   "routes": [{ "pattern": "pokeroledex.tommasolopiparo.com", "custom_domain": true }],
   "assets": {
     // Files are served first. Requests that match no file go to the Worker, which
