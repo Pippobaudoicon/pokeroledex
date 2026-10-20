@@ -20,6 +20,8 @@ export interface City {
   name: string;
   skills: CitySkills;
   tags: string[];
+  /** Emails of everyone who shares the city, the creator first. */
+  members: string[];
 }
 export type CityBody = Pick<City, 'name' | 'skills' | 'tags'>;
 export type StatKey = Attribute | Social | Skill | TrainerSkill | 'happiness' | 'loyalty' | 'will';

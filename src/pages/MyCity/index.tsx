@@ -14,6 +14,7 @@ import { Sprite } from "@/components/kit/Sprite";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useToast } from "@/hooks/use-toast";
+import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
 
 const field = "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9";
@@ -22,6 +23,7 @@ type Change =
   | { kind: "create"; name: string }
   | { kind: "settings"; id: string; body: CityBody }
   | { kind: "delete"; id: string }
+  | { kind: "invite"; id: string; email: string }
   | { kind: "assign"; body: UpdatePokemonBody }
   | { kind: "add"; cityId: string; pokemonTemplateId: string; rank: Rank };
 
@@ -29,11 +31,12 @@ function useCityChange() {
   const client = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (change: Change) => {
+    mutationFn: (change: Change): Promise<{ id: string }> => {
       switch (change.kind) {
         case "create": return apiFetch<City>({ url: "/cities", method: "post", body: { name: change.name } });
         case "settings": return apiFetch<City>({ url: `/cities/${encodeURIComponent(change.id)}`, method: "patch", body: change.body });
-        case "delete": return apiFetch<{ id: string }>({ url: `/cities/${encodeURIComponent(change.id)}`, method: "delete" });
+        case "delete": return apiFetch<{ id: string; left?: boolean }>({ url: `/cities/${encodeURIComponent(change.id)}`, method: "delete" });
+        case "invite": return apiFetch<City>({ url: `/cities/${encodeURIComponent(change.id)}/members`, method: "post", body: { email: change.email } });
         case "assign": return apiFetch<Pokemon>({ url: "/pokemon", method: "patch", body: change.body });
         case "add": return apiFetch<Pokemon>({ url: "/pokemon", method: "post", body: { cityId: change.cityId, pokemonTemplateId: change.pokemonTemplateId, rank: change.rank } });
       }
@@ -167,12 +170,39 @@ const CitySettings = ({ city, residentCount }: { city: City; residentCount: numb
       <button disabled={change.isPending || !name.trim()} className={button({ variant: "filled" })}>Save city</button>
     </form>
     <div className={panel}>
-      <p className="mb-3 text-subhead text-label-2">Before deleting this city, move every resident to another city or assign it to yourself. Residents cannot simply be removed.</p>
-      <button type="button" disabled={change.isPending || residentCount > 0} className={button({ variant: "gray" })} onClick={() => {
-        if (window.confirm(`Delete ${city.name}?`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
-      }}>Delete city</button>
+      {city.members.length > 1 ? <>
+        <p className="mb-3 text-subhead text-label-2">The other members keep this city and its residents. You can come back only if one of them invites you again.</p>
+        <button type="button" disabled={change.isPending} className={button({ variant: "gray" })} onClick={() => {
+          if (window.confirm(`Leave ${city.name}?`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
+        }}>Leave city</button>
+      </> : <>
+        <p className="mb-3 text-subhead text-label-2">Before deleting this city, move every resident to another city or assign it to yourself. Residents cannot simply be removed.</p>
+        <button type="button" disabled={change.isPending || residentCount > 0} className={button({ variant: "gray" })} onClick={() => {
+          if (window.confirm(`Delete ${city.name}?`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
+        }}>Delete city</button>
+      </>}
     </div>
   </div>;
+};
+
+const CityMembers = ({ city }: { city: City }) => {
+  const [email, setEmail] = React.useState("");
+  const change = useCityChange();
+  const me = useMe().data?.email;
+  return <section className={`${panel} space-y-4`}>
+    <h2 className="text-title-3 font-semibold">Members</h2>
+    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Invite friends with the email they log in with.</p>
+    <ul className="divide-y divide-hairline">
+      {city.members.map(member => <li key={member} className="py-2 break-all">{member}{member === me && <span className="text-label-2"> (you)</span>}</li>)}
+    </ul>
+    <form className="flex gap-2" onSubmit={event => {
+      event.preventDefault();
+      change.mutate({ kind: "invite", id: city.id, email: email.trim() }, { onSuccess: () => setEmail("") });
+    }}>
+      <input type="email" required maxLength={254} aria-label="Friend's email" placeholder="friend@example.com" className={field} value={email} onChange={event => setEmail(event.target.value)} />
+      <button disabled={!email.trim() || change.isPending} className={button({ variant: "tinted" })}>Invite</button>
+    </form>
+  </section>;
 };
 
 const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; cities: City[]; trainers: Trainer[] }) => {
@@ -267,7 +297,10 @@ export const MyCityPage = () => {
               <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
-          </> : tab === "settings" ? <CitySettings key={JSON.stringify(city)} city={city} residentCount={residents.length} /> :
+          </> : tab === "settings" ? <>
+            <CityMembers key={city.id} city={city} />
+            <CitySettings key={JSON.stringify(city)} city={city} residentCount={residents.length} />
+          </> :
             <section className={panel}><h2 className="mb-3 text-title-3 font-semibold">Pokémon roster ({residents.length})</h2>
               {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="divide-y divide-hairline">{residents.map(resident => <li key={resident.id} className="space-y-3 py-4">
                 <Link to={`/myCity/${city.id}/pokemon/${resident.id}`} className="flex items-center gap-3">
@@ -287,7 +320,7 @@ export const MyCityPage = () => {
 const CitySelect = ({ cities, selected }: { cities: City[]; selected: string }) => {
   const navigate = useNavigate();
   return <select className={field} value={selected} onChange={event => navigate(`/myCity/${event.target.value}`)}>
-    {cities.map(city => <option key={city.id} value={city.id}>{city.name}</option>)}
+    {cities.map(city => <option key={city.id} value={city.id}>{city.name}{city.members.length > 1 ? ` (shared with ${city.members.length - 1})` : ""}</option>)}
   </select>;
 };
 

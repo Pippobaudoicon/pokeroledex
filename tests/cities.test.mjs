@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { handleApi } from '../worker/api.ts';
@@ -11,9 +12,17 @@ const species = {
   abilityOneId: null, abilityTwoId: null, hiddenAbilityId: null, eventAbilityId: null,
 };
 
+const migrationsDir = new URL('../migrations/', import.meta.url);
+function migrate(db, from = 1, until = Infinity) {
+  for (const file of readdirSync(migrationsDir).filter(file => file.endsWith('.sql')).sort()) {
+    const number = Number.parseInt(file, 10);
+    if (number >= from && number <= until) db.exec(readFileSync(new URL(file, migrationsDir), 'utf8'));
+  }
+}
+
 function harness() {
   const db = new DatabaseSync(':memory:');
-  db.exec('CREATE TABLE records (seq INTEGER PRIMARY KEY, owner TEXT, collection TEXT, id TEXT, data TEXT, UNIQUE(owner, collection, id))');
+  migrate(db);
   const prepare = (sql) => {
     let values = [];
     return {
@@ -234,4 +243,143 @@ test('cities and residents cannot be deleted until residents are transferred or 
     assert.equal((await h.request(`pokemon/${first.id}`)).body.cityId, null);
     assert.equal((await h.request(`pokemon/${second.id}`)).body.trainerId, trainer.id);
   } finally { h.close(); }
+});
+
+test('invited members see, edit, add and take residents like the creator', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    assert.deepEqual(city.members, ['alice']);
+    const invite = body => h.request(`cities/${city.id}/members`, 'POST', body);
+    for (const email of [undefined, '', 'bob', 'bob@', 'a b@example.com', `${'a'.repeat(250)}@example.com`]) {
+      assert.equal((await invite({ email })).status, 400, String(email));
+    }
+    assert.equal((await h.request(`cities/${city.id}/members`, 'POST', { email: 'carol@example.com' }, 'carol@example.com')).status, 404);
+    const invited = await invite({ email: '  Bob@Example.com ' });
+    assert.equal(invited.status, 201);
+    assert.deepEqual(invited.body.members, ['alice', bob]);
+    assert.equal((await invite({ email: bob })).status, 409);
+    assert.deepEqual((await h.request('cities', 'GET', undefined, 'carol@example.com')).body, []);
+
+    const resident = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id, rank: 'ROOKIE' })).body;
+    const bobCities = (await h.request('cities', 'GET', undefined, bob)).body;
+    assert.deepEqual(bobCities.map(entry => [entry.id, entry.members]), [[city.id, ['alice', bob]]]);
+    assert.deepEqual((await h.request('pokemon/all', 'GET', undefined, bob)).body.map(p => p.id), [resident.id]);
+    assert.deepEqual((await h.request('pokemon', 'GET', undefined, bob)).body, []);
+
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, stats: { brawl: 3 } }, bob)).status, 200);
+    assert.equal((await h.request(`pokemon/${resident.id}`)).body.stats.brawl, 3);
+    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { skills: { science: 4 } }, bob)).body.skills.science, 4);
+    assert.equal((await h.request(`cities/${city.id}`)).body.skills.science, 4);
+
+    const bobs = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id }, bob)).body;
+    assert.equal((await h.request('pokemon', 'PATCH', { id: bobs.id, cityId: city.id }, bob)).status, 200);
+    assert.deepEqual((await h.request('pokemon', 'GET', undefined, bob)).body, []);
+    assert.deepEqual((await h.request('pokemon/all')).body.map(p => p.id).sort(), [resident.id, bobs.id].sort());
+
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, takeOwnership: true }, bob)).status, 200);
+    assert.deepEqual((await h.request('pokemon', 'GET', undefined, bob)).body.map(p => [p.id, p.stats.brawl]), [[resident.id, 3]]);
+    assert.deepEqual((await h.request('pokemon/all')).body.map(p => p.id), [bobs.id]);
+    assert.equal((await h.request(`pokemon/${resident.id}`)).status, 404);
+
+    const trainer = (await h.request('trainers', 'POST', { name: 'Red' })).body;
+    const party = await h.request('trainers', 'PATCH', { id: trainer.id, pokemonIds: [bobs.id] });
+    assert.equal(party.body.pokemon[0].id, bobs.id);
+    assert.deepEqual((await h.request('pokemon/all', 'GET', undefined, bob)).body.map(p => p.id), [resident.id]);
+  } finally { h.close(); }
+});
+
+test('deleting a shared city leaves it; the last member deletes it once empty', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const resident = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id })).body;
+    assert.deepEqual((await h.request(`cities/${city.id}`, 'DELETE')).body, { id: city.id, left: true });
+    assert.deepEqual((await h.request('cities')).body, []);
+    assert.deepEqual((await h.request('pokemon/all')).body, []);
+    assert.equal((await h.request(`cities/${city.id}`, 'GET')).status, 404);
+    const remaining = (await h.request('cities', 'GET', undefined, bob)).body;
+    assert.deepEqual(remaining.map(entry => entry.members), [[bob]]);
+    assert.equal((await h.request(`cities/${city.id}`, 'DELETE', undefined, bob)).status, 409);
+    await h.request('pokemon', 'PATCH', { id: resident.id, takeOwnership: true }, bob);
+    assert.deepEqual((await h.request(`cities/${city.id}`, 'DELETE', undefined, bob)).body, { id: city.id });
+    assert.deepEqual((await h.request('cities', 'GET', undefined, bob)).body, []);
+    assert.equal((await h.request('pokemon', 'GET', undefined, bob)).body.length, 1);
+  } finally { h.close(); }
+});
+
+test('custom species and moves follow a shared Pokemon without sharing the campaign', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const campaign = (await h.request('campaigns', 'POST', { name: 'Secret Kanto' })).body;
+    const move = (await h.request('moves', 'POST', { campaignId: campaign.id, name: 'Shadow Ember', category: 'SPECIAL' })).body;
+    const ability = (await h.request('abilities', 'POST', { campaignId: campaign.id, name: 'Ember Body' })).body;
+    const template = (await h.request('pokemon-templates', 'POST', {
+      ...species, id: undefined, name: 'Shadow Charmander', campaignId: campaign.id,
+      abilityOneId: ability.id, possibleMoves: [{ moveId: move.id, rank: 'STARTER' }],
+    })).body;
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const resident = (await h.request('pokemon', 'POST', { pokemonTemplateId: template.id, cityId: city.id, moveIds: [move.id] })).body;
+
+    const seen = (await h.request('pokemon/all', 'GET', undefined, bob)).body[0];
+    assert.equal(seen.pokemonTemplate.name, 'Shadow Charmander');
+    assert.equal(seen.pokemonTemplate.campaign.name, 'Secret Kanto');
+    assert.equal(seen.pokemonTemplate.abilityOne.name, 'Ember Body');
+    assert.deepEqual(seen.pokemonTemplate.possibleMoves.map(entry => entry.move.name), ['Shadow Ember']);
+    assert.equal(seen.ability.name, 'Ember Body');
+    assert.deepEqual(seen.moves.map(entry => entry.name), ['Shadow Ember']);
+    assert.deepEqual((await h.request('campaigns', 'GET', undefined, bob)).body, []);
+    assert.equal((await h.request(`campaigns/${campaign.id}`, 'GET', undefined, bob)).status, 404);
+    assert.equal((await h.request(`pokemon-templates/${template.id}`, 'GET', undefined, bob)).status, 404);
+    assert.equal((await h.request('moves', 'GET', undefined, bob)).body.some(entry => entry.id === move.id), false);
+
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, takeOwnership: true }, bob)).status, 200);
+    const owned = (await h.request(`pokemon/${resident.id}`, 'GET', undefined, bob)).body;
+    assert.equal(owned.pokemonTemplate.name, 'Shadow Charmander');
+    assert.deepEqual(owned.moves.map(entry => entry.name), ['Shadow Ember']);
+    assert.equal((await h.request('pokemon/minimal', 'GET', undefined, bob)).body[0].name, 'Shadow Charmander');
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, moveIds: [] }, bob)).status, 200);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, moveIds: [move.id] }, bob)).status, 200);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, moveIds: ['missing'] }, bob)).status, 400);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, abilityId: 'missing' }, bob)).status, 400);
+
+    // Someone who never had such a Pokemon cannot point a sheet at the private entries.
+    const carol = 'carol@example.com';
+    const carols = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id }, carol)).body;
+    assert.equal((await h.request('pokemon', 'PATCH', { id: carols.id, moveIds: [move.id] }, carol)).status, 400);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: carols.id, pokemonTemplateId: template.id }, carol)).status, 400);
+    assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: template.id }, carol)).status, 400);
+
+    assert.equal((await h.request(`pokemon-templates/${template.id}`, 'DELETE')).status, 409);
+    assert.equal((await h.request(`campaigns/${campaign.id}`, 'DELETE')).status, 409);
+    assert.equal((await h.request(`pokemon/${resident.id}`, 'DELETE', undefined, bob)).status, 200);
+    assert.equal((await h.request(`campaigns/${campaign.id}`, 'DELETE')).status, 200);
+  } finally { h.close(); }
+});
+
+test('the city members migration moves existing cities and residents under the city', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    migrate(db, 1, 2);
+    const insert = db.prepare('INSERT INTO records (owner, collection, id, data) VALUES (?, ?, ?, ?)');
+    insert.run('alice', 'cities', 'c1', JSON.stringify({ id: 'c1', name: 'Pallet' }));
+    insert.run('alice', 'pokemon', 'p1', JSON.stringify({ id: 'p1', cityId: 'c1' }));
+    insert.run('alice', 'pokemon', 'p2', JSON.stringify({ id: 'p2', cityId: null }));
+    insert.run('alice', 'pokemon', 'p3', JSON.stringify({ id: 'p3', cityId: 'gone' }));
+    insert.run('alice', 'trainers', 't1', JSON.stringify({ id: 't1' }));
+    migrate(db, 3, 3);
+    assert.deepEqual(db.prepare('SELECT owner, collection, id FROM records ORDER BY seq').all().map(row => ({ ...row })), [
+      { owner: 'city:c1', collection: 'cities', id: 'c1' },
+      { owner: 'city:c1', collection: 'pokemon', id: 'p1' },
+      { owner: 'alice', collection: 'pokemon', id: 'p2' },
+      { owner: 'alice', collection: 'pokemon', id: 'p3' },
+      { owner: 'alice', collection: 'trainers', id: 't1' },
+    ]);
+    assert.deepEqual(db.prepare('SELECT city_id, email FROM city_members').all().map(row => ({ ...row })), [{ city_id: 'c1', email: 'alice' }]);
+  } finally { db.close(); }
 });
