@@ -11,6 +11,7 @@
     "build": "node scripts/build-reference.ts && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
+    "test": "node --experimental-transform-types --test tests/*.test.mjs",
     "deploy": "pnpm build && wrangler d1 migrations apply pokeroledex --remote && wrangler deploy"
   },
   "dependencies": {
