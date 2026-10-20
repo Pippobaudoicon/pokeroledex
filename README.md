@@ -27,6 +27,14 @@ Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/re
 
 ## Logins
 
+### Pull request previews
+
+Workers Builds publishes branch previews with `wrangler preview`. The `previews` block in `wrangler.jsonc` connects them to the separate `pokeroledex-preview` database, initialized with the same schema as production. Preview records start empty. The rulebook's read-only R2 files and AI Search instance are shared.
+
+Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behind Access → Previews only** and choose the email login policy. Set `previews.vars.ACCESS_AUD` to that Access application's **Application Audience (AUD) tag** from Zero Trust → Access → Applications → Additional settings. The Worker verifies signed login tokens against this preview audience and `previews.vars.ACCESS_TEAM_DOMAIN`.
+
+### Production login
+
 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/) sits in front of the whole site: people log in with a one-time code sent to their email, and everyone's Pokémon, trainers and campaigns are kept apart by that email. The Worker checks the token Access signs every request with (`worker/access.ts`) and answers 401 without it, so the API stays closed until Access is set up:
 
 1. In the Cloudflare dashboard open **Zero Trust** (pick a team name and the Free plan the first time).
