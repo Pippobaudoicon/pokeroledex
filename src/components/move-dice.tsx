@@ -7,9 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 /** Dice in a pool like "4/5" (a choice of attributes): roll the larger, as the corebook advises (p. 57). */
 export const poolDice = (pool: string | undefined) => {
   const choices = pool?.split("/").map(Number) ?? [];
-  return choices.length > 0 && choices.every((dice) => Number.isInteger(dice) && dice > 0)
-    ? Math.max(...choices)
-    : undefined;
+  return choices.length > 0 && choices.every((dice) => Number.isInteger(dice) && dice > 0) ? Math.max(...choices) : undefined;
 };
 
 export const STAB_HINT = "S.T.A.B.: same type as the Pokémon, +1 damage die";
@@ -50,29 +48,35 @@ export const Hint = ({ hint, className, children }: { hint?: string; className?:
   );
 };
 
-// The dice roller (DiceRoll) is parked for now: chips only show the dice count. Set to true to roll on tap.
-export const ROLLING_ENABLED = false;
-
-/** Dice count at the end of a pool line; rolls that pool on tap while rolling is enabled. */
-export const RollChip = ({ dice, label, title, onClick }: { dice: number; label: string; title: string; onClick: (event: React.MouseEvent) => void }) => {
-  const className = "dice-chip ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-full align-middle font-square text-sm leading-none";
+/** Dice count at the end of a pool line; tap to roll that pool. */
+export const RollChip = ({
+  dice,
+  label,
+  title,
+  onClick,
+}: {
+  dice: number;
+  label: string;
+  title: string;
+  onClick: (event: React.MouseEvent) => void;
+}) => {
+  const className =
+    "ml-1 inline-flex min-h-9 items-center gap-1 rounded-lg bg-tint/10 px-2 align-middle text-subhead font-semibold text-tint hover:bg-tint/15 lg:min-h-7";
   const content = (
     <>
       <Dice5 size={14} aria-hidden />
       {dice}
     </>
   );
-  if (!ROLLING_ENABLED) {
-    return (
-      <Hint hint={title} className="dice-chip ml-1 inline-flex items-center gap-1 align-middle font-move">
-        {content}
-      </Hint>
-    );
-  }
   return (
-    <button type="button" className={className} aria-label={`Roll ${label}: ${dice} dice`} title={`${title}. Tap to roll.`} onClick={onClick}>
+    <button
+      type="button"
+      className={className}
+      aria-label={`Roll ${label}: ${dice} dice`}
+      title={`${title}. Tap to roll.`}
+      onClick={onClick}
+    >
       {content}
     </button>
   );
 };
-

@@ -11,6 +11,7 @@ import { AppShell } from "@/layout/AppShell";
 import { activeNav } from "@/layout/nav";
 import { CampaignsPage } from "@/pages/Campaigns";
 import { GeneratorsPage } from "@/pages/Generators";
+import { EncounterProvider } from "@/pages/Generators/Encounters";
 import { HomePage } from "@/pages/Home";
 import { ImportPage } from "@/pages/Import";
 import { ItemsPage } from "@/pages/Items";
@@ -51,8 +52,10 @@ const router = createBrowserRouter([
     path: "/",
     element: (
       <QueryClientProvider client={queryClient}>
-        <AppShell />
-        <Toaster />
+        <EncounterProvider>
+          <AppShell />
+          <Toaster />
+        </EncounterProvider>
       </QueryClientProvider>
     ),
     errorElement: <ErrorPage />,
@@ -63,7 +66,7 @@ const router = createBrowserRouter([
       { path: "myPokemon/:id?", element: <MyPokemonPage /> },
       { path: "moves", element: <MovesPage /> },
       { path: "items/:id?", element: <ItemsPage /> },
-      { path: "generators/:generator?", element: <Legacy><GeneratorsPage /></Legacy> },
+      { path: "generators/:generator?", element: <GeneratorsPage /> },
       { path: "myTrainers/:id?", element: <MyTrainersPage /> },
       { path: "campaigns/:id?", element: <Legacy><CampaignsPage /></Legacy> },
       { path: "import", element: <Legacy><ImportPage /></Legacy> },
