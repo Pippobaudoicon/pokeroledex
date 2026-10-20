@@ -125,7 +125,7 @@ export const SheetActions = () => {
                 Evolve or change form
               </MenuItem>
             )}
-            <MenuItem
+            {!updatedPokemon.cityId && <MenuItem
               icon={<Trash2 />}
               destructive
               onClick={() => {
@@ -134,7 +134,7 @@ export const SheetActions = () => {
               }}
             >
               Delete Pokémon
-            </MenuItem>
+            </MenuItem>}
           </PopoverPrimitive.Content>
         </PopoverPrimitive.Portal>
       </PopoverPrimitive.Root>

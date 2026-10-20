@@ -22,7 +22,7 @@ Without access to this Cloudflare account, run `pnpm dev:offline` instead: no lo
 | `pnpm dev` | Local development (frontend + Worker + local D1) |
 | `pnpm dev:offline` | The same without a Cloudflare login; the rulebook bucket is local and Ask is unavailable |
 | `pnpm typecheck` | Strict type check of the app, the Worker and the build scripts |
-| `pnpm test` | City counting, persistence, assignment and validation regression tests |
+| `pnpm test` | City counting, persistence, assignment, validation and sharing regression tests |
 | `pnpm build` | Production build into `dist/` |
 | `pnpm preview` | Serve the production build locally (its API needs the Access login, see below) |
 | `pnpm deploy` | Build, apply migrations to the remote D1 database, deploy |
@@ -61,16 +61,22 @@ The species remains visible on nicknamed sheets. Existing records need no migrat
 
 Open **My City** from the sidebar, Home, or app search. Each account can create
 multiple named cities and switch between them. The overview counts residents by
-type **and rank** (for example, 3 Fire Rookie and 2 Ice Ace). A dual-type resident
+type **and rank** in collapsible sections for each populated rank, ordered from
+Unranked to Champion. Each section shows all 18 types, including zero counts,
+with attribute-style pips and an exact numeric count. Each filled pip represents
+one Pokémon; counts above five wrap rather than being capped. A dual-type resident
 counts once under each type, so the sum of type counts can exceed the population.
 
 **Add Pokémon** creates a sheet from a core or campaign species, or moves an
 existing sheet from My Pokémon, a trainer, or another city. A Pokémon belongs to
 at most one city or trainer; transfers preserve its ID, stats and moves. New sheets
-use the selected rank but start with unallocated stats and moves, editable in
-My Pokémon. The **Pokémon roster** links to each sheet and can move it to a
-trainer, another city, or unassigned My Pokémon. Removing a resident or deleting
-a city never deletes its Pokémon sheets.
+use the selected rank but start with unallocated stats and moves, editable from
+the city roster. City residents are separate from the personal **My Pokémon**
+collection, including residents created directly from the Pokédex.
+The **Pokémon roster** links to each city sheet and requires a destination for
+transfers: another city, a trainer, or **Assign to me (My Pokémon)**.
+Residents cannot simply be removed or deleted, and a city must be empty before
+it can be deleted.
 
 **Skills & actions** edits the city's name, common Pokémon/trainer skills (whole
 numbers from 0 to 5), and up to 50 custom action tags such as "Can heal" or
@@ -78,11 +84,34 @@ numbers from 0 to 5), and up to 50 custom action tags such as "Can heal" or
 automatically derived from residents. Crafting suggestions and dual-type weighting
 are not part of this version.
 
-Cities use the existing owner-scoped D1 records collection (`cities`) and optional
-`cityId` on Pokémon, so no schema migration is needed. Existing Pokémon without
-`cityId` remain unassigned to a city. `/api/cities` supports GET/POST and
-`/api/cities/:id` supports GET/PATCH/DELETE. Assignment changes use the existing
-Pokémon PATCH endpoint and validate destinations within the signed-in account.
+### Sharing a city
+
+**Skills & actions → Members** invites friends by the email they log in with.
+Every member has the same rights as the creator: they see the city, edit its
+skills and residents' sheets, add their own Pokémon, take residents into their
+own My Pokémon or trainers, and invite others. There is no email notification;
+the city appears in the friend's My City the next time they open it. In
+production the friend must also be allowed through the Cloudflare Access policy
+(see Production login). When other members remain, **Leave city** removes only
+you; the last member deletes the city, which must be empty first. Edits are
+last-save-wins.
+
+A city does not share its members' campaigns. A resident built from a custom
+species keeps showing its species, moves, abilities and held item to whoever has
+it, read-only, but the campaign never appears in their Campaigns list. A sheet can
+only be pointed at entries its editor can already see. A custom species cannot
+be deleted while a sheet in another account or a shared city still uses it.
+
+Cities and their residents are stored in D1 under the owner `city:<city id>`, and
+`city_members` (migration `0003_city_members.sql`) lists who can load them. Moving
+a Pokémon into or out of a city moves its record between that city and the
+person's own records. `/api/cities` supports GET/POST, `/api/cities/:id` supports
+GET/PATCH/DELETE (leave when shared), and `POST /api/cities/:id/members` with
+`{ email }` invites a member. Assignment changes use the existing Pokémon PATCH
+endpoint and validate destinations among the person's trainers and cities.
+`GET /api/pokemon` and `/api/pokemon/minimal` list only personal Pokémon;
+`GET /api/pokemon/all` includes city residents for city management.
+Taking ownership explicitly uses `{ id, takeOwnership: true }` on Pokémon PATCH.
 
 City regression tests run with `pnpm test`.
 They exercise the actual API handler against an isolated in-memory SQLite
