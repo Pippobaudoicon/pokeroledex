@@ -112,7 +112,7 @@ const AddPokemon = ({ city, pokemon, cities }: { city: City; pokemon: Pokemon[];
         </label>
         {source === "existing" ? <>
           <Picker label="Pokémon" value={selected} onChange={setSelected} items={candidates.map(entry => ({
-            value: entry.id, label: `${entry.pokemonTemplate.name} - ${formatEnumName(entry.rank)}`,
+            value: entry.id, label: `${entry.nickname || entry.pokemonTemplate.name} - ${formatEnumName(entry.rank)}`,
             detail: entry.trainer?.name ? `Trainer: ${entry.trainer.name}` : entry.cityId ? `City: ${cities.find(city => city.id === entry.cityId)?.name ?? entry.cityId}` : "Unassigned",
           }))} />
           <p className="text-footnote text-label-2">Moves the original sheet here, removing its previous trainer or city assignment. No copy is made.</p>
@@ -181,7 +181,7 @@ const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; citi
     const [kind, id] = destination.split(":");
     change.mutate({ kind: "assign", body: { id: pokemon.id, ...(kind === "city" ? { cityId: id } : { cityId: null, trainerId: id || null }) } });
   }}>
-    <select aria-label={`Destination for ${pokemon.pokemonTemplate.name}`} required value={destination} className={`${field} sm:max-w-60`} onChange={event => setDestination(event.target.value)}>
+    <select aria-label={`Destination for ${pokemon.nickname || pokemon.pokemonTemplate.name}`} required value={destination} className={`${field} sm:max-w-60`} onChange={event => setDestination(event.target.value)}>
       <option value="">Choose destination</option>
       <option value="unassigned">Unassigned My Pokémon (remove)</option>
       {trainers.map(trainer => <option key={trainer.id} value={`trainer:${trainer.id}`}>Trainer: {trainer.name}</option>)}
@@ -240,7 +240,7 @@ export const MyCityPage = () => {
               {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="divide-y divide-hairline">{residents.map(resident => <li key={resident.id} className="space-y-3 py-4">
                 <Link to={`/myPokemon/${resident.id}`} className="flex items-center gap-3">
                   <Sprite image={resident.pokemonTemplate.image} set="box" className="h-14 w-17" />
-                  <span><span className="font-semibold">{resident.pokemonTemplate.name}</span><span className="block text-footnote text-label-2">{formatEnumName(resident.rank)} · Open sheet</span>
+                  <span><span className="font-semibold">{resident.nickname || resident.pokemonTemplate.name}</span><span className="block text-footnote text-label-2">{formatEnumName(resident.rank)} · Open sheet</span>
                     <span className="mt-1 flex gap-1">{resident.pokemonTemplate.types.map(type => <TypePill key={type} type={type} size="sm" />)}</span>
                   </span>
                 </Link>

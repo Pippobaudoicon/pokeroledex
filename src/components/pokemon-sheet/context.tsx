@@ -40,6 +40,7 @@ function diffPokemon(base: T.Pokemon, updated: T.Pokemon): T.UpdatePokemonBody {
     id: updated.id,
   };
   if (base.rank !== updated.rank) body.rank = updated.rank;
+  if ((base.nickname ?? "") !== (updated.nickname ?? "")) body.nickname = updated.nickname?.trim() ?? "";
   if (base.gender !== updated.gender) body.gender = updated.gender;
   if (base.noOfBattles !== updated.noOfBattles) body.noOfBattles = updated.noOfBattles;
   if (base.trainingPoints !== updated.trainingPoints) body.trainingPoints = updated.trainingPoints;

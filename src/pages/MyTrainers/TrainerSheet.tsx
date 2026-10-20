@@ -224,7 +224,7 @@ export const TrainerSheet = () => {
                         className="flex w-24 flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-raised"
                       >
                         <Sprite image={pokemon.pokemonTemplate.image} set="box" className="h-14 w-17" />
-                        <span className="w-full truncate text-footnote">{pokemon.pokemonTemplate.name}</span>
+                        <span className="w-full truncate text-footnote">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
                       </Link>
                     </li>
                   ))}

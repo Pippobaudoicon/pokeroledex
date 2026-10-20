@@ -49,6 +49,14 @@ Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behi
 
 `pnpm dev` has no Access in front of it and uses a single local user. Records made before logins existed belong to `local-user`; give them to someone with `pnpm exec wrangler d1 execute pokeroledex --remote --command "UPDATE records SET owner = 'you@example.com' WHERE owner = 'local-user'"`.
 
+## Pokemon nicknames
+
+Open a saved Pokemon's sheet (including one in a trainer's party), choose **Edit**,
+and enter a **Nickname (optional)** next to its identity. **Save** keeps the nickname;
+**Cancel** discards edits. Clear the field and save to use the species name again.
+Nicknames appear on the sheet, in My Pokemon, trainer parties and city rosters.
+The species remains visible on nicknamed sheets. Existing records need no migration.
+
 ## My City
 
 Open **My City** from the sidebar, Home, or app search. Each account can create
