@@ -136,14 +136,14 @@ test('city CRUD persists separate cities, skills and tags, and protects ownershi
     assert.notEqual(first.body.id, second.body.id);
     const path = `cities/${first.body.id}`;
     const updated = await h.request(path, 'PATCH', {
-      name: 'New Pallet', skills: { science: 5, brawl: 2, nature: 3 },
+      name: 'New Pallet', skills: { science: 10, mining: 2, planting: 3 },
       tags: [' Can heal ', 'Can heal', 'Can produce food'], userId: 'mallory', id: 'changed',
     });
     assert.equal(updated.status, 200);
     assert.equal(updated.body.id, first.body.id);
     assert.equal(updated.body.userId, 'alice');
-    assert.equal(updated.body.skills.science, 5);
-    assert.equal(updated.body.skills.nature, 3);
+    assert.equal(updated.body.skills.science, 10);
+    assert.equal(updated.body.skills.planting, 3);
     assert.deepEqual(updated.body.tags, ['Can heal', 'Can produce food']);
     assert.equal((await h.request(path)).body.name, 'New Pallet');
     assert.equal((await h.request('cities')).body.length, 2);
@@ -160,7 +160,7 @@ test('city validation rejects malformed names, skill ratings, tags and request b
     for (const body of [
       null, [], { name: '' }, { name: ' ' }, { name: 'a'.repeat(101) },
       { name: 'Test', skills: null }, { name: 'Test', skills: [] },
-      ...[-1, 6, 1.5, '3'].map(science => ({ name: 'Test', skills: { science } })),
+      ...[-1, 11, 1.5, '3'].map(science => ({ name: 'Test', skills: { science } })),
       { name: 'Test', skills: { nonexistent: 2 } },
       { name: 'Test', tags: [3] }, { name: 'Test', tags: [' '] },
       { name: 'Test', tags: ['a'.repeat(81)] }, { name: 'Test', tags: Array(51).fill('heal') },

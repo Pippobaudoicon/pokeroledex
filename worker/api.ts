@@ -2,7 +2,7 @@
 // email (migrations/, worker/access.ts). Shared cities and their residents live under
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
 // records, works on them in memory and writes back only the records it changed.
-import { ATTRIBUTES, CITY_SKILLS, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { ATTRIBUTES, CITY_SKILLS, CITY_SKILL_MAX, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import type { Env } from './index.ts';
@@ -267,7 +267,12 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     function hydrate(name: string, record: Row) {
       if (name === 'pokemon') return pokemon(record);
       if (name === 'trainers') return trainer(record);
-      if (name === 'cities') return { ...record, members: members.get(record.id) ?? [] };
+      if (name === 'cities') {
+        const stored = (record.skills ?? {}) as Json;
+        const values = (record.tagValues ?? {}) as Json;
+        const tags = (record.tags ?? []) as string[];
+        return { ...record, skills: Object.fromEntries(CITY_SKILLS.map(key => [key, stored[key] ?? 0])), tagValues: Object.fromEntries(tags.map(tag => [tag, values[tag] ?? 0])), members: members.get(record.id) ?? [] };
+      }
       return referenceRecord(name, record);
     }
 
@@ -309,13 +314,19 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if ('skills' in body) {
         if (!body.skills || typeof body.skills !== 'object' || Array.isArray(body.skills)) fail(400, 'City skills must be an object.');
         for (const [key, value] of Object.entries(body.skills)) {
-          if (!(CITY_SKILLS as readonly string[]).includes(key) || !Number.isInteger(value) || Number(value) < 0 || Number(value) > 5) fail(400, 'City skills must be whole numbers from 0 to 5.');
+          if (!(CITY_SKILLS as readonly string[]).includes(key) || !Number.isInteger(value) || Number(value) < 0 || Number(value) > CITY_SKILL_MAX) fail(400, `City skills must be whole numbers from 0 to ${CITY_SKILL_MAX}.`);
         }
         fields.skills = Object.fromEntries(CITY_SKILLS.map(key => [key, body.skills[key] ?? 0]));
       }
       if ('tags' in body) {
         if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 80)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters.');
         fields.tags = [...new Set(body.tags.map((tag: string) => tag.trim()))];
+      }
+      if ('tagValues' in body || 'tags' in body) {
+        const values = (body.tagValues ?? {}) as Json;
+        if (typeof values !== 'object' || Array.isArray(values) || Object.values(values).some(value => !Number.isInteger(value) || Number(value) < 0 || Number(value) > 999)) fail(400, 'Action tag values must be whole numbers from 0 to 999.');
+        const names = (fields.tags ?? body.tags ?? Object.keys(values)) as string[];
+        fields.tagValues = Object.fromEntries(names.map(tag => [tag, values[tag] ?? 0]));
       }
       return fields;
     }
@@ -456,7 +467,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
         record = { id: crypto.randomUUID(), userId: owner,
-          skills: Object.fromEntries(CITY_SKILLS.map(key => [key, 0])), tags: [], ...fields };
+          skills: Object.fromEntries(CITY_SKILLS.map(key => [key, 0])), tags: [], tagValues: {}, ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
       }

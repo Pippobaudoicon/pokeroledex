@@ -113,4 +113,15 @@ export const quickReference: QuickReferenceSection[] = [
       "Strong Winds: Flying Moves get +2 dice, Flying types take no Super-Effective bonus, and it cannot be overridden once active.",
     ],
   },
-];
+        {
+          title: "Pokéball capture power",
+          pages: [98, 99, 100],
+          points: [
+            "Capture power is the number of dice the Pokéball provides: Pokéball 4, Great Ball 6, Ultra Ball 8, and up to 9 for customized balls.",
+            "Successes needed to capture depend on the wild Pokémon's current Rank: Starter 3, Rookie 4, Standard 6, Advanced 8, Expert 9, Ace 10.",
+            "Gain 1 success if the Pokémon is at half HP or less, and 2 successes if it is at 1 HP.",
+            "Gain 1 success per Status Ailment on the Pokémon (see Common Conditions).",
+            "A Critical Failure (3 or more successes below the required amount) breaks the Pokéball.",
+          ],
+        },
+      ];

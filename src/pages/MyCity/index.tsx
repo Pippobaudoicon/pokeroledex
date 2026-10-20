@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown, Plus } from "lucide-react";
+import { Building2, ChevronDown, FlaskConical, Plus } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CITY_SKILLS, RANKS, type Campaign, type City, type CityBody, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
+import { CITY_SKILLS, RANKS, type Campaign, type City, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
 import { cityRankGroups } from "../../../shared/cities";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { button } from "@/components/kit/button";
@@ -19,6 +19,12 @@ import { cn, formatEnumName } from "@/lib/utils";
 
 const field = "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9";
 const panel = "rounded-2xl bg-surface p-4 shadow-card";
+const skillLabel = (skill: CitySkill) => formatEnumName(skill);
+// Science has no matching work icon, so it falls back to a flask.
+const SkillIcon = ({ skill }: { skill: CitySkill }) =>
+  skill === "science"
+    ? <FlaskConical aria-hidden className="size-5 shrink-0" />
+    : <img src={`/images/myCity/${skill}.webp`} alt="" width={20} height={20} className="size-5 shrink-0 object-contain" />;
 type Change =
   | { kind: "create"; name: string }
   | { kind: "settings"; id: string; body: CityBody }
@@ -140,28 +146,34 @@ const CitySettings = ({ city, residentCount }: { city: City; residentCount: numb
   const [name, setName] = React.useState(city.name);
   const [skills, setSkills] = React.useState(city.skills);
   const [tags, setTags] = React.useState(city.tags);
+  const [tagValues, setTagValues] = React.useState(city.tagValues);
   const [tag, setTag] = React.useState("");
   const change = useCityChange();
   const navigate = useNavigate();
   return <div className="space-y-5">
     <form className={`${panel} space-y-5`} onSubmit={event => {
       event.preventDefault();
-      change.mutate({ kind: "settings", id: city.id, body: { name, skills, tags } });
+      change.mutate({ kind: "settings", id: city.id, body: { name, skills, tags, tagValues } });
     }}>
       <h2 className="text-title-3 font-semibold">City skills and actions</h2>
       <label className="flex flex-col gap-2">City name<input required maxLength={100} className={field} value={name} onChange={event => setName(event.target.value)} /></label>
-      <p className="text-subhead text-label-2">Set city-wide skills manually from 0 to 5. These are not automatically calculated from residents.</p>
+      <p className="text-subhead text-label-2">Set city-wide skills manually from 0 to 10. These are not automatically calculated from residents.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {CITY_SKILLS.map(skill => <label key={skill} className="flex items-center justify-between gap-3">
-          {formatEnumName(skill)}
-          <input aria-label={`City ${skill}`} type="number" required min={0} max={5} step={1} className={`${field} max-w-20`} value={skills[skill]}
+          <span className="flex items-center gap-2"><SkillIcon skill={skill} />{skillLabel(skill)}</span>
+          <input aria-label={`City ${skill}`} type="number" required min={0} max={10} step={1} className={`${field} max-w-20`} value={skills[skill]}
             onChange={event => setSkills({ ...skills, [skill]: event.target.valueAsNumber })} />
         </label>)}
       </div>
       <div className="space-y-3">
         <h3 className="font-semibold">Custom action tags</h3>
         <p className="text-footnote text-label-2">Describe capabilities such as Can heal or Can produce food.</p>
-        <div className="flex flex-wrap gap-2">{tags.map(value => <button key={value} type="button" aria-label={`Remove tag ${value}`} className={button({ variant: "tinted", size: "sm" })} onClick={() => setTags(tags.filter(tag => tag !== value))}>{value} ×</button>)}</div>
+        <div className="space-y-2">{tags.map(value => <div key={value} className="flex items-center gap-2">
+          <span className="flex-1">{value}</span>
+          <input aria-label={`Value for ${value}`} type="number" min={0} max={999} step={1} className={`${field} max-w-24`} value={Number.isNaN(tagValues[value]) ? "" : tagValues[value] ?? 0}
+            onChange={event => setTagValues({ ...tagValues, [value]: event.target.valueAsNumber })} />
+          <button type="button" aria-label={`Remove tag ${value}`} className={button({ variant: "tinted", size: "sm" })} onClick={() => setTags(tags.filter(tag => tag !== value))}>Remove ×</button>
+        </div>)}</div>
         <div className="flex gap-2">
           <input aria-label="New action tag" maxLength={80} className={field} value={tag} onChange={event => setTag(event.target.value)} placeholder="Can heal" />
           <button type="button" disabled={!tag.trim() || tags.length >= 50} className={button({ variant: "gray" })} onClick={() => { setTags([...new Set([...tags, tag.trim()])]); setTag(""); }}>Add tag</button>
@@ -292,9 +304,9 @@ export const MyCityPage = () => {
               <CityTypeOverview key={city.id} residents={residents} />
             </section>
             <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities</h2>
-              <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="rounded-xl bg-fill px-3 py-2">{formatEnumName(skill)} {city.skills[skill]}</span>)}</div>
+              <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{skillLabel(skill)} {city.skills[skill]}</span>)}</div>
               {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No city skills set yet.</p>}
-              <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}</span>)}</div>
+              <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}: {city.tagValues[tag] ?? 0}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
           </> : tab === "settings" ? <>

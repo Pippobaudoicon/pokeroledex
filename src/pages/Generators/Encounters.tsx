@@ -7,7 +7,7 @@ import { Habitat, LegendaryFilter, PokemonType, Rank, RankUpMethod } from "@/api
 import { button } from "@/components/kit/button";
 import { Stepper } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
-import { RankBadge, TypePill } from "@/components/kit/Pills";
+import { RankBadge, RankBall, TypeDot, TypePill } from "@/components/kit/Pills";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
@@ -18,7 +18,7 @@ import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
 import { cn, formatEnumName } from "@/lib/utils";
-import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, habitatNames, SeedInput, ToggleField } from "./fields";
+import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, habitatEmoji, habitatNames, SeedInput, ToggleField } from "./fields";
 
 interface EncounterEntry {
   pokemon: T.Pokemon;
@@ -183,7 +183,7 @@ export const EncounterGenerator = () => {
             label="Types"
             options={Object.values(PokemonType)
               .filter((type): type is T.PokemonType => type !== "TYPELESS" && type !== "VARIES")
-              .map((type) => ({ value: type, label: formatEnumName(type) }))}
+              .map((type) => ({ value: type, label: formatEnumName(type), icon: <TypeDot type={type} className="size-5" /> }))}
             selected={settings.types ?? []}
             onChange={(types) => setSettings({ ...settings, types })}
           />
@@ -197,13 +197,13 @@ export const EncounterGenerator = () => {
             label="Habitats"
             options={Object.values(Habitat)
               .sort((a, b) => habitatNames[a].localeCompare(habitatNames[b]))
-              .map((habitat) => ({ value: habitat, label: habitatNames[habitat] }))}
+              .map((habitat) => ({ value: habitat, label: habitatNames[habitat], icon: <span aria-hidden>{habitatEmoji[habitat]}</span> }))}
             selected={settings.habitats ?? []}
             onChange={(habitats) => setSettings({ ...settings, habitats })}
           />
           <ChoiceGroup
             label="Recommended ranks"
-            options={Object.values(Rank).map((rank) => ({ value: rank, label: formatEnumName(rank) }))}
+            options={Object.values(Rank).map((rank) => ({ value: rank, label: formatEnumName(rank), icon: <RankBall rank={rank} /> }))}
             selected={settings.ranks ?? []}
             onChange={(ranks) => setSettings({ ...settings, ranks })}
           />
