@@ -15,9 +15,12 @@ Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/re
 
 The rulebook R2 binding uses `remote: true`, so local development reads the live book text, page images and PDF. Run `pnpm exec wrangler login` with access to this Cloudflare account first. Development records use local D1; the book's R2 files are read-only in the app.
 
+Without access to this Cloudflare account, run `pnpm dev:offline` instead: no login needed, everything works except the rulebook's Text, Pages, PDF and Ask views (Quick still works). To read the book offline, upload it to the local bucket with `node scripts/upload-rulebook.ts <pdf> --local` (see Rulebook below); Ask always needs the real AI Search instance.
+
 | Command | What it does |
 | --- | --- |
 | `pnpm dev` | Local development (frontend + Worker + local D1) |
+| `pnpm dev:offline` | The same without a Cloudflare login; the rulebook bucket is local and Ask is unavailable |
 | `pnpm typecheck` | Strict type check of the app, the Worker and the build scripts |
 | `pnpm build` | Production build into `dist/` |
 | `pnpm preview` | Serve the production build locally (its API needs the Access login, see below) |

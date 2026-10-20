@@ -7,6 +7,7 @@
   "description": "PokéroleDex recovery as a React + TypeScript app on Cloudflare Workers",
   "scripts": {
     "dev": "node scripts/build-reference.ts && wrangler d1 migrations apply pokeroledex --local && vite",
+    "dev:offline": "pnpm dev --mode offline",
     "build": "node scripts/build-reference.ts && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
