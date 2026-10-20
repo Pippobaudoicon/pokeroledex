@@ -13,6 +13,8 @@ pnpm dev
 
 Open the URL Vite prints. `pnpm dev` compacts the reference data into `public/reference/`, applies the D1 migrations to a local database in `.wrangler/state`, and starts Vite with the Worker running in workerd, so the frontend and `/api` are served together.
 
+The rulebook R2 binding uses `remote: true`, so local development reads the live book text, page images and PDF. Run `pnpm exec wrangler login` with access to this Cloudflare account first. Development records use local D1; the book's R2 files are read-only in the app.
+
 | Command | What it does |
 | --- | --- |
 | `pnpm dev` | Local development (frontend + Worker + local D1) |
@@ -73,12 +75,13 @@ Static files are served directly. Requests that match no file reach the Worker, 
 
 The app is an installable PWA: `/sw.js` caches the shell and static files, and keeps the last answer to each `/api` read so Pokémon, trainers, moves and items already opened stay readable offline (read-only; changes need a connection). Logging out clears those saved answers.
 
-The **Rulebook** button in the desktop controls and mobile menu opens `/rulebook`, the Pokérole 3.0 corebook in four tabs:
+The **Rulebook** page (`/rulebook`) presents the Pokérole 3.0 corebook in five views, using the app's light and dark themes:
 
-- **Text**: searchable text, one card per page (accents ignored, Ctrl+F works too). A page number opens that page in Pages.
-- **Pages**: every page as a pre-rendered WebP image, with thumbnails on the side like a PDF viewer. Click a page to zoom. The PDF's JPEG 2000 art takes seconds per page to decode, so the images scroll far more smoothly than the PDF.
+- **Text**: searchable text grouped by section (accents ignored, Ctrl+F works too). Chapter headers, subcategories and page badges distinguish the contents from the reading pane. Phones have a contents picker. A page number opens that page in Pages; search and scroll position survive tab changes.
+- **Pages**: every page as a pre-rendered WebP image, with thumbnails on larger screens, previous/next buttons, a page-number field and fit-page / fit-width controls. Click a page to switch between the two sizes. The PDF's JPEG 2000 art takes seconds per page to decode, so the images scroll far more smoothly than the PDF.
 - **PDF**: the original file in the browser's own viewer, searchable but slow to scroll.
 - **Ask**: type a rules question and get a short answer from the book with the pages it came from (`POST /api/rulebook/ask`). The Worker asks the AI Search instance through the `RULEBOOK_SEARCH` binding (`ai_search` in `wrangler.jsonc`, `remote` so `pnpm dev` uses the real instance); the instance has no generation model, so `worker/ask.ts` names a Workers AI one. Every question costs a Workers AI call.
+- **Quick**: battle-rule summaries with links to source pages. These remain readable when the book cannot be loaded.
 
 The book is not in the repository. It lives in the R2 bucket `pokeroledex-rulebook`, behind the same login as the rest of the site: `corebook.pdf` (streamed in ranges), `pages.json` (text per page), `pages/` and `thumbs/` (one image per page), and `search/`, one Markdown file per section of the contents (`scripts/rulebook-sections.ts`) for the Cloudflare AI Search instance `pokeroledex-corebook`, whose path filter is `search/**`. To set it up, [download the corebook](https://www.mediafire.com/file/ciqdxrua7ur81q5/POKEROLE_COREBOOK_3.0.pdf/file), install poppler and webp (`brew install poppler webp`), then:
 
