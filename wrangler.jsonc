@@ -7,6 +7,7 @@
   "previews": {
     "vars": {
       "ACCESS_TEAM_DOMAIN": "lopiparo.cloudflareaccess.com",
+      "ACCESS_AUD": "ec4b8591ea568bd903227125b7b4b2388e104194cc6cfdf0bb87926677b358b2",
       "GITHUB_REPO": "Pippobaudoicon/pokeroledex"
     },
     "d1_databases": [
