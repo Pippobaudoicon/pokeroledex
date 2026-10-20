@@ -154,7 +154,7 @@ export const PokedexPage = () => {
             </button>
           </div>
         </PageHeader>
-        <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 [mask-image:linear-gradient(to_right,black_calc(100%-32px),transparent)] lg:px-8" role="group" aria-label="Filter by type">
+        <div className="flex flex-wrap gap-1.5 px-4 pb-3 lg:px-8" role="group" aria-label="Filter by type">
           {types.map((type) => {
             const pressed = filters.types.includes(type);
             return (
