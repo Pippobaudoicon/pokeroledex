@@ -17,7 +17,7 @@ import { ImportPage } from "@/pages/Import";
 import { ItemsPage } from "@/pages/Items";
 import { MovesPage } from "@/pages/Moves";
 import { MyPokemonPage } from "@/pages/MyPokemon";
-import { MyCityPage } from "@/pages/MyCity";
+import { CityPokemonPage, MyCityPage } from "@/pages/MyCity";
 import { MyTrainersPage } from "@/pages/MyTrainers";
 import { PokedexPage } from "@/pages/PokemonCatalog";
 import { RulebookPage } from "@/pages/Rulebook";
@@ -70,6 +70,7 @@ const router = createBrowserRouter([
       { path: "generators/:generator?", element: <GeneratorsPage /> },
       { path: "myTrainers/:id?", element: <MyTrainersPage /> },
       { path: "myCity/:id?", element: <MyCityPage /> },
+      { path: "myCity/:cityId/pokemon/:id", element: <CityPokemonPage /> },
       { path: "campaigns/:id?", element: <Legacy><CampaignsPage /></Legacy> },
       { path: "import", element: <Legacy><ImportPage /></Legacy> },
       { path: "rulebook", element: <RulebookPage /> },

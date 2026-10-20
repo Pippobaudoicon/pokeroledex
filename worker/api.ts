@@ -302,8 +302,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       }
     }
     if (method === 'GET') {
+      if (name === 'pokemon' && action === 'all') return reply(db.pokemon.map(pokemon));
       if (!action || action === 'minimal') {
-        const records = referenceNames.includes(name) ? [...referenceRows[name], ...db[name]] : db[name];
+        const records = referenceNames.includes(name) ? [...referenceRows[name], ...db[name]] :
+          name === 'pokemon' ? db.pokemon.filter(record => !record.cityId) : db[name];
         if (name === 'pokemon' && action === 'minimal') return reply(records.map(record => {
           const species = find('pokemon-templates', record.pokemonTemplateId)!;
           return { id: record.id, name: species.name, number: species.number, dexID: species.dexID,
@@ -348,7 +350,20 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         put(name, record);
         return reply(record);
       }
-      if (name === 'pokemon') Object.assign(update, assignment(body));
+      if (name === 'pokemon') {
+        const destination = assignment(body);
+        if ('takeOwnership' in body && typeof body.takeOwnership !== 'boolean') fail(400, 'Take ownership must be a boolean.');
+        if (body.takeOwnership === true) {
+          if (destination.cityId || destination.trainerId) fail(400, 'Choose either My Pokemon, a trainer, or a city.');
+          destination.cityId = null;
+          destination.trainerId = null;
+        }
+        if (record.cityId && destination.cityId === null && !destination.trainerId && body.takeOwnership !== true) {
+          fail(400, 'Move this resident to another city, a trainer, or explicitly take it into My Pokemon.');
+        }
+        Object.assign(update, destination);
+        delete update.takeOwnership;
+      }
       if (name === 'trainers') {
         if ('pokemonIds' in body) {
           if (!Array.isArray(body.pokemonIds) || body.pokemonIds.some((id: unknown) => typeof id !== 'string' || !db.pokemon.some(p => p.id === id))) fail(400, 'Choose valid Pokemon for this trainer.');
@@ -373,6 +388,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     if (method === 'DELETE' && action) {
       const index = db[name].findIndex(record => record.id === action);
       if (index < 0) fail(404, 'Local record not found.');
+      if (name === 'cities' && db.pokemon.some(p => p.cityId === action)) fail(409, 'Move every resident to another city or take ownership before deleting this city.');
+      if (name === 'pokemon' && db.pokemon[index].cityId) fail(409, 'City residents must be moved to another city or assigned to you, not deleted.');
       // Keep references valid when a campaign or referenced custom entry is in use.
       const removed: [string, string][] = [[name, action]];
       if (name === 'campaigns') for (const kind of referenceNames) {

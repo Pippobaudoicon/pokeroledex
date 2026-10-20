@@ -29,9 +29,11 @@ export type AttributeStats = Record<Attribute, number>;
 export type Gender = 'M' | 'F' | 'N';
 /** '' means the species can be either male or female. */
 export type GenderType = Gender | '';
-export type PokemonType =
-  | 'NORMAL' | 'FIRE' | 'WATER' | 'ELECTRIC' | 'GRASS' | 'ICE' | 'FIGHTING' | 'POISON' | 'GROUND'
-  | 'FLYING' | 'PSYCHIC' | 'BUG' | 'ROCK' | 'GHOST' | 'DRAGON' | 'DARK' | 'STEEL' | 'FAIRY';
+export const POKEMON_TYPES = [
+  'NORMAL', 'FIRE', 'WATER', 'ELECTRIC', 'GRASS', 'ICE', 'FIGHTING', 'POISON', 'GROUND',
+  'FLYING', 'PSYCHIC', 'BUG', 'ROCK', 'GHOST', 'DRAGON', 'DARK', 'STEEL', 'FAIRY',
+] as const;
+export type PokemonType = typeof POKEMON_TYPES[number];
 export type MoveType = PokemonType | 'VARIES' | 'TYPELESS';
 export type MoveCategory = 'PHYSICAL' | 'SPECIAL' | 'SUPPORT' | 'PHYSICAL_SPECIAL' | 'SUPPORT_PHYSICAL_SPECIAL';
 export type MoveTarget =
@@ -361,7 +363,11 @@ export interface GenerateEncounterBody extends SelectionBody {
 }
 
 export type CreatePokemonBody = Partial<Omit<PokemonRecord, 'stats'>> & { pokemonTemplateId: string; stats?: Partial<Stats> };
-export type UpdatePokemonBody = Partial<PokemonRecord> & { id: string };
+export type UpdatePokemonBody = Partial<PokemonRecord> & {
+  id: string;
+  /** Explicitly take a city resident into the personal collection. */
+  takeOwnership?: boolean;
+};
 export type CreateTrainerBody = Partial<Omit<TrainerRecord, 'stats'>> & { stats?: Partial<Stats> };
 export type UpdateTrainerBody = Partial<Omit<TrainerRecord, 'inventory'>> & {
   id: string;

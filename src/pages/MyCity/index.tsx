@@ -1,18 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Plus } from "lucide-react";
+import { Building2, ChevronDown, Plus } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CITY_SKILLS, RANKS, type Campaign, type City, type CityBody, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
-import { cityTypeCounts } from "../../../shared/cities";
+import { cityRankGroups } from "../../../shared/cities";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { button } from "@/components/kit/button";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Picker } from "@/components/kit/Picker";
-import { TypePill } from "@/components/kit/Pills";
+import { RankBall, TypePill } from "@/components/kit/Pills";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
+import { PokemonProvider } from "@/components/pokemon-sheet/context";
+import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useToast } from "@/hooks/use-toast";
-import { formatEnumName } from "@/lib/utils";
+import { cn, formatEnumName } from "@/lib/utils";
 
 const field = "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9";
 const panel = "rounded-2xl bg-surface p-4 shadow-card";
@@ -123,7 +125,7 @@ const AddPokemon = ({ city, pokemon, cities }: { city: City; pokemon: Pokemon[];
           <label className="flex flex-col gap-2">Rank<select className={field} value={rank} onChange={event => setRank(event.target.value as Rank)}>
             {RANKS.map(rank => <option key={rank} value={rank}>{formatEnumName(rank)}</option>)}
           </select></label>
-          <p className="text-footnote text-label-2">Creates a sheet at this rank. Edit its stats and moves in My Pokémon.</p>
+          <p className="text-footnote text-label-2">Creates a city resident, not a personal Pokémon. Edit its stats and moves from the city roster.</p>
         </>}
         <button disabled={change.isPending || (source === "new" ? !species || failed : !selected)} className={button({ variant: "filled" })}>Add to city</button>
       </form>
@@ -131,7 +133,7 @@ const AddPokemon = ({ city, pokemon, cities }: { city: City; pokemon: Pokemon[];
   </>;
 };
 
-const CitySettings = ({ city }: { city: City }) => {
+const CitySettings = ({ city, residentCount }: { city: City; residentCount: number }) => {
   const [name, setName] = React.useState(city.name);
   const [skills, setSkills] = React.useState(city.skills);
   const [tags, setTags] = React.useState(city.tags);
@@ -165,9 +167,9 @@ const CitySettings = ({ city }: { city: City }) => {
       <button disabled={change.isPending || !name.trim()} className={button({ variant: "filled" })}>Save city</button>
     </form>
     <div className={panel}>
-      <p className="mb-3 text-subhead text-label-2">Deleting this city returns its residents to unassigned My Pokémon. Their sheets are kept.</p>
-      <button type="button" disabled={change.isPending} className={button({ variant: "gray" })} onClick={() => {
-        if (window.confirm(`Delete ${city.name}? Its Pokémon sheets will be kept.`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
+      <p className="mb-3 text-subhead text-label-2">Before deleting this city, move every resident to another city or assign it to yourself. Residents cannot simply be removed.</p>
+      <button type="button" disabled={change.isPending || residentCount > 0} className={button({ variant: "gray" })} onClick={() => {
+        if (window.confirm(`Delete ${city.name}?`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
       }}>Delete city</button>
     </div>
   </div>;
@@ -179,11 +181,11 @@ const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; citi
   return <form className="flex flex-wrap items-center gap-2" onSubmit={event => {
     event.preventDefault();
     const [kind, id] = destination.split(":");
-    change.mutate({ kind: "assign", body: { id: pokemon.id, ...(kind === "city" ? { cityId: id } : { cityId: null, trainerId: id || null }) } });
+    change.mutate({ kind: "assign", body: { id: pokemon.id, ...(kind === "city" ? { cityId: id } : kind === "personal" ? { takeOwnership: true } : { trainerId: id }) } });
   }}>
     <select aria-label={`Destination for ${pokemon.pokemonTemplate.name}`} required value={destination} className={`${field} sm:max-w-60`} onChange={event => setDestination(event.target.value)}>
-      <option value="">Choose destination</option>
-      <option value="unassigned">Unassigned My Pokémon (remove)</option>
+      <option value="">Move Pokémon to...</option>
+      <option value="personal">Assign to me (My Pokémon)</option>
       {trainers.map(trainer => <option key={trainer.id} value={`trainer:${trainer.id}`}>Trainer: {trainer.name}</option>)}
       {cities.filter(city => city.id !== pokemon.cityId).map(city => <option key={city.id} value={`city:${city.id}`}>City: {city.name}</option>)}
     </select>
@@ -191,15 +193,48 @@ const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; citi
   </form>;
 };
 
+const CityTypeOverview = ({ residents }: { residents: Pokemon[] }) => {
+  const groups = cityRankGroups(residents);
+  if (!groups.length) return <p>No residents yet. Add a Pokémon to get started.</p>;
+  return <div className="grid items-start gap-4 xl:grid-cols-2">
+    {groups.map(({ rank, population, types }) => <details key={rank} open className="group/rank min-w-0 overflow-hidden rounded-xl bg-fill">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-3 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+        <RankBall rank={rank} />
+        <h3 className="text-body">{formatEnumName(rank)}</h3>
+        <span className="ml-auto text-footnote font-medium text-label-2">{population} Pokémon</span>
+        <ChevronDown aria-hidden className="size-4 shrink-0 text-label-2 transition-transform group-open/rank:rotate-180" />
+      </summary>
+      <table className="w-full table-fixed border-collapse text-body">
+        <caption className="sr-only">{formatEnumName(rank)} Pokémon counts by type</caption>
+        <colgroup><col className="w-28" /><col /><col className="w-14" /></colgroup>
+        <thead className="sr-only"><tr><th scope="col">Type</th><th scope="col">Population pips</th><th scope="col">Count</th></tr></thead>
+        <tbody>
+          {types.map(({ type, count }) => <tr key={type} className="border-t border-hairline">
+            <th scope="row" className="w-28 px-3 py-2 text-left font-medium"><TypePill type={type} size="sm" /></th>
+            <td className="py-2">
+              <span aria-hidden className="flex flex-wrap gap-[3px]">
+                {Array.from({ length: Math.max(5, count) }, (_, index) => <span key={index} className={cn(
+                  "h-2.5 w-5 shrink-0 rounded-full",
+                  index < count ? "bg-label" : "border-[1.5px] border-label/25",
+                )} />)}
+              </span>
+            </td>
+            <td className="w-14 px-3 py-2 text-right font-semibold tabular-nums">{count}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </details>)}
+  </div>;
+};
+
 export const MyCityPage = () => {
   const { id } = useParams();
   const [tab, setTab] = React.useState<"overview" | "roster" | "settings">("overview");
   const cities = useQuery({ queryKey: ["cities"], queryFn: ({ signal }) => apiFetch<City[]>({ url: "/cities", method: "get", signal }) });
-  const pokemon = useQuery({ queryKey: ["pokemon", "city-roster"], queryFn: ({ signal }) => apiFetch<Pokemon[]>({ url: "/pokemon", method: "get", signal }) });
+  const pokemon = useQuery({ queryKey: ["pokemon", "city-roster"], queryFn: ({ signal }) => apiFetch<Pokemon[]>({ url: "/pokemon/all", method: "get", signal }) });
   const trainers = useQuery({ queryKey: ["trainers"], queryFn: ({ signal }) => apiFetch<Trainer[]>({ url: "/trainers", method: "get", signal }) });
   const city = id ? cities.data?.find(city => city.id === id) : cities.data?.[0];
   const residents = pokemon.data?.filter(pokemon => pokemon.cityId === city?.id) ?? [];
-  const counts = cityTypeCounts(residents);
   React.useEffect(() => setTab("overview"), [city?.id]);
   const failed = cities.isError || pokemon.isError || trainers.isError;
   return <>
@@ -223,11 +258,8 @@ export const MyCityPage = () => {
           {tab === "overview" ? <>
             <section className={panel}>
               <h2 className="text-title-3 font-semibold">{city.name}: {residents.length} Pokémon</h2>
-              <p className="mt-1 mb-4 text-footnote text-label-2">Counts by type and rank. Dual-type Pokémon count once under each type.</p>
-              {!counts.length ? <p>No residents yet. Add a Pokémon to get started.</p> :
-                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{counts.map(({ type, rank, count }) => <li key={`${type}-${rank}`} className="flex items-center gap-2 rounded-xl bg-fill p-3">
-                  <strong className="text-title-3 tabular-nums">{count}</strong><TypePill type={type} /><span>{formatEnumName(rank)}</span>
-                </li>)}</ul>}
+              <p className="mt-1 mb-4 text-footnote text-label-2">Expand or collapse a rank to see all types. Each filled pip is one Pokémon; dual-type Pokémon count under both types.</p>
+              <CityTypeOverview key={city.id} residents={residents} />
             </section>
             <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities</h2>
               <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="rounded-xl bg-fill px-3 py-2">{formatEnumName(skill)} {city.skills[skill]}</span>)}</div>
@@ -235,10 +267,10 @@ export const MyCityPage = () => {
               <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
-          </> : tab === "settings" ? <CitySettings key={JSON.stringify(city)} city={city} /> :
+          </> : tab === "settings" ? <CitySettings key={JSON.stringify(city)} city={city} residentCount={residents.length} /> :
             <section className={panel}><h2 className="mb-3 text-title-3 font-semibold">Pokémon roster ({residents.length})</h2>
               {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="divide-y divide-hairline">{residents.map(resident => <li key={resident.id} className="space-y-3 py-4">
-                <Link to={`/myPokemon/${resident.id}`} className="flex items-center gap-3">
+                <Link to={`/myCity/${city.id}/pokemon/${resident.id}`} className="flex items-center gap-3">
                   <Sprite image={resident.pokemonTemplate.image} set="box" className="h-14 w-17" />
                   <span><span className="font-semibold">{resident.pokemonTemplate.name}</span><span className="block text-footnote text-label-2">{formatEnumName(resident.rank)} · Open sheet</span>
                     <span className="mt-1 flex gap-1">{resident.pokemonTemplate.types.map(type => <TypePill key={type} type={type} size="sm" />)}</span>
@@ -257,4 +289,11 @@ const CitySelect = ({ cities, selected }: { cities: City[]; selected: string }) 
   return <select className={field} value={selected} onChange={event => navigate(`/myCity/${event.target.value}`)}>
     {cities.map(city => <option key={city.id} value={city.id}>{city.name}</option>)}
   </select>;
+};
+
+export const CityPokemonPage = () => {
+  const { cityId, id } = useParams();
+  return <PokemonProvider key={id} id={id!} editingMode="view">
+    <PokemonSheet back={{ to: `/myCity/${cityId}`, label: "My City" }} />
+  </PokemonProvider>;
 };

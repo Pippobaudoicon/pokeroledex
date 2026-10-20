@@ -53,16 +53,22 @@ Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behi
 
 Open **My City** from the sidebar, Home, or app search. Each account can create
 multiple named cities and switch between them. The overview counts residents by
-type **and rank** (for example, 3 Fire Rookie and 2 Ice Ace). A dual-type resident
+type **and rank** in collapsible sections for each populated rank, ordered from
+Unranked to Champion. Each section shows all 18 types, including zero counts,
+with attribute-style pips and an exact numeric count. Each filled pip represents
+one Pokémon; counts above five wrap rather than being capped. A dual-type resident
 counts once under each type, so the sum of type counts can exceed the population.
 
 **Add Pokémon** creates a sheet from a core or campaign species, or moves an
 existing sheet from My Pokémon, a trainer, or another city. A Pokémon belongs to
 at most one city or trainer; transfers preserve its ID, stats and moves. New sheets
-use the selected rank but start with unallocated stats and moves, editable in
-My Pokémon. The **Pokémon roster** links to each sheet and can move it to a
-trainer, another city, or unassigned My Pokémon. Removing a resident or deleting
-a city never deletes its Pokémon sheets.
+use the selected rank but start with unallocated stats and moves, editable from
+the city roster. City residents are separate from the personal **My Pokémon**
+collection, including residents created directly from the Pokédex.
+The **Pokémon roster** links to each city sheet and requires a destination for
+transfers: another city, a trainer, or **Assign to me (My Pokémon)**.
+Residents cannot simply be removed or deleted, and a city must be empty before
+it can be deleted.
 
 **Skills & actions** edits the city's name, common Pokémon/trainer skills (whole
 numbers from 0 to 5), and up to 50 custom action tags such as "Can heal" or
@@ -75,6 +81,9 @@ Cities use the existing owner-scoped D1 records collection (`cities`) and option
 `cityId` remain unassigned to a city. `/api/cities` supports GET/POST and
 `/api/cities/:id` supports GET/PATCH/DELETE. Assignment changes use the existing
 Pokémon PATCH endpoint and validate destinations within the signed-in account.
+`GET /api/pokemon` and `/api/pokemon/minimal` list only personal Pokémon;
+`GET /api/pokemon/all` includes city residents for city management.
+Taking ownership explicitly uses `{ id, takeOwnership: true }` on Pokémon PATCH.
 
 City regression tests run with `pnpm test`.
 They exercise the actual API handler against an isolated in-memory SQLite

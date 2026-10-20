@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { handleApi } from '../worker/api.ts';
-import { cityTypeCounts } from '../shared/cities.ts';
+import { cityRankGroups, cityTypeCounts } from '../shared/cities.ts';
+import { POKEMON_TYPES } from '../shared/types.ts';
 
 const species = {
   id: 'charmander', name: 'Charmander', types: ['FIRE', 'FLYING'], baseHp: 3,
@@ -63,6 +64,24 @@ test('city counts group ranks separately and count each distinct type once', () 
     { type: 'ICE', rank: 'ACE', count: 1 },
   ]);
   assert.deepEqual(cityTypeCounts([]), []);
+});
+
+test('rank overview includes all 18 types, zeroes and uncapped counts in rank order', () => {
+  const pokemonTemplate = { ...species, types: ['FIRE', 'FLYING'] };
+  const groups = cityRankGroups([
+    { rank: 'ACE', pokemonTemplate: { types: ['ICE'] } },
+    ...Array.from({ length: 12 }, () => ({ rank: 'ROOKIE', pokemonTemplate })),
+  ]);
+  assert.deepEqual(groups.map(group => [group.rank, group.population]), [['ROOKIE', 12], ['ACE', 1]]);
+  for (const group of groups) {
+    assert.equal(group.types.length, 18);
+    assert.deepEqual(new Set(group.types.map(entry => entry.type)), new Set(POKEMON_TYPES));
+    assert.equal(group.types.find(entry => entry.type === 'WATER').count, 0);
+  }
+  assert.equal(groups[0].types.find(entry => entry.type === 'FIRE').count, 12);
+  assert.equal(groups[0].types.find(entry => entry.type === 'FLYING').count, 12);
+  assert.equal(groups[1].types.find(entry => entry.type === 'ICE').count, 1);
+  assert.deepEqual(cityRankGroups([]), []);
 });
 
 test('city CRUD persists separate cities, skills and tags, and protects ownership', async () => {
@@ -137,11 +156,13 @@ test('all assignment paths move the original sheet exclusively and preserve its 
     assert.equal(party.body.pokemon[0].trainingPoints, 7);
     assert.equal((await h.request('pokemon')).body.length, 1);
     await patch({ cityId: city.id });
-    await patch({ cityId: null });
+    assert.equal((await patch({ cityId: null })).status, 400);
+    await patch({ takeOwnership: true });
     const unassigned = (await h.request(`pokemon/${p.id}`)).body;
     assert.equal(unassigned.cityId, null);
     assert.equal(unassigned.trainerId, null);
     assert.equal(unassigned.rank, 'ROOKIE');
+    assert.equal('takeOwnership' in unassigned, false);
     assert.equal((await h.request('trainers', 'PATCH', { id: trainer.id, pokemonIds: ['missing'] })).status, 400);
   } finally { h.close(); }
 });
@@ -161,11 +182,35 @@ test('invalid and foreign assignments fail without changing the stored Pokemon',
       assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, ...body })).status, 400);
     }
     assert.equal((await h.request(`pokemon/${p.id}`)).body.cityId, city.id);
-    assert.equal((await h.request('pokemon')).body.length, 1);
+    assert.equal((await h.request('pokemon/all')).body.length, 1);
   } finally { h.close(); }
 });
 
-test('deleting a city releases its residents but keeps sheets, trainers and other cities', async () => {
+test('city residents are excluded from personal lists until explicitly assigned to me', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    const resident = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id, rank: 'ROOKIE' })).body;
+    const personal = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id })).body;
+    for (const path of ['pokemon', 'pokemon/minimal']) {
+      assert.deepEqual((await h.request(path)).body.map(p => p.id), [personal.id]);
+    }
+    assert.equal((await h.request('pokemon/all')).body.length, 2);
+    assert.equal((await h.request(`pokemon/${resident.id}`)).body.cityId, city.id);
+    assert.deepEqual((await h.request('pokemon/all', 'GET', undefined, 'bob')).body, []);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, takeOwnership: 'yes' })).status, 400);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, takeOwnership: true, cityId: city.id })).status, 400);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, cityId: null, trainerId: null })).status, 400);
+    await h.request('pokemon', 'PATCH', { id: resident.id, takeOwnership: true });
+    for (const path of ['pokemon', 'pokemon/minimal']) {
+      assert.equal((await h.request(path)).body.length, 2);
+    }
+    await h.request('pokemon', 'PATCH', { id: personal.id, cityId: city.id });
+    assert.deepEqual((await h.request('pokemon/minimal')).body.map(p => p.id), [resident.id]);
+  } finally { h.close(); }
+});
+
+test('cities and residents cannot be deleted until residents are transferred or taken into ownership', async () => {
   const h = harness();
   try {
     const a = (await h.request('cities', 'POST', { name: 'A' })).body;
@@ -174,13 +219,19 @@ test('deleting a city releases its residents but keeps sheets, trainers and othe
     const first = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: a.id })).body;
     const second = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: b.id })).body;
     const third = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, trainerId: trainer.id })).body;
-    assert.equal((await h.request(`cities/${a.id}`, 'DELETE')).status, 200);
-    assert.equal((await h.request(`pokemon/${first.id}`)).body.cityId, null);
+    assert.equal((await h.request(`cities/${a.id}`, 'DELETE')).status, 409);
+    assert.equal((await h.request(`pokemon/${first.id}`, 'DELETE')).status, 409);
+    assert.equal((await h.request(`pokemon/${first.id}`)).body.cityId, a.id);
     assert.equal((await h.request(`pokemon/${second.id}`)).body.cityId, b.id);
     assert.equal((await h.request(`pokemon/${third.id}`)).body.trainerId, trainer.id);
+    assert.equal((await h.request('pokemon/all')).body.length, 3);
+    await h.request('pokemon', 'PATCH', { id: first.id, cityId: b.id });
+    assert.equal((await h.request(`cities/${a.id}`, 'DELETE')).status, 200);
+    await h.request('pokemon', 'PATCH', { id: first.id, takeOwnership: true });
+    await h.request('pokemon', 'PATCH', { id: second.id, trainerId: trainer.id });
+    assert.equal((await h.request(`cities/${b.id}`, 'DELETE')).status, 200);
     assert.equal((await h.request('pokemon')).body.length, 3);
-    await h.request(`pokemon/${second.id}`, 'DELETE');
-    assert.equal((await h.request('pokemon')).body.length, 2);
-    assert.equal((await h.request(`cities/${b.id}`)).status, 200);
+    assert.equal((await h.request(`pokemon/${first.id}`)).body.cityId, null);
+    assert.equal((await h.request(`pokemon/${second.id}`)).body.trainerId, trainer.id);
   } finally { h.close(); }
 });
