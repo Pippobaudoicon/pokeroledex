@@ -36,7 +36,10 @@ const MoveList = ({
   const matches = React.useMemo(() => {
     const needle = fold(query.trim());
     return (moves ?? [])
-      .filter((possible) => !updatedPokemon?.moves.some((move) => move.id === possible.move.id) && (!needle || fold(possible.move.name).includes(needle)))
+      .filter(
+        (possible) =>
+          !updatedPokemon?.moves.some((move) => move.id === possible.move.id) && (!needle || fold(possible.move.name).includes(needle)),
+      )
       .sort((first, second) => first.move.name.localeCompare(second.move.name));
   }, [moves, query, updatedPokemon?.moves]);
   if (!moves)
@@ -47,7 +50,8 @@ const MoveList = ({
         ))}
       </div>
     );
-  if (matches.length === 0) return <p className="p-6 text-center text-subhead text-label-2">No moves to add{query ? ` named “${query}”` : ""}.</p>;
+  if (matches.length === 0)
+    return <p className="p-6 text-center text-subhead text-label-2">No moves to add{query ? ` named “${query}”` : ""}.</p>;
   return (
     <ul>
       {matches.slice(0, LIMIT).map((possible) => (
@@ -74,7 +78,9 @@ const MoveList = ({
           </button>
         </li>
       ))}
-      {matches.length > LIMIT && <li className="p-3 text-center text-footnote text-label-2">Keep typing to see the other {matches.length - LIMIT}.</li>}
+      {matches.length > LIMIT && (
+        <li className="p-3 text-center text-footnote text-label-2">Keep typing to see the other {matches.length - LIMIT}.</li>
+      )}
     </ul>
   );
 };
@@ -92,7 +98,9 @@ export const AddMoveSheet = ({ open, onOpenChange }: { open: boolean; onOpenChan
     for (const possible of updatedPokemon.pokemonTemplate.possibleMoves) {
       const rank = ranks.indexOf(possible.rank);
       const known = byMove.get(possible.move.id);
-      if (rank <= ranks.indexOf(updatedPokemon.rank) && (known === undefined || rank < ranks.indexOf(known.rank))) byMove.set(possible.move.id, possible);
+      const moveRank = updatedPokemon.rank === "UNRANKED" ? "STARTER" : updatedPokemon.rank;
+      if (rank >= 0 && rank <= ranks.indexOf(moveRank) && (known === undefined || rank < ranks.indexOf(known.rank)))
+        byMove.set(possible.move.id, possible);
     }
     return [...byMove.values()];
   }, [updatedPokemon?.pokemonTemplate, updatedPokemon?.rank]);
@@ -142,7 +150,9 @@ export const useCanAddMove = () => {
   if (editingMode === "edit") return true;
   const slotsFull = updatedPokemon.moves.length >= getTotalStat(updatedPokemon, "insight") + 3;
   const leftToLearn = updatedPokemon.pokemonTemplate.possibleMoves.some(
-    (possible) => !updatedPokemon.moves.some((move) => move.id === possible.move.id) && ranks.indexOf(possible.rank) <= ranks.indexOf(updatedPokemon.rank),
+    (possible) =>
+      !updatedPokemon.moves.some((move) => move.id === possible.move.id) &&
+      ranks.indexOf(possible.rank) <= ranks.indexOf(updatedPokemon.rank),
   );
   return !slotsFull && leftToLearn;
 };

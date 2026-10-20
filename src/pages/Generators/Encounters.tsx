@@ -1,28 +1,24 @@
 import * as React from "react";
-import { ChevronDown, ChevronUp, Lock, Unlock, X } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ChevronDown, Copy, Lock, Sparkles, Unlock, X } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { generationFor, isMythical } from "../../../shared/encounters";
 import { apiFetch } from "@/api/client";
 import { Habitat, LegendaryFilter, PokemonType, Rank, RankUpMethod } from "@/api/schemas";
-import { Box } from "@/components/Box";
-import { Combobox } from "@/components/Combobox";
-import { MultiSelect } from "@/components/MultiSelect";
-import { PokemonTemplateCard } from "@/components/PokemonTemplateCard";
+import { button } from "@/components/kit/button";
+import { Stepper } from "@/components/kit/Controls";
+import { Group } from "@/components/kit/List";
+import { RankBadge, TypePill } from "@/components/kit/Pills";
+import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
+import { Sheet } from "@/components/kit/Sheet";
+import { Sprite } from "@/components/kit/Sprite";
 import { StaticPokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
-import { RankIcon } from "@/components/RankIcon";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
-import { habitatNames, SeedInput } from "./fields";
+import { cn, formatEnumName } from "@/lib/utils";
+import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, habitatNames, SeedInput, ToggleField } from "./fields";
 
 interface EncounterEntry {
   pokemon: T.Pokemon;
@@ -30,16 +26,24 @@ interface EncounterEntry {
   shinyRoll: [number, number];
 }
 
-const rollShiny = (): [number, number] => [
-  Math.floor(Math.random() * 20) + 1,
-  Math.floor(Math.random() * 20) + 1,
-];
+const rollShiny = (): [number, number] => [Math.floor(Math.random() * 20) + 1, Math.floor(Math.random() * 20) + 1];
 const isShiny = (entry: EncounterEntry) => entry.shinyRoll.every((die) => die === 20);
 const defaultSettings = (): T.GenerateEncounterBody => ({
-  numberToGenerate: 1, name: "", types: [], generations: [], habitats: [], ranks: [],
-  includeLegendary: LegendaryFilter.NONE, includeMythical: false, excludeForms: true,
-  rankOrBelow: true, allowDuplicates: true, excludeStarters: true, fossils: "NONE",
-  seed: Date.now(), rankUpMethod: RankUpMethod.RANDOM,
+  numberToGenerate: 1,
+  name: "",
+  types: [],
+  generations: [],
+  habitats: [],
+  ranks: [],
+  includeLegendary: LegendaryFilter.NONE,
+  includeMythical: false,
+  excludeForms: true,
+  rankOrBelow: true,
+  allowDuplicates: true,
+  excludeStarters: true,
+  fossils: "NONE",
+  seed: Date.now(),
+  rankUpMethod: RankUpMethod.RANDOM,
 });
 
 const EncounterContext = React.createContext<{
@@ -65,14 +69,41 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [status, setStatus] = React.useState("Choose filters and generate an encounter.");
   return (
-    <EncounterContext.Provider value={{ entries, setEntries, history, setHistory, settings, setSettings, useRandomSeed, setUseRandomSeed, isGenerating, setIsGenerating, status, setStatus }}>
+    <EncounterContext.Provider
+      value={{
+        entries,
+        setEntries,
+        history,
+        setHistory,
+        settings,
+        setSettings,
+        useRandomSeed,
+        setUseRandomSeed,
+        isGenerating,
+        setIsGenerating,
+        status,
+        setStatus,
+      }}
+    >
       {children}
     </EncounterContext.Provider>
   );
 };
 
 export const EncounterGenerator = () => {
-  const { entries, setEntries, history, setHistory, settings, setSettings, useRandomSeed, setUseRandomSeed, isGenerating, setIsGenerating, setStatus } = React.useContext(EncounterContext);
+  const {
+    entries,
+    setEntries,
+    history,
+    setHistory,
+    settings,
+    setSettings,
+    useRandomSeed,
+    setUseRandomSeed,
+    isGenerating,
+    setIsGenerating,
+    setStatus,
+  } = React.useContext(EncounterContext);
   const { state: campaignFilter } = useCampaignFilter();
   const { toast } = useToast();
   const locked = entries.filter((entry) => entry.locked);
@@ -88,20 +119,28 @@ export const EncounterGenerator = () => {
     setStatus("Generating encounter…");
     try {
       const pokemon = await apiFetch<T.Pokemon[]>({
-        url: "/pokemon/encounter", method: "post",
+        url: "/pokemon/encounter",
+        method: "post",
         body: {
-          ...settings, seed, numberToGenerate: count - locked.length,
-          campaignIds: campaignFilter.campaignIds, includeCore: campaignFilter.includeCore,
-          excludedTemplateIds: [...new Set([
-            ...history.map((species) => species.id),
-            ...(!settings.allowDuplicates ? locked.map((entry) => entry.pokemon.pokemonTemplateId) : []),
-          ])],
+          ...settings,
+          seed,
+          numberToGenerate: count - locked.length,
+          campaignIds: campaignFilter.campaignIds,
+          includeCore: campaignFilter.includeCore,
+          excludedTemplateIds: [
+            ...new Set([
+              ...history.map((species) => species.id),
+              ...(!settings.allowDuplicates ? locked.map((entry) => entry.pokemon.pokemonTemplateId) : []),
+            ]),
+          ],
         } satisfies T.GenerateEncounterBody,
       });
       const next = [...locked, ...pokemon.map((pokemon) => ({ pokemon, locked: false, shinyRoll: rollShiny() }))];
       setEntries(next);
       setHistory([...new Map(next.map((entry) => [entry.pokemon.pokemonTemplateId, entry.pokemon.pokemonTemplate])).values()]);
-      setStatus(`${next.length} of ${count} Pokémon · Seed ${seed}${next.length < count ? " · Broaden filters or remove entries from history to find more." : ""}`);
+      setStatus(
+        `${next.length} of ${count} Pokémon · Seed ${seed}${next.length < count ? " · Broaden filters or remove entries from history to find more." : ""}`,
+      );
     } catch {
       setStatus("Generation failed. Your current encounter has been kept.");
       toast({ title: "Failed to generate encounter", description: "Please try again." });
@@ -110,81 +149,158 @@ export const EncounterGenerator = () => {
     }
   };
   return (
-    <Box color="bg-pokerole-beige" className="p-2 flex flex-col gap-2 encounter-controls">
-      <Text size="text-2xl" className="text-center">Encounter Generator</Text>
-      <fieldset disabled={isGenerating} className="flex flex-col gap-2">
-        <label className="font-move">
-          Number to generate (1–12)
-          <Input type="number" min={1} max={12} value={count} onChange={(event) => setSettings({ ...settings, numberToGenerate: Number(event.target.value) })} />
-        </label>
-        <label className="font-move">
-          Pokémon name
-          <Input value={settings.name} placeholder="eevee, charmander, graveler" onChange={(event) => setSettings({ ...settings, name: event.target.value })} />
-          <span className="text-sm">Separate names with commas; partial names work too.</span>
-        </label>
-        <p className="font-move text-sm">Uses your active <Link to="/campaigns" className="underline">campaign selection</Link>.</p>
-        <Text font="font-move" size="text-xl">Types (any selected)</Text>
-        <MultiSelect<T.PokemonType>
-          options={Object.values(PokemonType).filter((type): type is T.PokemonType => type !== "TYPELESS" && type !== "VARIES").map((type) => ({ label: type, value: type }))}
-          selected={settings.types ?? []} onChange={(types) => setSettings({ ...settings, types })} placeholder="Any type"
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        generate();
+      }}
+    >
+      <fieldset disabled={isGenerating} className="flex min-w-0 flex-col gap-6">
+        <Group title="Encounter settings">
+          <div className="flex flex-col gap-4 p-3">
+            <Field label="Number to generate" hint="Generate between 1 and 12 Pokémon.">
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={count}
+                onChange={(event) => setSettings({ ...settings, numberToGenerate: Number(event.target.value) })}
+                className={fieldClass}
+              />
+            </Field>
+            <Field label="Pokémon name" hint="Separate names with commas; partial names work too.">
+              <input
+                value={settings.name}
+                placeholder="Eevee, Charmander, Graveler…"
+                onChange={(event) => setSettings({ ...settings, name: event.target.value })}
+                className={fieldClass}
+              />
+            </Field>
+          </div>
+        </Group>
+        <Group title="Species filters" footer="Leave a group empty to include any matching Pokémon.">
+          <ChoiceGroup
+            label="Types"
+            options={Object.values(PokemonType)
+              .filter((type): type is T.PokemonType => type !== "TYPELESS" && type !== "VARIES")
+              .map((type) => ({ value: type, label: formatEnumName(type) }))}
+            selected={settings.types ?? []}
+            onChange={(types) => setSettings({ ...settings, types })}
+          />
+          <ChoiceGroup
+            label="Generations"
+            options={Array.from({ length: 9 }, (_, index) => ({ value: String(index + 1), label: `Generation ${index + 1}` }))}
+            selected={(settings.generations ?? []).map(String)}
+            onChange={(generations) => setSettings({ ...settings, generations: generations.map(Number) })}
+          />
+          <ChoiceGroup
+            label="Habitats"
+            options={Object.values(Habitat)
+              .sort((a, b) => habitatNames[a].localeCompare(habitatNames[b]))
+              .map((habitat) => ({ value: habitat, label: habitatNames[habitat] }))}
+            selected={settings.habitats ?? []}
+            onChange={(habitats) => setSettings({ ...settings, habitats })}
+          />
+          <ChoiceGroup
+            label="Recommended ranks"
+            options={Object.values(Rank).map((rank) => ({ value: rank, label: formatEnumName(rank) }))}
+            selected={settings.ranks ?? []}
+            onChange={(ranks) => setSettings({ ...settings, ranks })}
+          />
+        </Group>
+        <Group title="Encounter rules">
+          <div className="flex flex-col gap-4 p-3">
+            <Field label="Legendaries">
+              <select
+                value={settings.includeLegendary}
+                onChange={(event) => setSettings({ ...settings, includeLegendary: event.target.value as T.LegendaryFilter })}
+                className={fieldClass}
+              >
+                <option value="NONE">No legendaries</option>
+                <option value="ALL">Include legendaries</option>
+                <option value="ONLY">Only legendaries</option>
+              </select>
+            </Field>
+            <Field label="Fossils">
+              <select
+                value={settings.fossils}
+                onChange={(event) => setSettings({ ...settings, fossils: event.target.value as T.GenerateEncounterBody["fossils"] })}
+                className={fieldClass}
+              >
+                <option value="NONE">No fossils</option>
+                <option value="ALL">Include fossils</option>
+                <option value="ONLY">Only fossils</option>
+              </select>
+            </Field>
+            <Field label="Rank-up method">
+              <select
+                value={settings.rankUpMethod}
+                onChange={(event) => setSettings({ ...settings, rankUpMethod: event.target.value as T.RankUpMethod })}
+                className={fieldClass}
+              >
+                {Object.values(RankUpMethod).map((method) => (
+                  <option key={method} value={method}>
+                    {formatEnumName(method)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div>
+              {(
+                [
+                  ["rankOrBelow", "Recommended rank or lower"],
+                  ["includeMythical", "Include mythical"],
+                  ["excludeForms", "Exclude form variants"],
+                  ["allowDuplicates", "Allow duplicate Pokémon"],
+                  ["excludeStarters", "Exclude starter families"],
+                ] as const
+              ).map(([key, label]) => (
+                <ToggleField
+                  key={key}
+                  label={label}
+                  checked={settings[key] === true}
+                  onChange={(checked) => setSettings({ ...settings, [key]: checked })}
+                />
+              ))}
+            </div>
+          </div>
+        </Group>
+        <SeedInput
+          value={settings.seed ?? 0}
+          onChange={(value) => setSettings({ ...settings, seed: Number(value) })}
+          useRandomSeed={useRandomSeed}
+          setUseRandomSeed={setUseRandomSeed}
         />
-        <Text font="font-move" size="text-xl">Generations</Text>
-        <MultiSelect
-          options={Array.from({ length: 9 }, (_, i) => ({ label: `Generation ${i + 1}`, value: String(i + 1) }))}
-          selected={(settings.generations ?? []).map(String)} onChange={(generations) => setSettings({ ...settings, generations: generations.map(Number) })} placeholder="Any generation"
-        />
-        <Text font="font-move" size="text-xl">Habitats</Text>
-        <MultiSelect
-          options={Object.values(Habitat).sort((a, b) => habitatNames[a].localeCompare(habitatNames[b])).map((habitat) => ({ label: habitatNames[habitat], value: habitat }))}
-          selected={settings.habitats ?? []} onChange={(habitats) => setSettings({ ...settings, habitats })} placeholder="Any habitat"
-        />
-        <Text font="font-move" size="text-xl">Recommended ranks</Text>
-        <MultiSelect
-          options={Object.values(Rank).map((rank) => ({ label: <span className="flex items-center gap-1"><RankIcon rank={rank} size="sm" />{rank}</span>, value: rank }))}
-          selected={settings.ranks ?? []} onChange={(ranks) => setSettings({ ...settings, ranks })} placeholder="Any rank"
-        />
-        <Text font="font-move" size="text-xl">Legendaries</Text>
-        <Combobox
-          items={[{ label: "No legendaries", value: "NONE" }, { label: "Include legendaries", value: "ALL" }, { label: "Only legendaries", value: "ONLY" }]}
-          value={settings.includeLegendary} className="text-md" onChange={(value) => setSettings({ ...settings, includeLegendary: (value || "NONE") as T.LegendaryFilter })}
-        />
-        <Text font="font-move" size="text-xl">Fossils</Text>
-        <Combobox
-          items={[{ label: "Include fossils", value: "ALL" }, { label: "No fossils", value: "NONE" }, { label: "Only fossils", value: "ONLY" }]}
-          value={settings.fossils} className="text-md" onChange={(value) => setSettings({ ...settings, fossils: (value || "NONE") as T.GenerateEncounterBody["fossils"] })}
-        />
-        <Text font="font-move" size="text-xl">Rank up method</Text>
-        <Combobox
-          items={Object.values(RankUpMethod).map((method) => ({ label: method.replace(/_/g, " "), value: method }))}
-          value={settings.rankUpMethod} className="text-md" onChange={(value) => setSettings({ ...settings, rankUpMethod: (value || "RANDOM") as T.RankUpMethod })}
-        />
-        {([
-          ["rankOrBelow", "Recommended rank or lower"], ["includeMythical", "Include mythical"],
-          ["excludeForms", "Exclude form variants"], ["allowDuplicates", "Allow duplicate Pokémon"],
-          ["excludeStarters", "Exclude starter families"],
-        ] as const).map(([key, label]) => (
-          <label key={key} className="flex flex-row items-center gap-2 font-move">
-            <Checkbox checked={settings[key]} onCheckedChange={(checked) => setSettings({ ...settings, [key]: checked === true })} />{label}
-          </label>
-        ))}
-        <div className="flex flex-row gap-2 items-center">
-          <SeedInput value={settings.seed ?? 0} onChange={(value) => setSettings({ ...settings, seed: Number(value) })} useRandomSeed={useRandomSeed} setUseRandomSeed={setUseRandomSeed} />
+        <div className="flex flex-col gap-2">
+          <button
+            type="submit"
+            disabled={isGenerating || !Number.isInteger(count) || count < 1 || count > 12 || !Number.isFinite(settings.seed)}
+            className={button({ variant: "filled" })}
+          >
+            {isGenerating ? "Generating…" : "Generate encounter"}
+          </button>
+          <button
+            type="button"
+            disabled={isGenerating}
+            className={button({ variant: "gray" })}
+            onClick={() => {
+              setSettings(defaultSettings());
+              setUseRandomSeed(true);
+              setEntries([]);
+              setHistory([]);
+              setStatus("Filters reset. Choose filters and generate an encounter.");
+            }}
+          >
+            Reset filters
+          </button>
         </div>
       </fieldset>
-      <Button onClick={generate} disabled={isGenerating || !Number.isInteger(count) || count < 1 || count > 12 || !Number.isFinite(settings.seed)}>
-        {isGenerating ? "Generating…" : "Generate encounter"}
-      </Button>
-      <Button variant="white" disabled={isGenerating} onClick={() => {
-        setSettings(defaultSettings()); setUseRandomSeed(true); setEntries([]); setHistory([]);
-        setStatus("Filters reset. Choose filters and generate an encounter.");
-      }}>Reset filters</Button>
-    </Box>
+    </form>
   );
 };
 
-const EncounterCard = ({ entry }: { entry: EncounterEntry }) => {
+const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails: () => void }) => {
   const { setEntries, isGenerating } = React.useContext(EncounterContext);
-  const [expanded, setExpanded] = React.useState(false);
   const [rolling, setRolling] = React.useState(false);
   React.useEffect(() => {
     if (!rolling) return;
@@ -195,77 +311,227 @@ const EncounterCard = ({ entry }: { entry: EncounterEntry }) => {
   const species = pokemon.pokemonTemplate;
   const shiny = isShiny(entry);
   const maxHp = species.baseHp + getTotalStat(pokemon, "vitality");
-  const update = (changes: Partial<EncounterEntry>) => setEntries((entries) => entries.map((other) => other.pokemon.id === pokemon.id ? { ...other, ...changes } : other));
+  const update = (changes: Partial<EncounterEntry>) =>
+    setEntries((entries) => entries.map((other) => (other.pokemon.id === pokemon.id ? { ...other, ...changes } : other)));
   const updatePokemon = (changes: Partial<T.Pokemon>) => {
     if (changes.currentHp !== undefined) changes.currentHp = Math.max(0, Math.min(maxHp, changes.currentHp));
     update({ pokemon: { ...pokemon, ...changes } });
   };
   return (
-    <Box color="bg-pokerole-beige-light" className={`p-2 flex flex-col gap-2 encounter-card ${expanded ? "encounter-expanded" : ""} ${shiny ? "encounter-shiny" : ""}`}>
-      <PokemonTemplateCard name={species.name} number={species.number} types={species.types} image={species.image} />
-      <div className="flex flex-row flex-wrap gap-2 items-center font-move">
-        <RankIcon rank={pokemon.rank} size="sm" /><span>{pokemon.rank}</span>
-        <span>Gen {generationFor(species.number) ?? "—"}</span>
-        {isMythical(species.number) ? <span>Mythical</span> : species.legendary && <span>Legendary</span>}
-        {shiny && <strong>✨ SHINY</strong>}
-      </div>
-      <p className="font-move text-sm">{species.habitats.map((habitat) => habitatNames[habitat]).join(", ") || "No habitat listed"}</p>
-      <div className="encounter-card-actions">
-        <Button variant="white" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-          {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}{expanded ? "Hide details" : "Details"}
-        </Button>
-        <Button variant={entry.locked ? "green" : "white"} disabled={isGenerating} aria-pressed={entry.locked} onClick={() => update({ locked: !entry.locked })}>
-          {entry.locked ? <Lock size={18} /> : <Unlock size={18} />}{entry.locked ? "Unlock" : "Lock"}
-        </Button>
-        <Button variant="red" disabled={isGenerating} aria-label={`Remove ${species.name}`} onClick={() => setEntries((entries) => entries.filter((other) => other.pokemon.id !== pokemon.id))}><X size={18} /></Button>
-      </div>
-      <Button variant={shiny ? "yellow" : "white"} disabled={shiny || rolling || isGenerating} onClick={() => { update({ shinyRoll: rollShiny() }); setRolling(true); }}>
-        {shiny ? "✨ Shiny!" : `${rolling ? "Rolled" : "Roll shiny"} · ${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}${rolling ? ` = ${entry.shinyRoll[0] + entry.shinyRoll[1]}` : ""}`}
-      </Button>
-      <div className="flex flex-row items-center gap-2 font-move">
-        <Button variant="white" disabled={isGenerating || pokemon.currentHp <= 0} aria-label={`Decrease HP for ${species.name}`} onClick={() => updatePokemon({ currentHp: pokemon.currentHp - 1 })}>−</Button>
-        <span className="flex-grow text-center">HP: {pokemon.currentHp} / {maxHp}</span>
-        <Button variant="white" disabled={isGenerating || pokemon.currentHp >= maxHp} aria-label={`Increase HP for ${species.name}`} onClick={() => updatePokemon({ currentHp: pokemon.currentHp + 1 })}>+</Button>
-      </div>
-      {expanded && (
-        <StaticPokemonProvider pokemon={pokemon} onChange={isGenerating ? undefined : updatePokemon}>
-          <p className="font-move">Nature: {pokemon.nature?.name ?? "—"} · Confidence: {pokemon.nature?.confidence ?? "—"}</p>
-          <div className="overflow-hidden rounded-2xl">
-            <PokemonSheet showButtons="add" embedded />
+    <article
+      aria-label={species.name}
+      className={cn("min-w-0 overflow-hidden rounded-2xl bg-surface shadow-card", shiny && "ring-2 ring-pokerole-yellow")}
+    >
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex items-center gap-3">
+          <Sprite image={species.image} set="book" className="size-24" />
+          <div className="min-w-0 flex-1">
+            <p className="text-footnote text-label-2 tabular-nums">#{species.dexID || String(species.number).padStart(4, "0")}</p>
+            <h3 className="mt-1 text-headline font-semibold break-words">{species.name}</h3>
+            <RankBadge rank={pokemon.rank} className="mt-1" />
+            <div className="mt-2 flex flex-wrap gap-1">
+              {species.types.map((type) => (
+                <TypePill key={type} type={type} size="sm" />
+              ))}
+            </div>
           </div>
-        </StaticPokemonProvider>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-footnote text-label-2">
+          <span>Generation {generationFor(species.number) ?? "—"}</span>
+          {isMythical(species.number) ? <span>Mythical</span> : species.legendary && <span>Legendary</span>}
+          {shiny && (
+            <span className="inline-flex items-center gap-1 font-semibold text-label">
+              <Sparkles aria-hidden className="size-3.5" />
+              Shiny
+            </span>
+          )}
+        </div>
+        <p className="text-footnote text-label-2">
+          {species.habitats.map((habitat) => habitatNames[habitat]).join(", ") || "No habitat listed"}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" aria-haspopup="dialog" onClick={onDetails} className={button({ variant: "tinted", size: "sm" })}>
+            <ChevronDown aria-hidden className="size-4" />
+            Details & moves
+          </button>
+          <button
+            type="button"
+            disabled={isGenerating}
+            aria-pressed={entry.locked}
+            onClick={() => update({ locked: !entry.locked })}
+            className={button({ variant: entry.locked ? "tinted" : "gray", size: "sm" })}
+          >
+            {entry.locked ? <Lock aria-hidden className="size-4" /> : <Unlock aria-hidden className="size-4" />}
+            {entry.locked ? "Unlock" : "Lock"}
+          </button>
+          <button
+            type="button"
+            disabled={isGenerating}
+            aria-label={`Remove ${species.name}`}
+            onClick={() => setEntries((entries) => entries.filter((other) => other.pokemon.id !== pokemon.id))}
+            className={cn(button({ variant: "destructive", size: "icon" }), "ml-auto")}
+          >
+            <X aria-hidden className="size-4" />
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={shiny || rolling || isGenerating}
+          onClick={() => {
+            update({ shinyRoll: rollShiny() });
+            setRolling(true);
+          }}
+          className={button({ variant: shiny ? "tinted" : "gray" })}
+        >
+          <Sparkles aria-hidden className="size-4" />
+          {shiny
+            ? "Shiny!"
+            : `${rolling ? "Rolled" : "Roll shiny"} · ${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}${rolling ? ` = ${entry.shinyRoll[0] + entry.shinyRoll[1]}` : ""}`}
+        </button>
+        <div className="flex items-center justify-between gap-3 border-t border-hairline pt-3">
+          <span className="text-subhead font-medium">
+            HP <span className="font-normal text-label-2">/ {maxHp}</span>
+          </span>
+          <Stepper
+            label={`HP for ${species.name}`}
+            value={pokemon.currentHp}
+            min={isGenerating ? pokemon.currentHp : 0}
+            max={isGenerating ? pokemon.currentHp : maxHp}
+            onChange={(currentHp) => updatePokemon({ currentHp })}
+          />
+        </div>
+      </div>
+    </article>
+  );
+};
+
+const EncounterDetails = ({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string | null) => void }) => {
+  const { entries, setEntries, isGenerating } = React.useContext(EncounterContext);
+  const idPrefix = React.useId();
+  const selected = entries.find((entry) => entry.pokemon.id === selectedId);
+  const revealSelectedTab = React.useCallback(
+    (element: HTMLDivElement | null) => {
+      element?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    },
+    [selectedId],
+  );
+  const updatePokemon = (changes: Partial<T.Pokemon>) => {
+    setEntries((entries) =>
+      entries.map((entry) => {
+        if (entry.pokemon.id !== selectedId) return entry;
+        const pokemon = { ...entry.pokemon, ...changes };
+        const maxHp = pokemon.pokemonTemplate.baseHp + getTotalStat(pokemon, "vitality");
+        pokemon.currentHp = Math.max(0, Math.min(maxHp, pokemon.currentHp));
+        return { ...entry, pokemon };
+      }),
+    );
+  };
+  return (
+    <Sheet
+      open={selected !== undefined}
+      onOpenChange={(open) => {
+        if (!open) onSelect(null);
+      }}
+      title="Encounter details"
+      description="Switch Pokémon using the tabs. Tap a move to roll accuracy or damage."
+      initialExpanded
+      className="lg:max-w-5xl"
+    >
+      {selected && (
+        <>
+          <div ref={revealSelectedTab} className="sticky top-0 z-20 overflow-x-auto border-b border-hairline bg-canvas p-3">
+            <Segmented
+              label="Encounter Pokémon"
+              idPrefix={idPrefix}
+              value={selected.pokemon.id}
+              onChange={onSelect}
+              options={entries.map(({ pokemon }, index) => ({
+                value: pokemon.id,
+                label: (
+                  <span className="flex items-center justify-center gap-2">
+                    <Sprite image={pokemon.pokemonTemplate.image} set="box" className="size-7" />
+                    <span className="max-w-40 truncate">
+                      {index + 1}. {pokemon.pokemonTemplate.name}
+                    </span>
+                  </span>
+                ),
+              }))}
+              className="w-max min-w-full"
+            />
+          </div>
+          <div key={selected.pokemon.id} {...segmentPanelProps(idPrefix, selected.pokemon.id)}>
+            <StaticPokemonProvider pokemon={selected.pokemon} onChange={isGenerating ? undefined : updatePokemon}>
+              <p className="px-4 pt-3 text-footnote text-label-2">
+                Nature: {selected.pokemon.nature?.name ?? "—"} · Confidence: {selected.pokemon.nature?.confidence ?? "—"}
+              </p>
+              <PokemonSheet showButtons="add" embedded />
+            </StaticPokemonProvider>
+          </div>
+        </>
       )}
-    </Box>
+    </Sheet>
   );
 };
 
 const EncounterHistory = () => {
   const { history, setHistory, isGenerating } = React.useContext(EncounterContext);
+  const [open, setOpen] = React.useState(false);
   return (
-    <Dialog>
-      <DialogTrigger asChild><Button variant="white">View history ({history.length})</Button></DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Generated History</DialogTitle>
-          <DialogDescription>Pokémon from the last encounter are excluded from the next roll. Remove an entry to allow it again.</DialogDescription>
-        </DialogHeader>
-        <div className="encounter-history-list">
-          {history.length === 0 && <p className="font-move">No Pokémon in history.</p>}
-          {history.map((species) => (
-            <div key={species.id} className="flex flex-row items-center gap-2">
-              <div className="flex-grow"><PokemonTemplateCard name={species.name} number={species.number} types={species.types} image={species.image} /></div>
-              <Button variant="red" disabled={isGenerating} aria-label={`Remove ${species.name} from history`} onClick={() => setHistory(history.filter((other) => other.id !== species.id))}><X size={18} /></Button>
-            </div>
-          ))}
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={button({ variant: "gray", size: "sm" })}>
+        History ({history.length})
+      </button>
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+        title="Encounter history"
+        description="Pokémon from the last encounter are excluded from the next roll. Remove an entry to allow it again."
+        initialExpanded
+      >
+        <div className="flex flex-col gap-4 p-4">
+          <Group>
+            {history.length === 0 ? (
+              <p className="p-4 text-subhead text-label-2">No Pokémon in history.</p>
+            ) : (
+              <ul>
+                {history.map((species) => (
+                  <li key={species.id} className="flex items-center gap-3 border-b border-hairline px-3 py-2 last:border-b-0">
+                    <Sprite image={species.image} set="box" className="h-14 w-17" />
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-body font-medium">{species.name}</span>
+                      <span className="text-footnote text-label-2">{species.types.map(formatEnumName).join(" · ")}</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isGenerating}
+                      aria-label={`Remove ${species.name} from history`}
+                      onClick={() => setHistory(history.filter((other) => other.id !== species.id))}
+                      className={button({ variant: "destructive", size: "icon" })}
+                    >
+                      <X aria-hidden className="size-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Group>
+          <button
+            type="button"
+            disabled={isGenerating || history.length === 0}
+            onClick={() => setHistory([])}
+            className={button({ variant: "destructive" })}
+          >
+            Clear history
+          </button>
         </div>
-        <Button variant="red" disabled={isGenerating || history.length === 0} onClick={() => setHistory([])}>Remove all from history</Button>
-      </DialogContent>
-    </Dialog>
+      </Sheet>
+    </>
   );
 };
 
 export const GeneratedEncounterList = () => {
   const { entries, status } = React.useContext(EncounterContext);
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const resultsRef = useScrollToDetail(entries.map((entry) => entry.pokemon.id).join(",") || undefined);
   const { toast } = useToast();
   const copy = async () => {
@@ -281,19 +547,33 @@ export const GeneratedEncounterList = () => {
     }
   };
   return (
-    <div ref={resultsRef} className="encounter-results h-full">
-      <Box color="bg-pokerole-beige" className="p-3 h-full flex flex-col overflow-hidden">
-        <div className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <Text size="text-3xl">Generated Encounter</Text>
-          <div className="flex flex-row flex-wrap gap-2"><EncounterHistory /><Button variant="white" disabled={entries.length === 0} onClick={copy}>Copy encounter</Button></div>
+    <section ref={resultsRef} aria-label="Generated encounter" className="min-w-0 scroll-mt-16">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-headline font-semibold">Generated encounter</h2>
+        <div className="flex flex-wrap gap-2">
+          <EncounterHistory />
+          <button type="button" disabled={entries.length === 0} onClick={copy} className={button({ variant: "gray", size: "sm" })}>
+            <Copy aria-hidden className="size-3.5" />
+            Copy
+          </button>
         </div>
-        <p role="status" className="font-move text-sm p-2">{status}</p>
-        <ScrollArea className="flex-1 rounded-3xl">
-          {entries.length === 0 ? <p className="text-center font-move p-3">No encounter yet. Broaden your filters if nothing matches.</p> : (
-            <div className="encounter-card-grid">{entries.map((entry) => <EncounterCard key={entry.pokemon.id} entry={entry} />)}</div>
-          )}
-        </ScrollArea>
-      </Box>
-    </div>
+      </div>
+      <p role="status" className="mb-4 text-footnote text-label-2">
+        {status}
+      </p>
+      {entries.length === 0 ? (
+        <GeneratorEmpty
+          title="No encounter yet"
+          description="Choose your filters and generate an encounter. Broaden the filters if nothing matches."
+        />
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-2">
+          {entries.map((entry) => (
+            <EncounterCard key={entry.pokemon.id} entry={entry} onDetails={() => setSelectedId(entry.pokemon.id)} />
+          ))}
+        </div>
+      )}
+      <EncounterDetails selectedId={selectedId} onSelect={setSelectedId} />
+    </section>
   );
 };

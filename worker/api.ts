@@ -232,8 +232,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const moveRank = isEncounter && generatedRank === 'UNRANKED' ? 'STARTER' : generatedRank;
         const availableMoves: string[] = [...new Set<string>(entry.possibleMoves.filter((move: Row) =>
           (!isEncounter || ranks.includes(move.rank)) && ranks.indexOf(move.rank) <= ranks.indexOf(moveRank)).map((move: Row) => move.move.id))];
-        const moveIds: string[] = isEncounter ? availableMoves : [];
-        while (!isEncounter && availableMoves.length && moveIds.length < entry.baseStats.insight + stats.insight + 3) {
+        const moveIds: string[] = [];
+        while (availableMoves.length && moveIds.length < 6) {
           moveIds.push(availableMoves.splice(Math.floor(random() * availableMoves.length), 1)[0]);
         }
         const abilities = [entry.abilityOne, entry.abilityTwo].filter(Boolean);

@@ -30,7 +30,13 @@ const GenderButton = ({ pokemon }: { pokemon: T.Pokemon }) => {
   // Only species without a fixed gender can switch.
   const switchable = pokemon.pokemonTemplate.genderType === "";
   const symbol = (
-    <span aria-hidden className={cn("text-title-3 leading-none", pokemon.gender === "M" ? "text-[#1673d1]" : pokemon.gender === "F" ? "text-[#c2399f]" : "text-label-2")}>
+    <span
+      aria-hidden
+      className={cn(
+        "text-title-3 leading-none",
+        pokemon.gender === "M" ? "text-[#1673d1]" : pokemon.gender === "F" ? "text-[#c2399f]" : "text-label-2",
+      )}
+    >
       {genderSymbol[pokemon.gender]}
     </span>
   );
@@ -83,7 +89,11 @@ const Vital = ({ property, label, max, color }: { property: "currentHp" | "curre
   const { draft, setDraft, commit, value } = useNumberDraft(property);
   const id = React.useId();
   const ratio = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
-  const step = (delta: number) => setDraft(String(Math.max(0, value + delta)));
+  const step = (delta: number) => {
+    const next = String(Math.max(0, value + delta));
+    setDraft(next);
+    commit(next);
+  };
   return (
     <div className="flex flex-col gap-2 rounded-2xl bg-surface p-3 shadow-card">
       <div className="flex items-baseline justify-between">
@@ -93,7 +103,13 @@ const Vital = ({ property, label, max, color }: { property: "currentHp" | "curre
         <span className="text-footnote text-label-2 tabular-nums">max {max}</span>
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" aria-label={`Lower ${label}`} onClick={() => step(-1)} disabled={value <= 0} className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}>
+        <button
+          type="button"
+          aria-label={`Lower ${label}`}
+          onClick={() => step(-1)}
+          disabled={value <= 0}
+          className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}
+        >
           <Minus aria-hidden className="size-5 lg:size-4" />
         </button>
         <input
@@ -111,12 +127,20 @@ const Vital = ({ property, label, max, color }: { property: "currentHp" | "curre
         <span id={`${id}-max`} className="sr-only">
           of {max}
         </span>
-        <button type="button" aria-label={`Raise ${label}`} onClick={() => step(1)} className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}>
+        <button
+          type="button"
+          aria-label={`Raise ${label}`}
+          onClick={() => step(1)}
+          className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}
+        >
           <Plus aria-hidden className="size-5 lg:size-4" />
         </button>
       </div>
       <div aria-hidden className="h-1.5 overflow-hidden rounded-full bg-fill">
-        <div className="h-full rounded-full transition-[width] duration-250 ease-spring" style={{ width: `${ratio * 100}%`, backgroundColor: color }} />
+        <div
+          className="h-full rounded-full transition-[width] duration-250 ease-spring"
+          style={{ width: `${ratio * 100}%`, backgroundColor: color }}
+        />
       </div>
     </div>
   );
@@ -138,7 +162,11 @@ const Pools = ({ pokemon }: { pokemon: T.Pokemon }) => {
   return (
     <dl className="grid grid-cols-5 overflow-hidden rounded-2xl bg-surface shadow-card">
       {pools.map(([label, value, formula]) => (
-        <div key={label} title={formula} className="flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0">
+        <div
+          key={label}
+          title={formula}
+          className="flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0"
+        >
           <dt className="text-caption font-medium text-label-2">{label}</dt>
           <dd className="text-headline font-semibold tabular-nums">{value}</dd>
         </div>
@@ -147,25 +175,47 @@ const Pools = ({ pokemon }: { pokemon: T.Pokemon }) => {
   );
 };
 
-const Moves = () => {
+const Moves = ({ generated }: { generated: boolean }) => {
   const { updatedPokemon: pokemon, editingMode, updatePokemon } = usePokemon();
   const canAdd = useCanAddMove();
   const [adding, setAdding] = React.useState(false);
+  const [changing, setChanging] = React.useState(false);
   if (!pokemon) return null;
-  const slots = getTotalStat(pokemon, "insight") + 3;
-  const editing = editingMode !== "view";
+  const slots = generated ? 6 : getTotalStat(pokemon, "insight") + 3;
+  const editing = editingMode !== "view" || changing;
+  const canAddGenerated = generated && changing && pokemon.moves.length < slots;
   return (
     <Group
       title="Moves"
       action={
-        <span className="text-footnote text-label-2 tabular-nums">
-          {pokemon.moves.length} of {slots}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-footnote text-label-2 tabular-nums">
+            {pokemon.moves.length} of {slots}
+          </span>
+          {generated && (
+            <button
+              type="button"
+              aria-pressed={changing}
+              onClick={() => setChanging(!changing)}
+              className={button({ variant: "tinted", size: "sm" })}
+            >
+              {changing ? "Done" : "Change moves"}
+            </button>
+          )}
+        </div>
       }
-      footer={!editing && pokemon.moves.length > 0 ? "Tap a move for its effect. Dice pools include this Pokémon’s stats; ★ is S.T.A.B." : undefined}
+      footer={
+        changing
+          ? "Remove a move, then add its replacement. Changes stay with this generated Pokémon."
+          : !editing && pokemon.moves.length > 0
+            ? "Tap a move, then its dice button to roll. Pools include this Pokémon’s stats; ★ is S.T.A.B."
+            : undefined
+      }
     >
       {pokemon.moves.length === 0 && !canAdd && (
-        <p className="px-4 py-4 text-subhead text-label-2 lg:px-3">No moves yet. Use Edit or Rank up to teach some.</p>
+        <p className="px-4 py-4 text-subhead text-label-2 lg:px-3">
+          {generated ? "No moves selected. Choose Change moves to add one." : "No moves yet. Use Edit or Rank up to teach some."}
+        </p>
       )}
       <ul>
         {pokemon.moves.map((move) => (
@@ -188,7 +238,7 @@ const Moves = () => {
           />
         ))}
       </ul>
-      {canAdd && (
+      {(canAdd || canAddGenerated) && (
         <>
           <button
             type="button"
@@ -280,20 +330,32 @@ export const PokemonSheet = ({
   const sectionClass = (name: Section) => cn("flex flex-col gap-6 @3xl:gap-5", section !== name && "@max-3xl:hidden");
   return (
     <article className="@container min-h-full bg-canvas" aria-label={`${pokemon.pokemonTemplate.name} sheet`}>
-      <PageHeader
-        compact
-        title={editingMode === "rankUp" ? "Rank up" : editingMode === "edit" ? "Edit" : pokemon.pokemonTemplate.name}
-        back={editingMode === "view" ? back : undefined}
-        leading={editingMode !== "view" ? <span /> : undefined}
-        actions={actions}
-        className={cn("bg-canvas/80 backdrop-blur-xl", embedded && "static rounded-t-2xl")}
-      />
+      {embedded ? (
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-4 py-3 @lg:px-6">
+          <h2 className="min-w-0 text-headline font-semibold break-words">{pokemon.pokemonTemplate.name}</h2>
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        </header>
+      ) : (
+        <PageHeader
+          compact
+          title={editingMode === "rankUp" ? "Rank up" : editingMode === "edit" ? "Edit" : pokemon.pokemonTemplate.name}
+          back={editingMode === "view" ? back : undefined}
+          leading={editingMode !== "view" ? <span /> : undefined}
+          actions={actions}
+          className="bg-canvas/80 backdrop-blur-xl"
+        />
+      )}
       <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-4 pt-2 pb-10 @lg:px-6">
         <RankUpBanner />
         <div className="grid gap-3 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] @3xl:items-stretch">
           <Identity pokemon={pokemon} />
           <div className="grid grid-cols-2 gap-3 @3xl:contents">
-            <Vital property="currentHp" label="HP" max={getTotalStat(pokemon, "vitality") + pokemon.pokemonTemplate.baseHp} color="var(--color-hp)" />
+            <Vital
+              property="currentHp"
+              label="HP"
+              max={getTotalStat(pokemon, "vitality") + pokemon.pokemonTemplate.baseHp}
+              color="var(--color-hp)"
+            />
             <Vital property="currentWill" label="Will" max={getTotalStat(pokemon, "insight") + 3} color="var(--color-will)" />
           </div>
         </div>
@@ -311,13 +373,22 @@ export const PokemonSheet = ({
           className="@3xl:hidden"
         />
         <div className="grid gap-6 @3xl:grid-cols-2 @3xl:grid-rows-[auto_1fr] @3xl:items-start @3xl:gap-5 @6xl:grid-cols-3">
-          <div {...segmentPanelProps(`sheet-${pokemon.id}`, "battle")} className={cn(sectionClass("battle"), "@3xl:col-start-1 @3xl:row-start-1")}>
-            <Moves />
+          <div
+            {...segmentPanelProps(`sheet-${pokemon.id}`, "battle")}
+            className={cn(sectionClass("battle"), "@3xl:col-start-1 @3xl:row-start-1")}
+          >
+            <Moves generated={showButtons !== "edit"} />
           </div>
-          <div {...segmentPanelProps(`sheet-${pokemon.id}`, "stats")} className={cn(sectionClass("stats"), "@3xl:col-start-2 @3xl:row-span-2 @3xl:row-start-1 @6xl:row-span-1")}>
+          <div
+            {...segmentPanelProps(`sheet-${pokemon.id}`, "stats")}
+            className={cn(sectionClass("stats"), "@3xl:col-start-2 @3xl:row-span-2 @3xl:row-start-1 @6xl:row-span-1")}
+          >
             <StatGroups />
           </div>
-          <div {...segmentPanelProps(`sheet-${pokemon.id}`, "info")} className={cn(sectionClass("info"), "@3xl:col-start-1 @3xl:row-start-2 @6xl:col-start-3 @6xl:row-start-1")}>
+          <div
+            {...segmentPanelProps(`sheet-${pokemon.id}`, "info")}
+            className={cn(sectionClass("info"), "@3xl:col-start-1 @3xl:row-start-2 @6xl:col-start-3 @6xl:row-start-1")}
+          >
             <InfoGroups showTrainer={showButtons !== "addAndLock"} />
           </div>
         </div>

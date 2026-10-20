@@ -1,222 +1,125 @@
-import { useMediaQuery } from "@uidotdev/usehooks";
+import { Package } from "lucide-react";
 import * as React from "react";
-import { IconContext } from "react-icons";
-import { FaAngleRight } from "react-icons/fa6";
-import { GiBottledBolt } from "react-icons/gi";
-import { TbPokeball } from "react-icons/tb";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
-import {
-  useItemsControllerGenerate,
-  usePokemonControllerGenerate,
-} from "@/api/components";
-import {
-  Habitat,
-  ItemCategory,
-  ItemPocket,
-  LegendaryFilter,
-  Rank,
-  RankUpMethod,
-} from "@/api/schemas";
-import { Box } from "@/components/Box";
-import { CampaignFilter } from "@/components/CampaignFilter";
-import { Combobox } from "@/components/Combobox";
+import { useItemsControllerGenerate, usePokemonControllerGenerate } from "@/api/components";
+import { Habitat, ItemCategory, ItemPocket, LegendaryFilter, Rank, RankUpMethod } from "@/api/schemas";
 import { ItemCard } from "@/components/ItemCard";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MultiSelect } from "@/components/MultiSelect";
+import { button } from "@/components/kit/button";
+import { Group } from "@/components/kit/List";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Picker } from "@/components/kit/Picker";
+import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { StaticPokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
-import { RankIcon } from "@/components/RankIcon";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
+import { useDex } from "@/hooks/use-dex";
+import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
-import {
-  GeneratorContentProvider,
-  useGeneratorContent,
-} from "@/pages/Generators/context";
-import { EncounterGenerator, EncounterProvider, GeneratedEncounterList } from "./Encounters";
-import { habitatNames, SeedInput } from "./fields";
+import { formatEnumName } from "@/lib/utils";
+import { GeneratorContentProvider, useGeneratorContent } from "./context";
+import { EncounterGenerator, GeneratedEncounterList } from "./Encounters";
+import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, habitatNames, SeedInput, ToggleField } from "./fields";
 
-type PokemonSettings = Required<
-  Omit<T.GeneratePokemonBody, keyof T.SelectionBody | "pokemonTemplateId">
-> &
+type PokemonSettings = Required<Omit<T.GeneratePokemonBody, keyof T.SelectionBody | "pokemonTemplateId">> &
   Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
 type ItemSettings = Required<Omit<T.GenerateItemsBody, keyof T.SelectionBody>>;
 
-interface GeneratedItemEntry {
-  count: number;
-  item: T.Item;
-}
-
-const GeneratorLink = ({
-  name,
-  icon,
-  description,
-}: {
-  name: string;
-  icon: React.ReactNode;
-  description?: string;
-}) => {
-  const { generator } = useParams();
-  const { setContent } = useGeneratorContent();
-  const isSelected = generator === name.toLowerCase();
-  return (
-    <Link
-      to={`/generators/${name.toLowerCase()}`}
-      className="flex"
-      onClick={() => {
-        setContent(null);
-      }}
-    >
-      <Button
-        variant="blue"
-        size="xlUnbound"
-        className={`flex flex-grow items-center justify-between gap-2 border-pokerole-black ${isSelected ? "border-2" : ""}`}
-      >
-        <div className="flex flex-row gap-2 items-center">
-          <IconContext.Provider
-            value={{
-              size: "3em",
-            }}
-          >
-            {icon}
-          </IconContext.Provider>
-          <div className="flex flex-col text-left">
-            <span className="text-3xl">{name}</span>
-            {description != null && (
-              <span className="font-move">{description}</span>
-            )}
-          </div>
-        </div>
-        <FaAngleRight className="align-end" />
-      </Button>
-    </Link>
-  );
-};
 const GeneratedPokemonList = () => {
-  const { content } = useGeneratorContent();
+  const { content, setContent } = useGeneratorContent();
   const [lockedPokemon, setLockedPokemon] = React.useState<T.Pokemon[]>([]);
-  // The generator links clear the content, so it holds Pokemon on this panel.
-  const generated = (content ?? []) as T.Pokemon[];
-  const renderSheet = (pokemon: T.Pokemon) => (
-    <StaticPokemonProvider
-      key={pokemon.id}
-      pokemon={pokemon}
-      isLocked={lockedPokemon.includes(pokemon)}
-      lockedPressed={() => {
-        if (lockedPokemon.includes(pokemon))
-          setLockedPokemon(lockedPokemon.filter((other) => other !== pokemon));
-        else setLockedPokemon([...lockedPokemon, pokemon]);
-      }}
-    >
-      <div className="overflow-hidden rounded-2xl">
-        <PokemonSheet showButtons="addAndLock" embedded />
-      </div>
-    </StaticPokemonProvider>
-  );
+  const generated = (content ?? []).filter((entry): entry is T.Pokemon => "pokemonTemplate" in entry);
+  const pokemon = [...lockedPokemon.filter((entry) => !generated.includes(entry)), ...generated];
+  const resultsRef = useScrollToDetail(generated.map((entry) => entry.id).join(",") || undefined);
   return (
-    <Box
-      color="bg-pokerole-beige"
-      className="p-3 h-full flex flex-col overflow-hidden"
-    >
-      <ScrollArea className="flex-1 rounded-3xl">
-        <div className="flex flex-col gap-2">
-          <Text size="text-3xl" className="text-center">
-            Generated Pokemon
-          </Text>
-          <div className="flex flex-col gap-4">
-            {generated.length === 0 && (
-              <Text size="text-md" className="text-center">
-                {" "}
-                - No Generated Pokemon -{" "}
-              </Text>
-            )}
-            {lockedPokemon
-              .filter((pokemon) => !generated.includes(pokemon))
-              .map(renderSheet)}
-            {generated.map(renderSheet)}
-          </div>
+    <section ref={resultsRef} aria-label="Generated Pokémon" className="min-w-0 scroll-mt-16">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-headline font-semibold">Generated Pokémon</h2>
+        <span className="text-footnote text-label-2" aria-live="polite">
+          {pokemon.length} Pokémon
+        </span>
+      </div>
+      {pokemon.length === 0 ? (
+        <GeneratorEmpty
+          title="No Pokémon yet"
+          description="Choose your settings and generate Pokémon. Lock a result to keep it for the next roll."
+        />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {pokemon.map((entry) => (
+            <StaticPokemonProvider
+              key={entry.id}
+              pokemon={entry}
+              onChange={(changes) => {
+                const updated = { ...entry, ...changes };
+                setContent(generated.map((other) => (other.id === entry.id ? updated : other)));
+                setLockedPokemon((locked) => locked.map((other) => (other.id === entry.id ? updated : other)));
+              }}
+              isLocked={lockedPokemon.includes(entry)}
+              lockedPressed={() =>
+                setLockedPokemon(
+                  lockedPokemon.includes(entry) ? lockedPokemon.filter((other) => other !== entry) : [...lockedPokemon, entry],
+                )
+              }
+            >
+              <div className="overflow-hidden rounded-2xl bg-surface shadow-card">
+                <PokemonSheet showButtons="addAndLock" embedded />
+              </div>
+            </StaticPokemonProvider>
+          ))}
         </div>
-      </ScrollArea>
-    </Box>
+      )}
+    </section>
   );
 };
+
 const GeneratedItemList = () => {
   const { content } = useGeneratorContent();
-  const items = (content ?? []) as T.Item[];
-  const entries: GeneratedItemEntry[] = [];
+  const items = (content ?? []).filter((entry): entry is T.Item => !("pokemonTemplate" in entry));
+  const entries: { count: number; item: T.Item }[] = [];
   for (const item of items) {
     const entry = entries.find((entry) => entry.item.id === item.id);
     if (entry) entry.count += 1;
     else entries.push({ count: 1, item });
   }
+  const resultsRef = useScrollToDetail(items.map((entry) => entry.id).join(",") || undefined);
   return (
-    <Box
-      color="bg-pokerole-beige"
-      className="p-3 h-full flex flex-col overflow-hidden"
-    >
-      <ScrollArea className="flex-1 rounded-3xl">
-        <div className="flex flex-col gap-2">
-          <Text size="text-3xl" className="text-center">
-            Generated Items
-          </Text>
-          <div className="gap-4 grid grid-cols-2 md:p-4">
-            {entries.length === 0 && (
-              <Text size="text-md" className="text-center col-span-full">
-                {" "}
-                - No Generated Items -{" "}
-              </Text>
-            )}
-            {entries.map((entry, index) => (
-              <div
-                key={index}
-                className="flex flex-row items-center col-span-full xl:col-span-1 gap-4"
-              >
-                <Text size="text-3xl" font="font-move" className="text-center">
-                  {entry.count}x
-                </Text>
-                <ItemCard item={entry.item} className="flex-grow" />
-              </div>
-            ))}
-          </div>
+    <section ref={resultsRef} aria-label="Generated items" className="min-w-0 scroll-mt-16">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-headline font-semibold">Generated items</h2>
+        <span className="text-footnote text-label-2" aria-live="polite">
+          {items.length} items
+        </span>
+      </div>
+      {entries.length === 0 ? (
+        <GeneratorEmpty
+          title="No items yet"
+          description="Choose pockets or categories, then generate items for loot, rewards or a shopping list."
+        />
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-4">
+          {entries.map(({ item, count }) => (
+            <div key={item.id} className="min-w-0">
+              <p className="mb-2 flex items-center gap-1.5 text-subhead font-semibold">
+                <Package aria-hidden className="size-4 text-label-2" />
+                {count} × {item.name}
+              </p>
+              <ItemCard item={item} />
+            </div>
+          ))}
         </div>
-      </ScrollArea>
-    </Box>
+      )}
+    </section>
   );
 };
-const GeneratorPanel = () => {
-  const { generator } = useParams();
-  const isDesktop = useMediaQuery("(min-width: 768px)");
-  if (generator === undefined)
-    return (
-      <div className="flex flex-col justify-center items-center h-full gap-2">
-        <Text size="text-5xl" color="text-white">
-          No Generator Selected
-        </Text>
-        <Text size="text-2xl" color="text-white" font="font-move">
-          {"Please select a generator "}
-          {isDesktop ? "from the left" : "above"}
-        </Text>
-      </div>
-    );
-  const panels: Record<string, React.ReactNode> = {
-    pokemon: <GeneratedPokemonList />,
-    items: <GeneratedItemList />,
-    encounters: <GeneratedEncounterList />,
-  };
-  return <>{panels[generator]}</>;
-};
+
 const PokemonGenerator = () => {
   const { setContent } = useGeneratorContent();
+  const { state: campaignFilter } = useCampaignFilter();
+  const { data: templates, isFetching } = useDex();
   const [useRandomSeed, setUseRandomSeed] = React.useState(true);
-  const [isGenerating, setIsGenerating] = React.useState(false);
-  const { toast } = useToast();
   const [settings, setSettings] = React.useState<PokemonSettings>({
-    seed: new Date().getTime(),
+    seed: Date.now(),
     rankUpMethod: RankUpMethod.RANDOM,
     habitats: [],
     includeLegendary: LegendaryFilter.NONE,
@@ -225,372 +128,263 @@ const PokemonGenerator = () => {
     rankOrBelow: true,
     rank: Rank.STARTER,
   });
-  const { mutate } = usePokemonControllerGenerate({
-    onSuccess: (pokemon) => {
-      setContent(pokemon);
-      setIsGenerating(false);
-    },
-    onError: () => {
-      setIsGenerating(false);
-      toast({
-        title: "Failed to generate pokemon",
-        description: "Please try again",
-      });
-    },
-  });
-  const { state: campaignFilter } = useCampaignFilter();
-  const generate = () => {
-    const nextSettings = { ...settings };
-    if (useRandomSeed) {
-      nextSettings.seed = new Date().getTime();
-      setSettings(nextSettings);
-    }
-    setIsGenerating(true);
-    mutate({
-      body: {
-        ...nextSettings,
-        campaignIds: campaignFilter.campaignIds,
-        includeCore: campaignFilter.includeCore,
-      },
-    });
-  };
-  return (
-    <Box color="bg-pokerole-beige" className="p-2 flex flex-col gap-2">
-      <Text size="text-2xl" color="text-pokerole-black" className="text-center">
-        Pokemon Generator
-      </Text>
-      <div className="flex flex-row gap-2 items-center">
-        <Text font="font-move" size="text-xl" className="whitespace-nowrap">
-          Number to Generate
-        </Text>
-        <Input
-          type="number"
-          value={settings.numberToGenerate}
-          onChange={(event) => {
-            const number = parseInt(event.target.value);
-            setSettings({
-              ...settings,
-              numberToGenerate: isNaN(number) ? 0 : number,
-            });
-            event.target.value = settings.numberToGenerate.toString();
-          }}
-          className="max-w-16 text-center"
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Pokemon
-        </Text>
-        <CampaignFilter
-          onChange={(pokemonTemplateId) => {
-            setSettings({
-              ...settings,
-              pokemonTemplateId,
-            });
-          }}
-          className="text-md flex-grow"
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Rank
-        </Text>
-        <Combobox
-          items={Object.values(Rank).map((rank) => ({
-            label: (
-              <div className="flex items-center space-x-1">
-                <RankIcon rank={rank} size="sm" /> <span>{rank}</span>
-              </div>
-            ),
-            searchValue: rank,
-            value: rank.toLowerCase(),
-          }))}
-          value={settings.rank.toLowerCase()}
-          onChange={(value) => {
-            setSettings({
-              ...settings,
-              rank:
-                Object.values(Rank).find((rank) => rank.toLowerCase() === value) ??
-                settings.rank,
-            });
-          }}
-          className="text-md flex-grow"
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Rank Up Method
-        </Text>
-        <Combobox
-          items={Object.values(RankUpMethod).map((method) => ({
-            label: method.replace(/_/g, " "),
-            value: method.toLowerCase(),
-          }))}
-          value={settings.rankUpMethod.toLowerCase()}
-          onChange={(value) => {
-            setSettings({
-              ...settings,
-              // Re-picking the current method sends "" (original quirk).
-              rankUpMethod: value.toUpperCase() as RankUpMethod,
-            });
-          }}
-          className="text-md flex-grow"
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Include Legendary
-        </Text>
-        <Combobox
-          items={[
-            {
-              label: "No Legendaries",
-              value: LegendaryFilter.NONE.toLowerCase(),
-            },
-            {
-              label: "Only Legendaries",
-              value: LegendaryFilter.ONLY.toLowerCase(),
-            },
-            {
-              label: "Legendaries and Non-Legendaries",
-              value: LegendaryFilter.ALL.toLowerCase(),
-            },
-          ]}
-          value={settings.includeLegendary.toLowerCase()}
-          onChange={(value) => {
-            setSettings({
-              ...settings,
-              // Re-picking the current filter sends "" (original quirk).
-              includeLegendary: value.toUpperCase() as LegendaryFilter,
-            });
-          }}
-          className="text-md flex-grow text-wrap"
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Habitats
-        </Text>
-        <MultiSelect
-          options={Object.values(Habitat).map((habitat) => ({
-            label: habitatNames[habitat],
-            value: habitat,
-          }))}
-          selected={settings.habitats}
-          onChange={(habitats) => {
-            setSettings({
-              ...settings,
-              habitats,
-            });
-          }}
-          className="text-md flex-grow text-wrap"
-          placeholder="Select habitats..."
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Recommended Rank or lower
-        </Text>
-        <Checkbox
-          checked={settings.rankOrBelow}
-          onCheckedChange={(checked) => {
-            setSettings({
-              ...settings,
-              rankOrBelow: checked === "indeterminate" ? true : checked,
-            });
-          }}
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <SeedInput
-          value={settings.seed}
-          onChange={(value) => {
-            setSettings({
-              ...settings,
-              seed: parseInt(value),
-            });
-          }}
-          useRandomSeed={useRandomSeed}
-          setUseRandomSeed={setUseRandomSeed}
-        />
-      </div>
-      <Button
-        id="generator-generate-button"
-        onClick={generate}
-        disabled={settings.numberToGenerate < 1 || isGenerating}
-      >
-        {isGenerating ? <LoadingSpinner className="h-6" /> : "Generate"}
-      </Button>
-    </Box>
-  );
-};
-const ItemGenerator = () => {
-  const { setContent } = useGeneratorContent();
-  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
-  const [isGenerating, setIsGenerating] = React.useState(false);
   const { toast } = useToast();
-  const [settings, setSettings] = React.useState<ItemSettings>({
-    seed: new Date().getTime(),
-    numberToGenerate: 1,
-    categories: [],
-    pockets: [],
+  const { mutate, isPending } = usePokemonControllerGenerate({
+    onSuccess: setContent,
+    onError: () => toast({ title: "Pokémon couldn’t be generated", description: "Please try again." }),
   });
-  const { mutate } = useItemsControllerGenerate({
-    onSuccess: (items) => {
-      setContent(items);
-      setIsGenerating(false);
-    },
-    onError: () => {
-      setIsGenerating(false);
-      toast({
-        title: "Failed to generate items",
-        description: "Please try again",
-      });
-    },
-  });
-  const { state: campaignFilter } = useCampaignFilter();
   const generate = () => {
-    const nextSettings = { ...settings };
-    if (useRandomSeed) {
-      nextSettings.seed = new Date().getTime();
-      setSettings(nextSettings);
-    }
-    setIsGenerating(true);
-    mutate({
-      body: {
-        ...nextSettings,
-        campaignIds: campaignFilter.campaignIds,
-        includeCore: campaignFilter.includeCore,
-      },
-    });
+    const next = { ...settings, seed: useRandomSeed ? Date.now() : settings.seed };
+    setSettings(next);
+    mutate({ body: { ...next, campaignIds: campaignFilter.campaignIds, includeCore: campaignFilter.includeCore } });
   };
   return (
-    <Box color="bg-pokerole-beige" className="p-2 flex flex-col gap-2">
-      <Text size="text-2xl" color="text-pokerole-black" className="text-center">
-        Item Generator
-      </Text>
-      <div className="flex flex-row gap-2 items-center">
-        <Text font="font-move" size="text-xl" className="whitespace-nowrap">
-          Number to Generate
-        </Text>
-        <Input
-          type="number"
-          value={settings.numberToGenerate}
-          onChange={(event) => {
-            const number = parseInt(event.target.value);
-            setSettings({
-              ...settings,
-              numberToGenerate: isNaN(number) ? 0 : number,
-            });
-            event.target.value = settings.numberToGenerate.toString();
-          }}
-          className="max-w-16 text-center"
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Pockets
-        </Text>
-        <MultiSelect
-          options={Object.values(ItemPocket).map((pocket) => ({
-            label: pocket.replace(/_/g, " "),
-            value: pocket.toLowerCase(),
-          }))}
-          selected={settings.pockets.map((pocket) => pocket.toLowerCase())}
-          onChange={(pockets) => {
-            setSettings({
-              ...settings,
-              pockets: pockets.map((pocket) => pocket.toUpperCase() as ItemPocket),
-            });
-          }}
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <Text font="font-move" size="text-xl">
-          Categories
-        </Text>
-        <MultiSelect
-          options={Object.values(ItemCategory).map((category) => ({
-            label: category.replace(/_/g, " "),
-            value: category.toLowerCase(),
-          }))}
-          selected={settings.categories.map((category) => category.toLowerCase())}
-          onChange={(categories) => {
-            setSettings({
-              ...settings,
-              categories: categories.map(
-                (category) => category.toUpperCase() as ItemCategory,
-              ),
-            });
-          }}
-        />
-      </div>
-      <div className="flex flex-row gap-2 items-center flex-grow">
-        <SeedInput
-          value={settings.seed}
-          onChange={(value) => {
-            setSettings({
-              ...settings,
-              seed: parseInt(value),
-            });
-          }}
-          useRandomSeed={useRandomSeed}
-          setUseRandomSeed={setUseRandomSeed}
-        />
-      </div>
-      <Button
-        onClick={generate}
-        disabled={settings.numberToGenerate < 1 || isGenerating}
-      >
-        {isGenerating ? <LoadingSpinner className="h-6" /> : "Generate"}
-      </Button>
-    </Box>
-  );
-};
-const SelectedGenerator = () => {
-  const { generator } = useParams();
-  if (generator === undefined) return <></>;
-  const generators: Record<string, React.ReactNode> = {
-    pokemon: <PokemonGenerator />,
-    items: <ItemGenerator />,
-    encounters: <EncounterGenerator />,
-  };
-  return <>{generators[generator]}</>;
-};
-export const GeneratorsPage = () => (
-  <GeneratorContentProvider>
-    <EncounterProvider>
-      <div className="generators-layout p-2 pb-0 grid lg:h-[calc(100vh-1rem)] grid-cols-12 box-border gap-3">
-        <div className="lg:col-span-4 2xl:col-span-3 col-span-full flex flex-col gap-2 max-lg:h-fit h-full overflow-hidden">
-          <div className="shrink-0 flex flex-col gap-2">
-            <p className="font-move text-sm text-white px-2">
-              Local generator: recovered data; generation rules may differ from
-              the original.
-            </p>
-            <GeneratorLink
-              name="Encounters"
-              icon={<TbPokeball />}
-              description="Build encounters for your game"
-            />
-            <GeneratorLink
-              name="Pokemon"
-              icon={<TbPokeball />}
-              description="Generate Pokemon"
-            />
-            <GeneratorLink
-              name="Items"
-              icon={<GiBottledBolt />}
-              description="Generate Items"
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        generate();
+      }}
+    >
+      <fieldset disabled={isPending} className="flex min-w-0 flex-col gap-6">
+        <Group title="Pokémon settings">
+          <div className="flex flex-col gap-4 p-3">
+            <Field label="Number to generate" hint="Generate between 1 and 100 Pokémon.">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={settings.numberToGenerate}
+                onChange={(event) => setSettings({ ...settings, numberToGenerate: Number(event.target.value) })}
+                className={fieldClass}
+              />
+            </Field>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-subhead font-medium">Species</span>
+              <Picker
+                label="Species"
+                value={settings.pokemonTemplateId ?? ""}
+                items={(templates ?? []).map((entry) => ({ value: entry.id, label: entry.name }))}
+                onChange={(pokemonTemplateId) => setSettings({ ...settings, pokemonTemplateId: pokemonTemplateId || undefined })}
+                placeholder="Random species"
+                loading={isFetching}
+              />
+            </div>
+            <Field label="Rank">
+              <select
+                value={settings.rank}
+                onChange={(event) => setSettings({ ...settings, rank: event.target.value as Rank })}
+                className={fieldClass}
+              >
+                {Object.values(Rank).map((rank) => (
+                  <option key={rank} value={rank}>
+                    {formatEnumName(rank)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Rank-up method">
+              <select
+                value={settings.rankUpMethod}
+                onChange={(event) => setSettings({ ...settings, rankUpMethod: event.target.value as RankUpMethod })}
+                className={fieldClass}
+              >
+                {Object.values(RankUpMethod).map((method) => (
+                  <option key={method} value={method}>
+                    {formatEnumName(method)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Legendaries">
+              <select
+                value={settings.includeLegendary}
+                onChange={(event) => setSettings({ ...settings, includeLegendary: event.target.value as LegendaryFilter })}
+                className={fieldClass}
+              >
+                <option value="NONE">No legendaries</option>
+                <option value="ALL">Include legendaries</option>
+                <option value="ONLY">Only legendaries</option>
+              </select>
+            </Field>
+            <ToggleField
+              label="Recommended rank or lower"
+              checked={settings.rankOrBelow}
+              onChange={(rankOrBelow) => setSettings({ ...settings, rankOrBelow })}
             />
           </div>
-          <ScrollArea className="flex-1 lg:mt-2">
-            <SelectedGenerator />
-          </ScrollArea>
-        </div>
-        <div className="lg:col-span-8 2xl:col-span-9 col-span-full h-full overflow-hidden">
-          <GeneratorPanel />
+        </Group>
+        <Group title="Habitats">
+          <ChoiceGroup
+            label="Habitats"
+            options={Object.values(Habitat).map((habitat) => ({ value: habitat, label: habitatNames[habitat] }))}
+            selected={settings.habitats}
+            onChange={(habitats) => setSettings({ ...settings, habitats })}
+          />
+        </Group>
+        <SeedInput
+          value={settings.seed}
+          onChange={(value) => setSettings({ ...settings, seed: Number(value) })}
+          useRandomSeed={useRandomSeed}
+          setUseRandomSeed={setUseRandomSeed}
+        />
+        <button
+          id="generator-generate-button"
+          type="submit"
+          disabled={
+            isPending ||
+            !Number.isInteger(settings.numberToGenerate) ||
+            settings.numberToGenerate < 1 ||
+            settings.numberToGenerate > 100 ||
+            !Number.isFinite(settings.seed)
+          }
+          className={button({ variant: "filled" })}
+        >
+          {isPending ? "Generating…" : "Generate Pokémon"}
+        </button>
+      </fieldset>
+    </form>
+  );
+};
+
+const ItemGenerator = () => {
+  const { setContent } = useGeneratorContent();
+  const { state: campaignFilter } = useCampaignFilter();
+  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
+  const [settings, setSettings] = React.useState<ItemSettings>({ seed: Date.now(), numberToGenerate: 1, categories: [], pockets: [] });
+  const { toast } = useToast();
+  const { mutate, isPending } = useItemsControllerGenerate({
+    onSuccess: setContent,
+    onError: () => toast({ title: "Items couldn’t be generated", description: "Please try again." }),
+  });
+  const generate = () => {
+    const next = { ...settings, seed: useRandomSeed ? Date.now() : settings.seed };
+    setSettings(next);
+    mutate({ body: { ...next, campaignIds: campaignFilter.campaignIds, includeCore: campaignFilter.includeCore } });
+  };
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        generate();
+      }}
+    >
+      <fieldset disabled={isPending} className="flex min-w-0 flex-col gap-6">
+        <Group title="Item settings">
+          <div className="p-3">
+            <Field label="Number to generate" hint="Generate between 1 and 100 items.">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={settings.numberToGenerate}
+                onChange={(event) => setSettings({ ...settings, numberToGenerate: Number(event.target.value) })}
+                className={fieldClass}
+              />
+            </Field>
+          </div>
+        </Group>
+        <Group title="Item filters">
+          <ChoiceGroup
+            label="Pockets"
+            options={Object.values(ItemPocket).map((pocket) => ({ value: pocket, label: formatEnumName(pocket) }))}
+            selected={settings.pockets}
+            onChange={(pockets) => setSettings({ ...settings, pockets })}
+          />
+          <ChoiceGroup
+            label="Categories"
+            options={Object.values(ItemCategory).map((category) => ({ value: category, label: formatEnumName(category) }))}
+            selected={settings.categories}
+            onChange={(categories) => setSettings({ ...settings, categories })}
+          />
+        </Group>
+        <SeedInput
+          value={settings.seed}
+          onChange={(value) => setSettings({ ...settings, seed: Number(value) })}
+          useRandomSeed={useRandomSeed}
+          setUseRandomSeed={setUseRandomSeed}
+        />
+        <button
+          type="submit"
+          disabled={
+            isPending ||
+            !Number.isInteger(settings.numberToGenerate) ||
+            settings.numberToGenerate < 1 ||
+            settings.numberToGenerate > 100 ||
+            !Number.isFinite(settings.seed)
+          }
+          className={button({ variant: "filled" })}
+        >
+          {isPending ? "Generating…" : "Generate items"}
+        </button>
+      </fieldset>
+    </form>
+  );
+};
+
+const GeneratorPage = () => {
+  const { generator } = useParams();
+  const active = generator ?? "encounters";
+  const navigate = useNavigate();
+  const { setContent } = useGeneratorContent();
+  return (
+    <div className="mx-auto max-w-7xl pb-8">
+      <PageHeader title="Generators">
+        <p className="text-subhead text-label-2">Build encounters, prepare Pokémon and roll loot for your table.</p>
+        <Segmented
+          label="Generator"
+          idPrefix="generator"
+          options={[
+            { value: "encounters", label: "Encounters" },
+            { value: "pokemon", label: "Pokémon" },
+            { value: "items", label: "Items" },
+          ]}
+          value={active}
+          onChange={(value) => {
+            if (value !== active) {
+              setContent(null);
+              navigate(`/generators/${value}`);
+            }
+          }}
+          className="mt-3 max-w-xl"
+        />
+      </PageHeader>
+      <div {...segmentPanelProps("generator", active)} role="tabpanel" className="px-4 lg:px-8">
+        <p className="mb-5 text-footnote text-label-2">
+          Uses your active{" "}
+          <Link to="/campaigns" className="rounded-sm text-tint hover:underline">
+            campaign selection
+          </Link>
+          .
+        </p>
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[352px_minmax(0,1fr)]">
+          <div className="mx-auto w-full min-w-0 max-w-xl lg:mx-0 lg:max-w-none">
+            {active === "encounters" ? (
+              <EncounterGenerator />
+            ) : active === "pokemon" ? (
+              <PokemonGenerator />
+            ) : active === "items" ? (
+              <ItemGenerator />
+            ) : (
+              <GeneratorEmpty title="Choose a generator" description="Select Encounters, Pokémon or Items above to get started." />
+            )}
+          </div>
+          <div className="min-w-0">
+            {active === "encounters" ? (
+              <GeneratedEncounterList />
+            ) : active === "pokemon" ? (
+              <GeneratedPokemonList />
+            ) : active === "items" ? (
+              <GeneratedItemList />
+            ) : null}
+          </div>
         </div>
       </div>
-    </EncounterProvider>
+    </div>
+  );
+};
+
+export const GeneratorsPage = () => (
+  <GeneratorContentProvider>
+    <GeneratorPage />
   </GeneratorContentProvider>
 );

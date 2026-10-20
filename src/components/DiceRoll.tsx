@@ -1,6 +1,6 @@
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as React from "react";
-import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
+import { button } from "@/components/kit/button";
 
 // Pokérole rolls pools of d6: every 4, 5 or 6 is a success (corebook p. 35).
 const isSuccess = (face: number) => face >= 4;
@@ -57,6 +57,8 @@ const ROLL_MS = 1300;
 const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
   <div
     className={`dice-drop ${landed ? (isSuccess(die.face) ? "dice-success" : "dice-failure") : ""}`}
+    role="img"
+    aria-label={landed ? `Die: ${die.face}` : "Rolling die"}
     style={{ "--tilt": `${die.tilt}deg`, animationDelay: `${die.delay}ms` } as React.CSSProperties}
   >
     <div
@@ -101,66 +103,73 @@ export const DiceRoll = ({
   next?: string;
   onNext?: () => void;
 }) => {
-  const [dice] = React.useState(() => rollDice(request.dice));
+  const [dice, setDice] = React.useState(() => rollDice(request.dice));
+  const [rollNumber, setRollNumber] = React.useState(0);
   const [landed, setLanded] = React.useState(false);
   React.useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timeout = setTimeout(() => setLanded(true), reduced ? 0 : ROLL_MS + dice.length * 70);
     return () => clearTimeout(timeout);
   }, [dice]);
-  React.useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
   const successes = dice.filter((die) => isSuccess(die.face)).length;
-  return createPortal(
-    <div className="dice-overlay" role="dialog" aria-modal="true" aria-label={`${request.title} roll`}
-      // React events bubble through portals: keep clicks from reaching the component that opened the roll.
-      onClick={(event) => {
-        event.stopPropagation();
-        onClose();
+  return (
+    <DialogPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <div
-        className="dice-panel"
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
-      >
-        <p className="font-square text-2xl text-white text-center">
-          {request.title} · {request.kind === "accuracy" ? "Accuracy" : "Damage"} ({request.dice} dice)
-        </p>
-        <div className="dice-table">
-          {dice.map((die, i) => (
-            <DieView key={i} die={die} landed={landed} />
-          ))}
-        </div>
-        <div className="flex flex-col gap-3" aria-live="polite">
-          <p className="font-square text-3xl text-white text-center h-10">
-            {landed && (
-              <span className="dice-total inline-block">
-                {request.kind === "accuracy"
-                  ? `${successes} ${successes === 1 ? "success" : "successes"}`
-                  : `${Math.max(successes, 1)} damage`}
-              </span>
-            )}
-          </p>
-          <div className="flex flex-row flex-wrap justify-center gap-2">
-            {next && onNext && (
-              <Button variant="green" disabled={!landed} onClick={onNext}>
-                {next}
-              </Button>
-            )}
-            <Button variant="red" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="dice-overlay">
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            className="dice-panel rounded-2xl bg-surface p-5 text-label shadow-float outline-none"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <DialogPrimitive.Title className="text-center text-title-3 font-semibold">
+              {request.title} · {request.kind === "accuracy" ? "Accuracy" : "Damage"} ({request.dice} dice)
+            </DialogPrimitive.Title>
+            <div className="dice-table">
+              {dice.map((die, i) => (
+                <DieView key={`${rollNumber}-${i}`} die={die} landed={landed} />
+              ))}
+            </div>
+            <div className="flex flex-col gap-3" aria-live="polite">
+              <p className="h-10 text-center text-title-2 font-semibold">
+                {landed && (
+                  <span className="dice-total inline-block">
+                    {request.kind === "accuracy"
+                      ? `${successes} ${successes === 1 ? "success" : "successes"}`
+                      : `${Math.max(successes, 1)} damage`}
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-row flex-wrap justify-center gap-2">
+                {next && onNext && (
+                  <button type="button" className={button({ variant: "filled" })} disabled={!landed} onClick={onNext}>
+                    {next}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={button({ variant: "gray" })}
+                  disabled={!landed}
+                  onClick={() => {
+                    setLanded(false);
+                    setDice(rollDice(request.dice));
+                    setRollNumber((number) => number + 1);
+                  }}
+                >
+                  Roll again
+                </button>
+                <button type="button" className={button({ variant: "gray" })} onClick={onClose}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Overlay>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 };
