@@ -42,7 +42,7 @@ function useCityChange() {
       }
     },
     onSuccess: async () => {
-      await Promise.all(["cities", "pokemon", "trainers"].map(key => client.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(["cities", "pokemon", "trainers"].map(key => client.invalidateQueries({ queryKey: [key], refetchType: "all" })));
       toast({ title: "City changes saved" });
     },
     onError: (error: ApiFetchError) => {

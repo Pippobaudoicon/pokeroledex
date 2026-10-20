@@ -73,6 +73,8 @@ at most one city or trainer; transfers preserve its ID, stats and moves. New she
 use the selected rank but start with unallocated stats and moves, editable from
 the city roster. City residents are separate from the personal **My Pokémon**
 collection, including residents created directly from the Pokédex.
+Moving an existing personal Pokémon into a city removes it from My Pokémon;
+cached personal and trainer lists refresh before the transfer reports success.
 The **Pokémon roster** links to each city sheet and requires a destination for
 transfers: another city, a trainer, or **Assign to me (My Pokémon)**.
 Residents cannot simply be removed or deleted, and a city must be empty before

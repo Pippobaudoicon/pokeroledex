@@ -246,8 +246,17 @@ test('city residents are excluded from personal lists until explicitly assigned 
     for (const path of ['pokemon', 'pokemon/minimal']) {
       assert.equal((await h.request(path)).body.length, 2);
     }
-    await h.request('pokemon', 'PATCH', { id: personal.id, cityId: city.id });
-    assert.deepEqual((await h.request('pokemon/minimal')).body.map(p => p.id), [resident.id]);
+    const transferred = await h.request('pokemon', 'PATCH', { id: personal.id, cityId: city.id });
+    assert.equal(transferred.status, 200);
+    assert.equal(transferred.body.id, personal.id);
+    assert.equal(transferred.body.cityId, city.id);
+    assert.equal(transferred.body.trainerId, null);
+    for (const path of ['pokemon', 'pokemon/minimal']) {
+      assert.deepEqual((await h.request(path)).body.map(p => p.id), [resident.id]);
+    }
+    const all = (await h.request('pokemon/all')).body;
+    assert.equal(all.filter(p => p.id === personal.id).length, 1);
+    assert.equal(all.find(p => p.id === personal.id).cityId, city.id);
   } finally { h.close(); }
 });
 
