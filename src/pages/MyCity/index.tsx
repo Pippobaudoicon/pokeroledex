@@ -215,7 +215,7 @@ const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; citi
   }}>
     <select aria-label={`Destination for ${pokemon.nickname || pokemon.pokemonTemplate.name}`} required value={destination} className={`${field} sm:max-w-60`} onChange={event => setDestination(event.target.value)}>
       <option value="">Choose destination</option>
-      <option value="unassigned">Unassigned My Pokémon (remove)</option>
+      <option value="personal">Assign to me (My Pokémon)</option>
       {trainers.map(trainer => <option key={trainer.id} value={`trainer:${trainer.id}`}>Trainer: {trainer.name}</option>)}
       {cities.filter(city => city.id !== pokemon.cityId).map(city => <option key={city.id} value={`city:${city.id}`}>City: {city.name}</option>)}
     </select>
