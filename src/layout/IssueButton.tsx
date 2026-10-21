@@ -76,7 +76,7 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
         </DialogHeader>
         <div className="flex flex-col gap-4 p-1">
           <div className="space-y-2">
-            <label htmlFor="issue-title"             className="block font-move text-sm font-medium text-label">
+            <label htmlFor="issue-title" className="block font-move text-sm font-medium text-label">
               Title *
             </label>
             <Input
@@ -90,7 +90,7 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="issue-description"             className="block font-move text-sm font-medium text-label">
+            <label htmlFor="issue-description" className="block font-move text-sm font-medium text-label">
               Description *
             </label>
             <Textarea

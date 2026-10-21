@@ -137,14 +137,14 @@ test('city CRUD persists separate cities, skills and tags, and protects ownershi
     const path = `cities/${first.body.id}`;
     const updated = await h.request(path, 'PATCH', {
       name: 'New Pallet', skills: { science: 10, mining: 2, planting: 3 },
-      tags: [' Can heal ', 'Can heal', 'Can produce food'], userId: 'mallory', id: 'changed',
+      tags: [{ name: ' Can heal ', value: 4 }, { name: 'Can heal', value: 9 }, { name: 'Can produce food', value: 0 }], userId: 'mallory', id: 'changed',
     });
     assert.equal(updated.status, 200);
     assert.equal(updated.body.id, first.body.id);
     assert.equal(updated.body.userId, 'alice');
     assert.equal(updated.body.skills.science, 10);
     assert.equal(updated.body.skills.planting, 3);
-    assert.deepEqual(updated.body.tags, ['Can heal', 'Can produce food']);
+    assert.deepEqual(updated.body.tags, [{ name: 'Can heal', value: 4 }, { name: 'Can produce food', value: 0 }]);
     assert.equal((await h.request(path)).body.name, 'New Pallet');
     assert.equal((await h.request('cities')).body.length, 2);
     assert.deepEqual((await h.request('cities', 'GET', undefined, 'bob')).body, []);
@@ -162,8 +162,9 @@ test('city validation rejects malformed names, skill ratings, tags and request b
       { name: 'Test', skills: null }, { name: 'Test', skills: [] },
       ...[-1, 11, 1.5, '3'].map(science => ({ name: 'Test', skills: { science } })),
       { name: 'Test', skills: { nonexistent: 2 } },
-      { name: 'Test', tags: [3] }, { name: 'Test', tags: [' '] },
-      { name: 'Test', tags: ['a'.repeat(81)] }, { name: 'Test', tags: Array(51).fill('heal') },
+      { name: 'Test', tags: [3] }, { name: 'Test', tags: ['heal'] }, { name: 'Test', tags: [{ name: ' ', value: 0 }] },
+      { name: 'Test', tags: [{ name: 'a'.repeat(81), value: 0 }] }, { name: 'Test', tags: Array(51).fill({ name: 'heal', value: 0 }) },
+      ...[-1, 1000, 1.5, '3', null, undefined].map(value => ({ name: 'Test', tags: [{ name: 'heal', value }] })),
     ]) assert.equal((await h.request('cities', 'POST', body)).status, 400, JSON.stringify(body));
     assert.deepEqual((await h.request('cities')).body, []);
   } finally { h.close(); }
@@ -422,5 +423,23 @@ test('the city members migration moves existing cities and residents under the c
       { owner: 'alice', collection: 'trainers', id: 't1' },
     ]);
     assert.deepEqual(db.prepare('SELECT city_id, email FROM city_members').all().map(row => ({ ...row })), [{ city_id: 'c1', email: 'alice' }]);
+  } finally { db.close(); }
+});
+
+test('the city work skills migration carries over matching skills and turns tags into name and value', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    migrate(db, 1, 3);
+    const insert = db.prepare('INSERT INTO records (owner, collection, id, data) VALUES (?, ?, ?, ?)');
+    insert.run('city:c1', 'cities', 'c1', JSON.stringify({ id: 'c1', name: 'Pallet', skills: { brawl: 3, crafts: 2, medicine: 4, science: 5 }, tags: ['Can heal'] }));
+    insert.run('city:c2', 'cities', 'c2', JSON.stringify({ id: 'c2', name: 'Viridian' }));
+    insert.run('alice', 'trainers', 't1', JSON.stringify({ id: 't1', skills: { crafts: 2 } }));
+    migrate(db, 4, 4);
+    const data = db.prepare('SELECT data FROM records ORDER BY seq').all().map(row => JSON.parse(row.data));
+    assert.deepEqual(data[0].skills, { generating_electricity: 0, mining: 0, handiwork: 2, medicine_production: 4, transporting: 0, farming: 0, planting: 0, science: 5 });
+    assert.deepEqual(data[0].tags, [{ name: 'Can heal', value: 0 }]);
+    assert.equal(data[1].skills.science, 0);
+    assert.deepEqual(data[1].tags, []);
+    assert.deepEqual(data[2], { id: 't1', skills: { crafts: 2 } });
   } finally { db.close(); }
 });

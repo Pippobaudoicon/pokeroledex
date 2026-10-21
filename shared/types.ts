@@ -16,18 +16,17 @@ export const CITY_SKILLS = ['generating_electricity', 'mining', 'handiwork', 'me
 export const CITY_SKILL_MAX = 10;
 export type CitySkill = typeof CITY_SKILLS[number];
 export type CitySkills = Record<CitySkill, number>;
+export interface CityTag { name: string; value: number }
 export interface City {
   id: string;
   userId: string;
   name: string;
   skills: CitySkills;
-  tags: string[];
-  /** Numeric value per action tag, keyed by tag text. */
-  tagValues: Record<string, number>;
+  tags: CityTag[];
   /** Emails of everyone who shares the city, the creator first. */
   members: string[];
 }
-export type CityBody = Pick<City, 'name' | 'skills' | 'tags' | 'tagValues'>;
+export type CityBody = Pick<City, 'name' | 'skills' | 'tags'>;
 export type StatKey = Attribute | Social | Skill | TrainerSkill | 'happiness' | 'loyalty' | 'will';
 export type Stats = Record<StatKey, number>;
 export type AttributeStats = Record<Attribute, number>;
