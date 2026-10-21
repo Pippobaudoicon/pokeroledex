@@ -267,12 +267,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     function hydrate(name: string, record: Row) {
       if (name === 'pokemon') return pokemon(record);
       if (name === 'trainers') return trainer(record);
-      if (name === 'cities') {
-        const stored = (record.skills ?? {}) as Json;
-        const values = (record.tagValues ?? {}) as Json;
-        const tags = (record.tags ?? []) as string[];
-        return { ...record, skills: Object.fromEntries(CITY_SKILLS.map(key => [key, stored[key] ?? 0])), tagValues: Object.fromEntries(tags.map(tag => [tag, values[tag] ?? 0])), members: members.get(record.id) ?? [] };
-      }
+      if (name === 'cities') return { ...record, members: members.get(record.id) ?? [] };
       return referenceRecord(name, record);
     }
 
@@ -319,14 +314,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         fields.skills = Object.fromEntries(CITY_SKILLS.map(key => [key, body.skills[key] ?? 0]));
       }
       if ('tags' in body) {
-        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 80)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters.');
-        fields.tags = [...new Set(body.tags.map((tag: string) => tag.trim()))];
-      }
-      if ('tagValues' in body || 'tags' in body) {
-        const values = (body.tagValues ?? {}) as Json;
-        if (typeof values !== 'object' || Array.isArray(values) || Object.values(values).some(value => !Number.isInteger(value) || Number(value) < 0 || Number(value) > 999)) fail(400, 'Action tag values must be whole numbers from 0 to 999.');
-        const names = (fields.tags ?? body.tags ?? Object.keys(values)) as string[];
-        fields.tagValues = Object.fromEntries(names.map(tag => [tag, values[tag] ?? 0]));
+        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: Json) => typeof tag?.name !== 'string' || !tag.name.trim() || tag.name.trim().length > 80
+          || !Number.isInteger(tag.value) || tag.value < 0 || tag.value > 999)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters with a whole-number value from 0 to 999.');
+        const tags: Json[] = body.tags.map((tag: Json) => ({ name: tag.name.trim(), value: tag.value }));
+        fields.tags = tags.filter((tag, index) => tags.findIndex(other => other.name === tag.name) === index);
       }
       return fields;
     }
@@ -467,7 +458,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
         record = { id: crypto.randomUUID(), userId: owner,
-          skills: Object.fromEntries(CITY_SKILLS.map(key => [key, 0])), tags: [], tagValues: {}, ...fields };
+          skills: Object.fromEntries(CITY_SKILLS.map(key => [key, 0])), tags: [], ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
       }
