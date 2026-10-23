@@ -2,7 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
 import { button } from "@/components/kit/button";
-import { cn } from "@/lib/utils";
+import { cn, keepKeyboardDown } from "@/lib/utils";
 
 const isTouchLayout = () => window.matchMedia("(max-width: 1023px)").matches;
 
@@ -70,6 +70,7 @@ export const Sheet = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 [--tw-duration:250ms]" />
         <DialogPrimitive.Content
+          onOpenAutoFocus={keepKeyboardDown}
           {...(description ? {} : { "aria-describedby": undefined })}
           style={{ "--sheet-offset": offset } as React.CSSProperties}
           className={cn(

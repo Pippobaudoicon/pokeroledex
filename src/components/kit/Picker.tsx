@@ -3,7 +3,7 @@ import { Command } from "cmdk";
 import { Check, ChevronsUpDown, Search, X } from "lucide-react";
 import * as React from "react";
 import { fold } from "@/hooks/use-dex";
-import { cn } from "@/lib/utils";
+import { cn, keepKeyboardDown } from "@/lib/utils";
 
 export interface PickerItem {
   value: string;
@@ -70,6 +70,7 @@ export const Picker = ({
         </PopoverPrimitive.Trigger>
         <PopoverPrimitive.Portal>
           <PopoverPrimitive.Content
+            onOpenAutoFocus={keepKeyboardDown}
             align="start"
             sideOffset={6}
             collisionPadding={12}

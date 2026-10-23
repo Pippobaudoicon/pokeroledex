@@ -23,3 +23,16 @@ export const formatEnumName = (value: string) =>
     .split("_")
     .map((part) => capitalize(part))
     .join(" ");
+
+/** Phones and tablets, where focusing a text field brings up the on-screen keyboard. */
+export const isTouchScreen = () => window.matchMedia("(pointer: coarse)").matches;
+
+/**
+ * For Radix `onOpenAutoFocus`: on touch screens focus the dialog or popover itself instead of its
+ * first field, so opening it doesn't bring up the keyboard.
+ */
+export const keepKeyboardDown = (event: Event) => {
+  if (!isTouchScreen()) return;
+  event.preventDefault();
+  (event.currentTarget as HTMLElement).focus();
+};

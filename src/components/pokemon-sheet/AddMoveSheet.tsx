@@ -9,6 +9,7 @@ import { Sheet } from "@/components/kit/Sheet";
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { fold } from "@/hooks/use-dex";
 import { getTotalStat } from "@/lib/stats";
+import { isTouchScreen } from "@/lib/utils";
 
 const ranks = Object.keys(Rank);
 const LIMIT = 100;
@@ -111,7 +112,7 @@ export const AddMoveSheet = ({ open, onOpenChange }: { open: boolean; onOpenChan
           <Search aria-hidden className="pointer-events-none absolute left-3 size-4 text-label-2" />
           <input
             type="search"
-            autoFocus
+            autoFocus={!isTouchScreen()}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search moves"
