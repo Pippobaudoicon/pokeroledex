@@ -16,7 +16,7 @@ export const STAB_HINT = "S.T.A.B.: same type as the Pokémon, +1 damage die";
  * Explains a value on mouse hover, or on tap on touch screens. A popover rather than a tooltip so a tap
  * elsewhere closes it, and the click is kept from toggling the card.
  */
-export const Hint = ({ hint, className, children }: { hint?: string; className?: string; children: React.ReactNode }) => {
+export const Hint = ({ hint, className, children }: { hint?: React.ReactNode; className?: string; children: React.ReactNode }) => {
   const [open, setOpen] = React.useState(false);
   if (!hint) return <span className={className}>{children}</span>;
   return (

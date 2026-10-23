@@ -4,8 +4,7 @@ import type * as T from "../../../shared/types";
 import { useMovesControllerFindAll } from "@/api/components";
 import { Rank } from "@/api/schemas";
 import { Switch } from "@/components/kit/Controls";
-import { CategoryIcon, categoryName } from "@/components/kit/MoveRow";
-import { RankBall, TypeDot } from "@/components/kit/Pills";
+import { MoveRow } from "@/components/kit/MoveRow";
 import { Sheet } from "@/components/kit/Sheet";
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { fold } from "@/hooks/use-dex";
@@ -55,28 +54,22 @@ const MoveList = ({
   return (
     <ul>
       {matches.slice(0, LIMIT).map((possible) => (
-        <li key={possible.move.id} className="group/row">
-          <button
-            type="button"
-            onClick={() => onPick(possible.move)}
-            className="flex w-full items-center gap-3 pl-4 text-left transition-colors hover:bg-raised active:bg-fill lg:pl-3"
-          >
-            <TypeDot type={possible.move.type} />
-            <span className="flex min-h-13 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0 lg:min-h-11">
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 text-body font-medium">
-                  {possible.move.name}
-                  {showRank && <RankBall rank={possible.rank} className="size-3.5" />}
-                </span>
-                <span className="flex items-center gap-1.5 text-footnote text-label-2">
-                  <CategoryIcon category={possible.move.category} className="size-3.5" />
-                  {categoryName(possible.move.category)}
-                </span>
-              </span>
-              <Plus aria-hidden className="size-5 text-tint" />
-            </span>
-          </button>
-        </li>
+        <MoveRow
+          key={possible.move.id}
+          move={possible.move}
+          pokemon={updatedPokemon}
+          rank={showRank ? possible.rank : undefined}
+          action={
+            <button
+              type="button"
+              aria-label={`Add ${possible.move.name}`}
+              onClick={() => onPick(possible.move)}
+              className="grid size-11 place-items-center rounded-full text-tint hover:bg-tint/10 lg:size-8"
+            >
+              <Plus aria-hidden className="size-5" />
+            </button>
+          }
+        />
       ))}
       {matches.length > LIMIT && (
         <li className="p-3 text-center text-footnote text-label-2">Keep typing to see the other {matches.length - LIMIT}.</li>

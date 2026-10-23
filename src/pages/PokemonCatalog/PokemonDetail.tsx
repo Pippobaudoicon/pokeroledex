@@ -120,7 +120,7 @@ const AttributeRow = ({ name, base, max }: { name: string; base: number; max: nu
   </div>
 );
 
-const matchupLabels: [4 | 2 | 0.5 | 0.25 | 0, string][] = [
+export const matchupLabels: [4 | 2 | 0.5 | 0.25 | 0, string][] = [
   [4, "Very weak to"],
   [2, "Weak to"],
   [0.5, "Resists"],
