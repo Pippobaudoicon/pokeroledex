@@ -23,7 +23,7 @@ export interface City {
   name: string;
   skills: CitySkills;
   tags: CityTag[];
-  /** Emails of everyone who shares the city, the creator first. */
+  /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
 }
 export type CityBody = Pick<City, 'name' | 'skills' | 'tags'>;
