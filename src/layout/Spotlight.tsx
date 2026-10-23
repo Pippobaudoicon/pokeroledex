@@ -9,7 +9,7 @@ import { TypeDot } from "@/components/kit/Pills";
 import { Sprite } from "@/components/kit/Sprite";
 import { fold, useDex, useItemIndex, useMoveIndex } from "@/hooks/use-dex";
 import { allNavItems } from "@/layout/nav";
-import { formatEnumName } from "@/lib/utils";
+import { formatEnumName, keepKeyboardDown } from "@/lib/utils";
 import { quickReference } from "@/pages/Rulebook/quick-reference";
 
 const SpotlightContext = React.createContext<{ open: () => void }>({ open: () => {} });
@@ -151,7 +151,7 @@ const Results = ({ query, onPick }: { query: string; onPick: (to: string) => voi
   const total = groups.reduce((sum, group) => sum + group.hits.length, 0);
   const loading = groups.some((group) => group.loading);
   return (
-    <Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 lg:max-h-[min(520px,60dvh)]">
+    <Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 max-lg:pt-[env(safe-area-inset-top)] lg:max-h-[min(520px,60dvh)]">
       {total === 0 && !loading && (
         <p className="px-4 py-10 text-center text-body text-label-2">
           No results for “{query.trim()}”.
@@ -199,6 +199,27 @@ const NavVisual = ({ icon, tile }: { icon: React.ReactNode; tile: string }) => (
   <span className={`grid size-7 place-items-center rounded-lg text-white [&>svg]:size-4 ${tile}`}>{icon}</span>
 );
 
+/**
+ * The part of the screen the on-screen keyboard leaves visible. iOS keeps fixed elements full height under the
+ * keyboard, so the phone layout follows this to keep its bottom search field above it.
+ */
+const useVisibleViewport = (active: boolean) => {
+  const [visible, setVisible] = React.useState<{ top: number; height: number }>();
+  React.useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!active || !viewport) return;
+    const update = () => setVisible({ top: viewport.offsetTop, height: viewport.height });
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, [active]);
+  return visible;
+};
+
 /** ⌘K / Ctrl+K (or "/") search over Pokémon, your Pokémon, moves, items, rulebook sections and pages. */
 export const SpotlightProvider = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = React.useState(false);
@@ -216,6 +237,7 @@ export const SpotlightProvider = ({ children }: { children: React.ReactNode }) =
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
   const context = React.useMemo(() => ({ open: () => setOpen(true) }), []);
+  const visible = useVisibleViewport(open);
   const pick = (to: string) => {
     setOpen(false);
     setQuery("");
@@ -228,12 +250,14 @@ export const SpotlightProvider = ({ children }: { children: React.ReactNode }) =
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/20 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 max-lg:hidden" />
           <DialogPrimitive.Content
+            onOpenAutoFocus={keepKeyboardDown}
             aria-describedby={undefined}
-            className="fixed z-50 flex flex-col overflow-hidden bg-canvas outline-none [--tw-duration:180ms] [--tw-ease:var(--ease-spring)] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 max-lg:inset-0 max-lg:max-h-none! max-lg:max-w-none! max-lg:data-[state=open]:slide-in-from-bottom-8 lg:left-1/2 lg:top-[12dvh] lg:w-[min(640px,calc(100vw-48px))] lg:-translate-x-1/2 lg:rounded-2xl lg:bg-surface/90 lg:shadow-float lg:backdrop-blur-2xl lg:backdrop-saturate-150 lg:data-[state=open]:zoom-in-[0.98]"
+            style={visible && ({ "--visible-top": `${visible.top}px`, "--visible-height": `${visible.height}px` } as React.CSSProperties)}
+            className="fixed z-50 flex flex-col overflow-hidden bg-canvas outline-none [--tw-duration:180ms] [--tw-ease:var(--ease-spring)] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 max-lg:inset-x-0 max-lg:top-[var(--visible-top,0px)] max-lg:h-[var(--visible-height,100dvh)] max-lg:max-h-none! max-lg:max-w-none! max-lg:data-[state=open]:slide-in-from-bottom-8 lg:left-1/2 lg:top-[12dvh] lg:w-[min(640px,calc(100vw-48px))] lg:-translate-x-1/2 lg:rounded-2xl lg:bg-surface/90 lg:shadow-float lg:backdrop-blur-2xl lg:backdrop-saturate-150 lg:data-[state=open]:zoom-in-[0.98]"
           >
             <DialogPrimitive.Title className="sr-only">Search</DialogPrimitive.Title>
             <Command shouldFilter={false} label="Search" className="flex min-h-0 flex-1 flex-col">
-              <div className="flex items-center gap-2 px-3 pt-[calc(8px+env(safe-area-inset-top))] pb-2 lg:border-b lg:border-hairline lg:px-4 lg:py-0">
+              <div className="flex items-center gap-2 px-3 pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] max-lg:order-last max-lg:border-t max-lg:border-hairline lg:border-b lg:border-hairline lg:px-4 lg:py-0">
                 <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-fill px-3 lg:h-14 lg:bg-transparent lg:px-0">
                   <Search aria-hidden className="size-5 shrink-0 text-label-2" />
                   <Command.Input
