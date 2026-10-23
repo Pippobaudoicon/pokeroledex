@@ -7,7 +7,7 @@ import { PokemonType } from "@/api/schemas";
 import { button } from "@/components/kit/button";
 import { Chip } from "@/components/kit/Controls";
 import { PageHeader } from "@/components/kit/PageHeader";
-import { TypeDot, TypeIcon, TypePill, typeText } from "@/components/kit/Pills";
+import { RankBall, TypeDot, TypeIcon, TypePill, typeText } from "@/components/kit/Pills";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
@@ -31,7 +31,10 @@ const DexRow = ({ pokemon, selected }: { pokemon: T.PokemonTemplateSummary; sele
       <Sprite image={pokemon.image} set="box" className="h-14 w-17" />
       <span className="flex min-h-15 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-body font-medium">{pokemon.name}</span>
+          <span className="flex items-center gap-1.5 text-body font-medium">
+            <span className="truncate">{pokemon.name}</span>
+            <RankBall rank={pokemon.recommendedRank} className="size-3.5" />
+          </span>
           <span className="mt-1 flex items-center gap-1.5">
             <span className="min-w-13 shrink-0 text-footnote text-label-2 tabular-nums">{number(pokemon)}</span>
             {pokemon.types.map((type) => (
@@ -63,7 +66,9 @@ const DexTile = ({ pokemon, selected, replace }: { pokemon: T.PokemonTemplateSum
         </span>
       </span>
       <Sprite image={pokemon.image} set="book" className="my-1 size-20 transition-transform duration-300 ease-spring group-hover:scale-105" />
-      <span className="line-clamp-2 text-subhead font-semibold leading-tight">{pokemon.name}</span>
+      <span className="line-clamp-2 text-subhead font-semibold leading-tight">
+        {pokemon.name} <RankBall rank={pokemon.recommendedRank} className="inline size-3.5 align-[-2px]" />
+      </span>
     </Link>
   </li>
 );

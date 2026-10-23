@@ -17,9 +17,8 @@ import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
 import { StatGroups, usePointsLeft } from "@/components/pokemon-sheet/stats";
 import { Hint } from "@/components/move-dice";
 import { getTotalStat } from "@/lib/stats";
-import { useTypeEffectiveness } from "@/lib/type-chart";
 import { cn, formatEnumName } from "@/lib/utils";
-import { matchupLabels, typeWash } from "@/pages/PokemonCatalog/PokemonDetail";
+import { MatchupTable, typeWash } from "@/pages/PokemonCatalog/PokemonDetail";
 
 /** Which actions the sheet shows: saved Pokémon edit, generated ones can be added (and locked). */
 export type SheetButtons = "edit" | "add" | "addAndLock";
@@ -61,26 +60,6 @@ const GenderButton = ({ pokemon }: { pokemon: T.Pokemon }) => {
   );
 };
 
-/** Attacking types that don't hit this type combination for normal damage, shown on hover over the type pills. */
-const Weaknesses = ({ types }: { types: T.PokemonType[] }) => {
-  const chart = useTypeEffectiveness().getDefensiveChart(types[0], types[1]);
-  const rows = matchupLabels.filter(([multiplier]) => chart[multiplier].length > 0);
-  return (
-    <span className="flex flex-col gap-2">
-      {rows.map(([multiplier, label]) => (
-        <span key={multiplier} className="flex flex-col gap-1">
-          <span className="text-footnote text-label-2">{label}</span>
-          <span className="flex flex-wrap gap-1">
-            {chart[multiplier].map((type) => (
-              <TypePill key={type} type={type} size="sm" />
-            ))}
-          </span>
-        </span>
-      ))}
-    </span>
-  );
-};
-
 const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
   const template = pokemon.pokemonTemplate;
   const { editingMode, updatePokemon } = usePokemon();
@@ -111,7 +90,7 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
               />
             </div>
           )}
-          <Hint hint={<Weaknesses types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
+          <Hint hint={<MatchupTable types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
             {template.types.map((type) => (
               <TypePill key={type} type={type} size="sm" />
             ))}
