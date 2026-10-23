@@ -355,7 +355,16 @@ export const PokemonSheet = ({
       ) : (
         <PageHeader
           compact
-          title={editingMode === "rankUp" ? "Rank up" : editingMode === "edit" ? "Edit" : pokemon.nickname || pokemon.pokemonTemplate.name}
+          title={
+            editingMode === "rankUp" ? (
+              "Rank up"
+            ) : editingMode === "edit" ? (
+              "Edit"
+            ) : (
+              // The bar is too narrow on phones and tablets for the name next to the back link and actions; the card below shows it.
+              <span className="max-lg:sr-only">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
+            )
+          }
           back={editingMode === "view" ? back : undefined}
           leading={editingMode !== "view" ? <span /> : undefined}
           actions={actions}
