@@ -53,6 +53,7 @@ const rollDice = (count: number): Die[] =>
   });
 
 const ROLL_MS = 1300;
+const kindLabel = { accuracy: "Accuracy", damage: "Damage", seal: "Seal" };
 
 const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
   <div
@@ -84,7 +85,7 @@ const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
 
 export interface DiceRollRequest {
   title: string;
-  kind: "accuracy" | "damage";
+  kind: "accuracy" | "damage" | "seal";
   dice: number;
 }
 
@@ -127,7 +128,7 @@ export const DiceRoll = ({
             onClick={(event) => event.stopPropagation()}
           >
             <DialogPrimitive.Title className="text-center text-title-3 font-semibold">
-              {request.title} · {request.kind === "accuracy" ? "Accuracy" : "Damage"} ({request.dice} dice)
+              {request.title} · {kindLabel[request.kind]} ({request.dice} dice)
             </DialogPrimitive.Title>
             <div className="dice-table">
               {dice.map((die, i) => (
@@ -138,9 +139,9 @@ export const DiceRoll = ({
               <p className="h-10 text-center text-title-2 font-semibold">
                 {landed && (
                   <span className="dice-total inline-block">
-                    {request.kind === "accuracy"
-                      ? `${successes} ${successes === 1 ? "success" : "successes"}`
-                      : `${Math.max(successes, 1)} damage`}
+                    {request.kind === "damage"
+                      ? `${Math.max(successes, 1)} damage`
+                      : `${successes} ${successes === 1 ? "success" : "successes"}`}
                   </span>
                 )}
               </p>
