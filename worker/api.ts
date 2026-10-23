@@ -103,6 +103,25 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return reply(status === 200 ? result : { status, payload: result.message }, status);
     }
     if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
+    // Give one of your own Pokemon (not a city resident) to a player who already has records or
+    // a city here. It leaves your trainers; it gets a new id if theirs is taken, as two people
+    // can import the same campaign from pokeroledex.nl.
+    if (name === 'pokemon' && action && id === 'send' && method === 'POST') {
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      if (email === owner) fail(400, 'This Pokemon is already yours.');
+      const { results: known } = await env.DB.prepare(`SELECT 1 FROM records WHERE owner = ?
+        UNION ALL SELECT 1 FROM city_members WHERE email = ? LIMIT 1`).bind(email, email).all();
+      if (!known.length) fail(404, `No player uses ${email || 'that email'} here.`);
+      const { results: [row] } = await env.DB.prepare(`SELECT data, EXISTS (SELECT 1 FROM records copy
+          WHERE copy.owner = ? AND copy.collection = 'pokemon' AND copy.id = records.id) AS taken
+        FROM records WHERE owner = ? AND collection = 'pokemon' AND id = ?`).bind(email, owner, action).all<{ data: string; taken: number }>();
+      if (!row) fail(404, 'Pokemon not found. City residents must be taken into My Pokemon first.');
+      const record: Row = { ...JSON.parse(row.data), userId: email, trainerId: null, cityId: null };
+      if (row.taken) record.id = crypto.randomUUID();
+      await env.DB.prepare('UPDATE records SET owner = ?, id = ?, data = ? WHERE owner = ? AND collection = ? AND id = ?')
+        .bind(email, record.id, JSON.stringify(record), owner, 'pokemon', action).run();
+      return reply({ id: record.id, email });
+    }
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
     const db: Collections = Object.fromEntries(collectionNames.map(name => [name, []]));
     // The stored owner of each loaded record, so changes are written back to the right place.
