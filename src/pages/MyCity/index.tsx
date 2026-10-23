@@ -29,6 +29,7 @@ type Change =
   | { kind: "settings"; id: string; body: CityBody }
   | { kind: "delete"; id: string }
   | { kind: "invite"; id: string; email: string }
+  | { kind: "remove"; id: string; email: string }
   | { kind: "assign"; body: UpdatePokemonBody }
   | { kind: "add"; cityId: string; pokemonTemplateId: string; rank: Rank };
 
@@ -42,6 +43,7 @@ function useCityChange() {
         case "settings": return apiFetch<City>({ url: `/cities/${encodeURIComponent(change.id)}`, method: "patch", body: change.body });
         case "delete": return apiFetch<{ id: string; left?: boolean }>({ url: `/cities/${encodeURIComponent(change.id)}`, method: "delete" });
         case "invite": return apiFetch<City>({ url: `/cities/${encodeURIComponent(change.id)}/members`, method: "post", body: { email: change.email } });
+        case "remove": return apiFetch<City>({ url: `/cities/${encodeURIComponent(change.id)}/members/${encodeURIComponent(change.email)}`, method: "delete" });
         case "assign": return apiFetch<Pokemon>({ url: "/pokemon", method: "patch", body: change.body });
         case "add": return apiFetch<Pokemon>({ url: "/pokemon", method: "post", body: { cityId: change.cityId, pokemonTemplateId: change.pokemonTemplateId, rank: change.rank } });
       }
@@ -199,11 +201,17 @@ const CityMembers = ({ city }: { city: City }) => {
   const [email, setEmail] = React.useState("");
   const change = useCityChange();
   const me = useMe().data?.email;
+  const leader = city.members[0];
   return <section className={`${panel} space-y-4`}>
     <h2 className="text-title-3 font-semibold">Members</h2>
-    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Invite friends with the email they log in with.</p>
+    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Invite friends with the email they log in with. The leader can remove members; their residents stay in the city.</p>
     <ul className="divide-y divide-hairline">
-      {city.members.map(member => <li key={member} className="py-2 break-all">{member}{member === me && <span className="text-label-2"> (you)</span>}</li>)}
+      {city.members.map(member => <li key={member} className="flex items-center gap-2 py-2">
+        <span className="flex-1 break-all">{member}{member === leader && <span className="text-label-2"> (leader)</span>}{member === me && <span className="text-label-2"> (you)</span>}</span>
+        {leader === me && member !== me && <button type="button" disabled={change.isPending} className={button({ variant: "tinted", size: "sm" })} onClick={() => {
+          if (window.confirm(`Remove ${member} from ${city.name}?`)) change.mutate({ kind: "remove", id: city.id, email: member });
+        }}>Remove</button>}
+      </li>)}
     </ul>
     <form className="flex gap-2" onSubmit={event => {
       event.preventDefault();

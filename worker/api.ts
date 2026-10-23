@@ -75,7 +75,7 @@ function reply(value: unknown, status = 200) {
 
 export async function handleApi(request: Request, env: Env, url: URL, owner: string): Promise<Response> {
   try {
-    const [name, action, id] = url.pathname.replace(/^\/api\/*/, '').split('/').filter(Boolean).map(decodeURIComponent);
+    const [name, action, id, member] = url.pathname.replace(/^\/api\/*/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const method = request.method;
     const body = ['POST', 'PATCH', 'PUT'].includes(method) ? await readBody(request) : {};
     const reference = await loadReference(env.ASSETS, url.origin);
@@ -122,7 +122,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     const foreign = await loadForeign(db, reference as unknown as Collections);
     const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
     const writes: D1PreparedStatement[] = [];
-    const response = route({ db, partitions, members, foreign, templatesInUse }, reference, writes, method, name, action, id, body);
+    const response = route({ db, partitions, members, foreign, templatesInUse }, reference, writes, method, name, action, id, member, body);
     if (writes.length) await env.DB.batch(writes);
     return response;
   } catch (error) {
@@ -183,7 +183,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
   function route(state: { db: Collections; partitions: Map<Row, string>; members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string> },
     reference: Reference, writes: D1PreparedStatement[],
-    method: string, name: string, action: string | undefined, id: string | undefined, body: Json): Response {
+    method: string, name: string, action: string | undefined, id: string | undefined, member: string | undefined, body: Json): Response {
     const { db, partitions, members, foreign, templatesInUse } = state;
     const referenceRows = reference as unknown as Collections;
 
@@ -431,6 +431,18 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(city.id, email));
       members.set(city.id, [...current, email]);
       return reply(hydrate(name, city), 201);
+    }
+    // The longest-standing member (the creator, unless they left) leads the city and can remove others.
+    if (name === 'cities' && action && id === 'members' && member && method === 'DELETE') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      const current = members.get(city.id) ?? [];
+      if (current[0] !== owner) fail(403, 'Only the city leader can remove members.');
+      if (member === owner) fail(400, 'Leave the city instead of removing yourself.');
+      if (!current.includes(member)) fail(404, `${member} is not a member of this city.`);
+      writes.push(env.DB.prepare('DELETE FROM city_members WHERE city_id = ? AND email = ?').bind(city.id, member));
+      members.set(city.id, current.filter(email => email !== member));
+      return reply(hydrate(name, city));
     }
     if (method === 'GET') {
       if (name === 'pokemon' && action === 'all') return reply(db.pokemon.map(pokemon));
