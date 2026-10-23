@@ -15,9 +15,11 @@ import { AddToMyPokemon, LockButton, SheetActions } from "@/components/pokemon-s
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
 import { StatGroups, usePointsLeft } from "@/components/pokemon-sheet/stats";
+import { Hint } from "@/components/move-dice";
 import { getTotalStat } from "@/lib/stats";
+import { useTypeEffectiveness } from "@/lib/type-chart";
 import { cn, formatEnumName } from "@/lib/utils";
-import { typeWash } from "@/pages/PokemonCatalog/PokemonDetail";
+import { matchupLabels, typeWash } from "@/pages/PokemonCatalog/PokemonDetail";
 
 /** Which actions the sheet shows: saved Pokémon edit, generated ones can be added (and locked). */
 export type SheetButtons = "edit" | "add" | "addAndLock";
@@ -59,6 +61,26 @@ const GenderButton = ({ pokemon }: { pokemon: T.Pokemon }) => {
   );
 };
 
+/** Attacking types that don't hit this type combination for normal damage, shown on hover over the type pills. */
+const Weaknesses = ({ types }: { types: T.PokemonType[] }) => {
+  const chart = useTypeEffectiveness().getDefensiveChart(types[0], types[1]);
+  const rows = matchupLabels.filter(([multiplier]) => chart[multiplier].length > 0);
+  return (
+    <span className="flex flex-col gap-2">
+      {rows.map(([multiplier, label]) => (
+        <span key={multiplier} className="flex flex-col gap-1">
+          <span className="text-footnote text-label-2">{label}</span>
+          <span className="flex flex-wrap gap-1">
+            {chart[multiplier].map((type) => (
+              <TypePill key={type} type={type} size="sm" />
+            ))}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+};
+
 const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
   const template = pokemon.pokemonTemplate;
   const { editingMode, updatePokemon } = usePokemon();
@@ -70,9 +92,10 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
         <Sprite image={template.image} set="book" eager className="size-22 drop-shadow-[0_6px_10px_rgb(0_0_0/0.15)] @lg:size-26" />
         <div className="min-w-0 flex-1">
           <p className="text-footnote font-medium text-label-2 tabular-nums">#{template.dexID || template.number}</p>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <h2 className="min-w-0 font-display text-title-2 leading-tight break-words">{pokemon.nickname || template.name}</h2>
             <GenderButton pokemon={pokemon} />
+            <RankBadge rank={pokemon.rank} className="text-footnote" />
           </div>
           {pokemon.nickname && <p className="text-footnote text-label-2">{template.name}</p>}
           {editingMode === "edit" && (
@@ -88,12 +111,11 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
               />
             </div>
           )}
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <Hint hint={<Weaknesses types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
             {template.types.map((type) => (
               <TypePill key={type} type={type} size="sm" />
             ))}
-            <RankBadge rank={pokemon.rank} className="ml-1 text-footnote" />
-          </div>
+          </Hint>
         </div>
       </div>
     </div>
