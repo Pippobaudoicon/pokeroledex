@@ -115,6 +115,29 @@ test('Pokemon nicknames persist in sheets, parties and collection names and can 
   } finally { h.close(); }
 });
 
+test('shiny is kept when caught, edited, listed and moved, and defaults to false', async () => {
+  const h = harness();
+  try {
+    const plain = await h.request('pokemon', 'POST', { pokemonTemplateId: species.id });
+    assert.equal(plain.body.shiny, false);
+    const caught = await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, shiny: true });
+    assert.equal(caught.status, 201);
+    assert.equal(caught.body.shiny, true);
+    const id = caught.body.id;
+    assert.deepEqual((await h.request('pokemon/minimal')).body.map(p => [p.id, p.shiny]).sort(), [[plain.body.id, false], [id, true]].sort());
+    for (const shiny of [null, 1, 'yes', {}]) {
+      assert.equal((await h.request('pokemon', 'PATCH', { id, shiny })).status, 400, JSON.stringify(shiny));
+      assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, shiny })).status, 400, JSON.stringify(shiny));
+    }
+    assert.equal((await h.request(`pokemon/${id}`)).body.shiny, true);
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    assert.equal((await h.request('pokemon', 'PATCH', { id, cityId: city.id })).body.shiny, true);
+    assert.equal((await h.request('pokemon', 'PATCH', { id, takeOwnership: true })).body.shiny, true);
+    assert.equal((await h.request('pokemon', 'PATCH', { id, shiny: false })).body.shiny, false);
+    assert.equal((await h.request('pokemon/minimal')).body.find(p => p.id === id).shiny, false);
+  } finally { h.close(); }
+});
+
 test('city counts group ranks separately and count each distinct type once', () => {
   const pokemonTemplate = { ...species, types: ['FIRE', 'FLYING', 'FIRE'] };
   assert.deepEqual(cityTypeCounts([

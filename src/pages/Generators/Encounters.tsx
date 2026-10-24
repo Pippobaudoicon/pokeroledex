@@ -11,6 +11,7 @@ import { RankBadge, RankBall, TypeDot, TypePill } from "@/components/kit/Pills";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
+import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
 import { StaticPokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
@@ -320,7 +321,7 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
   return (
     <article
       aria-label={species.name}
-      className={cn("min-w-0 overflow-hidden rounded-2xl bg-surface shadow-card", shiny && "ring-2 ring-pokerole-yellow")}
+      className={cn("min-w-0 overflow-hidden rounded-2xl bg-surface shadow-card", shiny && shinyRing)}
     >
       <div className="flex flex-col gap-3 p-4">
         <div className="flex items-center gap-3">
@@ -339,12 +340,7 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-footnote text-label-2">
           <span>Generation {generationFor(species.number) ?? "—"}</span>
           {isMythical(species.number) ? <span>Mythical</span> : species.legendary && <span>Legendary</span>}
-          {shiny && (
-            <span className="inline-flex items-center gap-1 font-semibold text-label">
-              <Sparkles aria-hidden className="size-3.5" />
-              Shiny
-            </span>
-          )}
+          {shiny && <ShinyMark />}
         </div>
         <p className="text-footnote text-label-2">
           {species.habitats.map((habitat) => habitatNames[habitat]).join(", ") || "No habitat listed"}
@@ -445,14 +441,15 @@ const EncounterDetails = ({ selectedId, onSelect }: { selectedId: string | null;
               idPrefix={idPrefix}
               value={selected.pokemon.id}
               onChange={onSelect}
-              options={entries.map(({ pokemon }, index) => ({
-                value: pokemon.id,
+              options={entries.map((entry, index) => ({
+                value: entry.pokemon.id,
                 label: (
                   <span className="flex items-center justify-center gap-2">
-                    <Sprite image={pokemon.pokemonTemplate.image} set="box" className="size-7" />
+                    <Sprite image={entry.pokemon.pokemonTemplate.image} set="box" className="size-7" />
                     <span className="max-w-40 truncate">
-                      {index + 1}. {pokemon.pokemonTemplate.name}
+                      {index + 1}. {entry.pokemon.pokemonTemplate.name}
                     </span>
+                    {isShiny(entry) && <ShinyMark compact />}
                   </span>
                 ),
               }))}
@@ -460,7 +457,7 @@ const EncounterDetails = ({ selectedId, onSelect }: { selectedId: string | null;
             />
           </div>
           <div key={selected.pokemon.id} {...segmentPanelProps(idPrefix, selected.pokemon.id)}>
-            <StaticPokemonProvider pokemon={selected.pokemon} onChange={isGenerating ? undefined : updatePokemon}>
+            <StaticPokemonProvider pokemon={{ ...selected.pokemon, shiny: isShiny(selected) }} onChange={isGenerating ? undefined : updatePokemon}>
               <p className="px-4 pt-3 text-footnote text-label-2">
                 Nature: {selected.pokemon.nature?.name ?? "—"} · Confidence: {selected.pokemon.nature?.confidence ?? "—"}
               </p>

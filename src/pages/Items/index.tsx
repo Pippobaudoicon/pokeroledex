@@ -212,7 +212,7 @@ export const ItemsPage = () => {
               </button>
             </div>
           ) : (
-            <ul className="grid grid-cols-[repeat(auto-fill,160px)] justify-center gap-3 sm:grid-cols-[repeat(auto-fill,180px)] sm:justify-start">
+            <ul className="grid grid-cols-[repeat(2,minmax(0,160px))] justify-center gap-3 min-[400px]:grid-cols-[repeat(auto-fill,160px)] sm:grid-cols-[repeat(auto-fill,180px)] sm:justify-start">
               {list.slice(0, visibleCount).map((item) => (
                 <li key={item.id}>
                   <Link

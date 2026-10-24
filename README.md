@@ -57,6 +57,18 @@ and enter a **Nickname (optional)** next to its identity. **Save** keeps the nic
 Nicknames appear on the sheet, in My Pokemon, trainer parties and city rosters.
 The species remains visible on nicknamed sheets. Existing records need no migration.
 
+## Shiny Pokemon
+
+In **Generators → Encounters**, **Roll shiny** rolls 2d20 per Pokemon; a double 20
+makes it shiny (yellow border and ✨ Shiny). **Add to My Pokemon** from its
+**Details & moves** sheet catches it shiny. Any saved Pokemon can also be made
+shiny, or not, with the **Shiny** checkbox under **Edit** on its sheet. Shiny
+Pokemon keep the same yellow border and ✨ on their sheet, in My Pokemon, Home,
+trainer parties and city rosters. They stay shiny when moved to a trainer or a
+city, or sent to another player. The flag is `shiny` on the Pokemon record (and
+on `/api/pokemon/minimal`); older records are not shiny and need no migration.
+Shiny sprites are not shown yet.
+
 ## My City
 
 Open **My City** from the sidebar, Home, or app search. Each account can create

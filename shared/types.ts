@@ -254,6 +254,8 @@ export interface PokemonRecord {
   trainerId: string | null;
   /** Missing on older records; a Pokemon can belong to a city or a trainer, not both. */
   cityId?: string | null;
+  /** Missing (not shiny) on older records. */
+  shiny?: boolean;
   stats: Stats;
   currentHp: number;
   currentWill: number;
@@ -277,6 +279,7 @@ export interface PokemonMinimal {
   image: string;
   types: PokemonType[];
   rank: Rank;
+  shiny: boolean;
 }
 
 /** Inventory entries reference an item, or carry a custom item's fields inline. */

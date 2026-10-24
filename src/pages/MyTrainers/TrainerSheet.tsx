@@ -8,6 +8,7 @@ import { Group, Row } from "@/components/kit/List";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Picker } from "@/components/kit/Picker";
 import { Sprite } from "@/components/kit/Sprite";
+import { shinyRing } from "@/components/kit/Shiny";
 import { SOCIALS, TRAINER_ATTRIBUTES, TRAINER_SKILLS } from "@/lib/stats";
 import { capitalize, cn, formatEnumName } from "@/lib/utils";
 import { type TrainerStatKey, useTrainer } from "@/pages/MyTrainers/context";
@@ -221,10 +222,10 @@ export const TrainerSheet = () => {
                     <li key={pokemon.id}>
                       <Link
                         to={`/myPokemon/${pokemon.id}`}
-                        className="flex w-24 flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-raised"
+                        className={cn("flex w-24 flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-raised", pokemon.shiny && shinyRing)}
                       >
                         <Sprite image={pokemon.pokemonTemplate.image} set="box" className="h-14 w-17" />
-                        <span className="w-full truncate text-footnote">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
+                        <span className="w-full truncate text-footnote">{pokemon.nickname || pokemon.pokemonTemplate.name}{pokemon.shiny && <span className="sr-only"> (shiny)</span>}</span>
                       </Link>
                     </li>
                   ))}
