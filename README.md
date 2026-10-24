@@ -63,8 +63,15 @@ In **Generators → Encounters**, **Roll shiny** rolls 2d20 per Pokemon; a doubl
 makes it shiny (yellow border and ✨ Shiny). **Add to My Pokemon** from its
 **Details & moves** sheet catches it shiny. Any saved Pokemon can also be made
 shiny, or not, with the **Shiny** checkbox under **Edit** on its sheet. Shiny
-Pokemon keep the same yellow border and ✨ on their sheet, in My Pokemon, Home,
-trainer parties and city rosters. They stay shiny when moved to a trainer or a
+Pokemon share an animated gold border with travelling pearly glints, a diagonal
+white sheen sweeping across the whole box for 0.9 seconds every 30 seconds, and ✨ in
+the generator, on their sheet, in My Pokemon, Home, trainer parties and city
+rosters. With reduced motion enabled, the border stays static and the sheen is
+hidden; non-shiny Pokemon are unchanged. In `src/index.css`, tweak the
+`shiny-sheen` animation duration to change the interval, and its `3%` keyframe
+(plus the preceding `2.99%` opacity hold) to change the sweep duration:
+interval × percentage / 100 = sweep seconds.
+They stay shiny when moved to a trainer or a
 city, or sent to another player. The flag is `shiny` on the Pokemon record (and
 on `/api/pokemon/minimal`); older records are not shiny and need no migration.
 Shiny sprites are not shown yet.

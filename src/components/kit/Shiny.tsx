@@ -1,8 +1,8 @@
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** The yellow border every shiny Pokémon gets, as on the encounter generator. */
-export const shinyRing = "ring-2 ring-pokerole-yellow";
+/** Shared animated gold border for shiny Pokémon on every surface. */
+export const shinyRing = "shiny-border ring-2 ring-pokerole-yellow";
 
 /** Sparkles and "Shiny"; `compact` keeps only the icon (the word stays for screen readers). */
 export const ShinyMark = ({ compact = false, className }: { compact?: boolean; className?: string }) => (
