@@ -250,7 +250,7 @@ export const AddToMyPokemon = () => {
     onSuccess: (pokemon) => {
       queryClient.invalidateQueries({ queryKey: ["pokemon"] });
       toast({
-        title: `${pokemon.pokemonTemplate?.name ?? "Pokémon"} joined your Pokémon`,
+        title: `${pokemon.pokemonTemplate?.name ?? "Pokémon"} joined your Pokémon${pokemon.shiny ? " ✨" : ""}`,
         action: (
           <button type="button" onClick={() => navigate(`/myPokemon/${pokemon.id}`)} className={button({ variant: "tinted", size: "sm" })}>
             Open
@@ -269,6 +269,7 @@ export const AddToMyPokemon = () => {
       natureId: updatedPokemon?.nature?.id ?? "",
       stats: updatedPokemon?.stats,
       gender: updatedPokemon?.gender,
+      shiny: updatedPokemon?.shiny ?? false,
       currentHp: updatedPokemon?.currentHp,
       currentWill: updatedPokemon?.currentWill,
     };

@@ -311,6 +311,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (body[key] != null && !lookup(collection, body[key])) fail(400, `Choose a valid ${label}.`);
       }
       if ('moveIds' in body && (!Array.isArray(body.moveIds) || body.moveIds.some((id: unknown) => !lookup('moves', id)))) fail(400, 'Choose valid moves.');
+      if ('shiny' in body && typeof body.shiny !== 'boolean') fail(400, 'Shiny must be true or false.');
     }
 
     function newPokemon(body: Json): Row {
@@ -320,7 +321,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const stats = { ...blankStats(), ...body.stats };
       return { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', gender: 'N',
         noOfBattles: 0, trainingPoints: 0, moveIds: [], abilityId: species.abilityOne?.id ?? species.abilityOneId,
-        natureId: null, heldItemId: null, trainerId: null, cityId: null,
+        natureId: null, heldItemId: null, trainerId: null, cityId: null, shiny: false,
         ...body, ...nicknameFields(body), stats,
         currentHp: body.currentHp ?? species.baseHp + species.baseStats.vitality + stats.vitality,
         currentWill: body.currentWill ?? 3 + species.baseStats.insight + stats.insight,
@@ -525,7 +526,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (name === 'pokemon' && action === 'minimal') return reply(records.map(record => {
           const species = lookup('pokemon-templates', record.pokemonTemplateId)!;
           return { id: record.id, name: record.nickname || species.name, number: species.number, dexID: species.dexID,
-            image: species.image, types: species.types, rank: record.rank };
+            image: species.image, types: species.types, rank: record.rank, shiny: record.shiny === true };
         }));
         return reply(records.map(record => hydrate(name, record)));
       }

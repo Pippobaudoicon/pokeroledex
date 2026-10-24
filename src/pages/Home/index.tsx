@@ -1,4 +1,4 @@
-import { Plus, Search } from "lucide-react";
+import { Lightbulb, Plus, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePokemonControllerFindAllMinimal, useTrainersControllerFindAll } from "@/api/components";
 import { button } from "@/components/kit/button";
@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/kit/PageHeader";
 import { RankBall } from "@/components/kit/Pills";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { Sprite } from "@/components/kit/Sprite";
+import { shinyRing } from "@/components/kit/Shiny";
+import { IssueButton } from "@/layout/IssueButton";
 import { navSections } from "@/layout/nav";
 import { useSpotlight } from "@/layout/Spotlight";
 import { cn } from "@/lib/utils";
@@ -50,13 +52,13 @@ const MyPokemonStrip = () => {
             <li key={pokemon.id} className="snap-start">
               <Link
                 to={`/myPokemon/${pokemon.id}`}
-                className="flex w-22 flex-col items-center gap-1 rounded-xl p-2 text-center transition-colors hover:bg-raised"
+                className={cn("flex w-22 flex-col items-center gap-1 rounded-xl p-2 text-center transition-colors hover:bg-raised", pokemon.shiny && shinyRing)}
               >
                 <span className="relative">
                   <Sprite image={pokemon.image} set="box" className="h-14 w-17" />
                   <RankBall rank={pokemon.rank} className="absolute -right-1 -bottom-1 size-4" />
                 </span>
-                <span className="w-full truncate text-footnote font-medium">{pokemon.name}</span>
+                <span className="w-full truncate text-footnote font-medium">{pokemon.name}{pokemon.shiny && <span className="sr-only"> (shiny)</span>}</span>
               </Link>
             </li>
           ))}
@@ -134,6 +136,19 @@ export const HomePage = () => (
                 icon={<RowIcon className={cn(item.tile, "[&>svg]:size-4")}>{item.icon}</RowIcon>}
               />
             ))}
+            {section.title === "Tools" && (
+              <IssueButton
+                trigger={
+                  <Row
+                    onClick={() => {}}
+                    title="Suggest a feature"
+                    subtitle={<span className="line-clamp-1">Share an idea for improving PokéroleDex</span>}
+                    icon={<RowIcon className="bg-[#a16207]"><Lightbulb /></RowIcon>}
+                    aria-label="Suggest a feature"
+                  />
+                }
+              />
+            )}
           </Group>
         ))}
       </div>

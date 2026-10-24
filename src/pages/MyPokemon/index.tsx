@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/kit/PageHeader";
 import { RankBall, TypePill } from "@/components/kit/Pills";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { Sprite } from "@/components/kit/Sprite";
+import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { fold } from "@/hooks/use-dex";
@@ -22,10 +23,10 @@ const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected
       aria-current={selected ? "page" : undefined}
       className="flex items-center gap-3 pl-2 transition-colors duration-150 hover:bg-raised active:bg-fill aria-[current]:bg-tint/10"
     >
-      <Sprite image={pokemon.image} set="box" className="h-14 w-17" />
+      <Sprite image={pokemon.image} set="box" className={cn("h-14 w-17 rounded-xl", pokemon.shiny && shinyRing)} />
       <span className="flex min-h-15 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0 lg:pr-3">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-body font-medium">{pokemon.name}</span>
+          <span className="flex items-center gap-1.5 text-body font-medium"><span className="truncate">{pokemon.name}</span>{pokemon.shiny && <ShinyMark compact />}</span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-footnote text-label-2">
             <RankBall rank={pokemon.rank} className="size-3.5" />
             {formatEnumName(pokemon.rank)}
@@ -45,13 +46,14 @@ const PokemonCard = ({ pokemon }: { pokemon: T.PokemonMinimal }) => (
     <Link
       to={`/myPokemon/${pokemon.id}`}
       title={pokemon.name}
-      className="flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-4 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill"
+      className={cn("flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-4 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill", pokemon.shiny && shinyRing)}
     >
       <Sprite image={pokemon.image} set="book" className="size-24 lg:size-28" />
       <span className="line-clamp-2 min-h-[2.8em] w-full text-body font-semibold">{pokemon.name}</span>
       <span className="flex items-center justify-center gap-1.5 text-footnote text-label-2">
         <RankBall rank={pokemon.rank} className="size-3.5" />
         {formatEnumName(pokemon.rank)}
+        {pokemon.shiny && <ShinyMark compact />}
       </span>
       <span className="mt-auto flex flex-wrap justify-center gap-1">
         {pokemon.types.map((type) => (

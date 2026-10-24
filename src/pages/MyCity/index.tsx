@@ -11,6 +11,7 @@ import { Picker } from "@/components/kit/Picker";
 import { RankBadge, RankBall, TypePill } from "@/components/kit/Pills";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
+import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useToast } from "@/hooks/use-toast";
@@ -326,9 +327,9 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
     const bonus = city.bonuses[resident.id] ?? 0;
     const current = city.assignments[resident.id] ?? "unassigned";
     return <button key={resident.id} type="button" draggable={false} aria-pressed={selected === resident.id}
-      aria-label={`${name(resident)}, +${bonus}, ${targetLabel(current)}. ${selected === resident.id ? "Selected: choose where it works." : "Select to move."}`}
+      aria-label={`${name(resident)}${resident.shiny ? " (shiny)" : ""}, +${bonus}, ${targetLabel(current)}. ${selected === resident.id ? "Selected: choose where it works." : "Select to move."}`}
       className={cn("relative flex w-18 touch-none select-none flex-col items-center gap-0.5 rounded-xl bg-surface p-1 text-caption shadow-card outline-none focus-visible:outline-2 focus-visible:outline-focus cursor-grab",
-        selected === resident.id && "ring-2 ring-tint", drag?.id === resident.id && "opacity-40")}
+        selected === resident.id ? "ring-2 ring-tint" : resident.shiny && shinyRing, drag?.id === resident.id && "opacity-40")}
       onPointerDown={event => {
         if (event.button !== 0) return;
         window.getSelection()?.removeAllRanges();
@@ -500,8 +501,8 @@ export const MyCityPage = () => {
             <section className={panel}><h2 className="mb-3 text-title-3 font-semibold">Pokémon roster ({residents.length})</h2>
               {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="divide-y divide-hairline">{residents.map(resident => <li key={resident.id} className="space-y-3 py-4">
                 <Link to={`/myCity/${city.id}/pokemon/${resident.id}`} className="flex items-center gap-3">
-                  <Sprite image={resident.pokemonTemplate.image} set="box" className="h-14 w-17" />
-                  <span><span className="font-semibold">{resident.nickname || resident.pokemonTemplate.name}</span><span className="block text-footnote text-label-2">{formatEnumName(resident.rank)} · Open sheet</span>
+                  <Sprite image={resident.pokemonTemplate.image} set="box" className={cn("h-14 w-17 rounded-xl", resident.shiny && shinyRing)} />
+                  <span><span className="inline-flex items-center gap-1.5 font-semibold">{resident.nickname || resident.pokemonTemplate.name}{resident.shiny && <ShinyMark compact />}</span><span className="block text-footnote text-label-2">{formatEnumName(resident.rank)} · Open sheet</span>
                     <span className="mt-1 flex gap-1">{resident.pokemonTemplate.types.map(type => <TypePill key={type} type={type} size="sm" />)}</span>
                   </span>
                 </Link>

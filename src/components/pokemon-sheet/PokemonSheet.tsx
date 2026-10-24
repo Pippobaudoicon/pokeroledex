@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/kit/PageHeader";
 import { RankBadge, TypePill } from "@/components/kit/Pills";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
+import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
 import { Sprite } from "@/components/kit/Sprite";
 import { AddMoveSheet, useCanAddMove } from "@/components/pokemon-sheet/AddMoveSheet";
 import { AddToMyPokemon, LockButton, SheetActions } from "@/components/pokemon-sheet/actions";
@@ -65,7 +66,7 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
   const { editingMode, updatePokemon } = usePokemon();
   const nicknameId = React.useId();
   return (
-    <div className="relative overflow-hidden rounded-2xl shadow-card" style={{ backgroundImage: typeWash(template.types) }}>
+    <div className={cn("relative overflow-hidden rounded-2xl shadow-card", pokemon.shiny && shinyRing)} style={{ backgroundImage: typeWash(template.types) }}>
       <Pokeball className="absolute -top-10 -right-10 size-48 text-surface/50" strokeWidth={4} />
       <div className="relative flex items-center gap-3 p-3 pr-4">
         <Sprite image={template.image} set="book" eager className="size-22 drop-shadow-[0_6px_10px_rgb(0_0_0/0.15)] @lg:size-26" />
@@ -75,6 +76,7 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
             <h2 className="min-w-0 font-display text-title-2 leading-tight break-words">{pokemon.nickname || template.name}</h2>
             <GenderButton pokemon={pokemon} />
             <RankBadge rank={pokemon.rank} className="text-footnote" />
+            {pokemon.shiny && <ShinyMark className="text-footnote" />}
           </div>
           {pokemon.nickname && <p className="text-footnote text-label-2">{template.name}</p>}
           {editingMode === "edit" && (
@@ -88,6 +90,15 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
                 onChange={(event) => updatePokemon({ nickname: event.target.value })}
                 className="mt-1 h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg"
               />
+              <label className="mt-2 flex min-h-11 items-center gap-2 text-subhead lg:min-h-8">
+                <input
+                  type="checkbox"
+                  checked={pokemon.shiny ?? false}
+                  onChange={(event) => updatePokemon({ shiny: event.target.checked })}
+                  className="size-5 accent-pokerole-yellow lg:size-4"
+                />
+                Shiny
+              </label>
             </div>
           )}
           <Hint hint={<MatchupTable types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
