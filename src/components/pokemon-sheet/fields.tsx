@@ -138,6 +138,7 @@ export const InfoGroups = ({ showTrainer = true }: { showTrainer?: boolean }) =>
   const { updatedPokemon: pokemon, editingMode, updatePokemon } = usePokemon();
   if (!pokemon) return null;
   const editing = editingMode === "edit";
+  const shinyId = React.useId();
   const abilities = abilitiesOf(pokemon.pokemonTemplate);
   return (
     <div className="flex flex-col gap-6 @3xl:gap-5">
@@ -186,6 +187,17 @@ export const InfoGroups = ({ showTrainer = true }: { showTrainer?: boolean }) =>
         <FieldRow label="Nature">
           {editing ? <NaturePicker pokemon={pokemon} /> : <span className="text-body text-label-2">{pokemon.nature ? `${pokemon.nature.name} · ${pokemon.nature.nature}` : "None"}</span>}
         </FieldRow>
+        {editing && (
+          <FieldRow label="Shiny" htmlFor={shinyId}>
+            <input
+              id={shinyId}
+              type="checkbox"
+              checked={pokemon.shiny ?? false}
+              onChange={(event) => updatePokemon({ shiny: event.target.checked })}
+              className="size-5 accent-pokerole-yellow lg:size-4"
+            />
+          </FieldRow>
+        )}
         <FieldRow label="Held item">
           {editing ? <ItemPicker pokemon={pokemon} /> : <span className="text-body text-label-2">{pokemon.heldItem?.name ?? "None"}</span>}
         </FieldRow>

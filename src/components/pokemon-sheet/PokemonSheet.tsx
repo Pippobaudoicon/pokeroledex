@@ -90,15 +90,6 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
                 onChange={(event) => updatePokemon({ nickname: event.target.value })}
                 className="mt-1 h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg"
               />
-              <label className="mt-2 flex min-h-11 items-center gap-2 text-subhead lg:min-h-8">
-                <input
-                  type="checkbox"
-                  checked={pokemon.shiny ?? false}
-                  onChange={(event) => updatePokemon({ shiny: event.target.checked })}
-                  className="size-5 accent-pokerole-yellow lg:size-4"
-                />
-                Shiny
-              </label>
             </div>
           )}
           <Hint hint={<MatchupTable types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
@@ -370,7 +361,7 @@ export const PokemonSheet = ({
             editingMode === "rankUp" ? (
               "Rank up"
             ) : editingMode === "edit" ? (
-              "Edit"
+              <span className="sr-only">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
             ) : (
               // The bar is too narrow on phones and tablets for the name next to the back link and actions; the card below shows it.
               <span className="max-lg:sr-only">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
