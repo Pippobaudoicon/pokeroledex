@@ -2,7 +2,8 @@
 // email (migrations/, worker/access.ts). Shared cities and their residents live under
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
 // records, works on them in memory and writes back only the records it changed.
-import { ATTRIBUTES, CITY_SKILLS, CITY_SKILL_MAX, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { cityLimits, cityValues, isCitySkill, residentBonus } from '../shared/cities.ts';
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import type { Env } from './index.ts';
@@ -286,7 +287,20 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     function hydrate(name: string, record: Row) {
       if (name === 'pokemon') return pokemon(record);
       if (name === 'trainers') return trainer(record);
-      if (name === 'cities') return { ...record, members: members.get(record.id) ?? [] };
+      if (name === 'cities') {
+        const tags = (record.tags ?? []) as string[];
+        const rank = (RANKS as readonly unknown[]).includes(record.rank) ? record.rank : 'UNRANKED';
+        const stored = (record.assignments ?? {}) as Json;
+        const residents = db.pokemon.filter(p => p.cityId === record.id);
+        const assignments = Object.fromEntries(residents.filter(p => validTarget(stored[p.id], tags)).map(p => [p.id, stored[p.id]]));
+        const bonuses = Object.fromEntries(residents.map(p => {
+          const species = lookup('pokemon-templates', p.pokemonTemplateId);
+          return [p.id, species ? residentBonus(species as PokemonTemplate, id => lookup('pokemon-templates', id) as PokemonTemplate | null) : 0];
+        }));
+        const { skills: _skills, tagValues: _tagValues, ...rest } = record;
+        return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses,
+          ...cityValues(rank, tags, assignments, bonuses), members: members.get(record.id) ?? [] };
+      }
       return referenceRecord(name, record);
     }
 
@@ -319,24 +333,49 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return { nickname: body.nickname.trim() };
     }
 
-    function cityFields(body: Json): Json {
+    function validTarget(target: unknown, tags: string[]) {
+      if (typeof target !== 'string') return false;
+      if (target.startsWith('skill:')) return isCitySkill(target.slice(6));
+      return target.startsWith('tag:') && tags.includes(target.slice(4));
+    }
+
+    function residentLimit(rank: unknown) {
+      return cityLimits((RANKS as readonly unknown[]).includes(rank) ? rank as Rank : 'UNRANKED').residents;
+    }
+
+    // Skill and action values are derived from assigned residents (hydrate), so stored
+    // `skills` and `tagValues` from older records and clients are ignored.
+    function cityFields(body: Json, city: Row | null = null): Json {
       const fields: Json = {};
       if ('name' in body) {
         if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 100) fail(400, 'City name must be 1 to 100 characters.');
         fields.name = body.name.trim();
       }
-      if ('skills' in body) {
-        if (!body.skills || typeof body.skills !== 'object' || Array.isArray(body.skills)) fail(400, 'City skills must be an object.');
-        for (const [key, value] of Object.entries(body.skills)) {
-          if (!(CITY_SKILLS as readonly string[]).includes(key) || !Number.isInteger(value) || Number(value) < 0 || Number(value) > CITY_SKILL_MAX) fail(400, `City skills must be whole numbers from 0 to ${CITY_SKILL_MAX}.`);
-        }
-        fields.skills = Object.fromEntries(CITY_SKILLS.map(key => [key, body.skills[key] ?? 0]));
+      if ('rank' in body) {
+        if (!(RANKS as readonly unknown[]).includes(body.rank)) fail(400, 'Choose a valid city rank.');
+        // Only enforce the cap when the rank actually changes, so cities that predate the cap still save.
+        const currentRank = city && (RANKS as readonly unknown[]).includes(city.rank) ? city.rank : 'UNRANKED';
+        const residents = city && body.rank !== currentRank ? db.pokemon.filter(p => p.cityId === city.id).length : 0;
+        if (residents > residentLimit(body.rank)) fail(409, `This city has ${residents} residents; that rank allows ${residentLimit(body.rank)}. Move some residents out first.`);
+        fields.rank = body.rank;
       }
       if ('tags' in body) {
-        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: Json) => typeof tag?.name !== 'string' || !tag.name.trim() || tag.name.trim().length > 80
-          || !Number.isInteger(tag.value) || tag.value < 0 || tag.value > 999)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters with a whole-number value from 0 to 999.');
-        const tags: Json[] = body.tags.map((tag: Json) => ({ name: tag.name.trim(), value: tag.value }));
-        fields.tags = tags.filter((tag, index) => tags.findIndex(other => other.name === tag.name) === index);
+        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 80)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters.');
+        fields.tags = [...new Set(body.tags.map((tag: string) => tag.trim()))];
+      }
+      const tags = (fields.tags ?? city?.tags ?? []) as string[];
+      const assignments: Json = { ...city?.assignments };
+      if ('assignments' in body) {
+        if (!body.assignments || typeof body.assignments !== 'object' || Array.isArray(body.assignments)) fail(400, 'City assignments must be an object.');
+        for (const [id, target] of Object.entries(body.assignments as Json)) {
+          if (!city || !db.pokemon.some(p => p.id === id && p.cityId === city.id)) fail(400, 'Only residents of this city can be assigned to its skills and actions.');
+          if (target !== null && !validTarget(target, tags)) fail(400, 'Choose a city skill or one of the city\'s actions.');
+          if (target === null) delete assignments[id];
+          else assignments[id] = target;
+        }
+      }
+      if ('assignments' in body || 'tags' in body) {
+        fields.assignments = Object.fromEntries(Object.entries(assignments).filter(([, target]) => validTarget(target, tags)));
       }
       return fields;
     }
@@ -353,6 +392,21 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (update.cityId) update.trainerId = null;
       if (update.trainerId) update.cityId = null;
       return update;
+    }
+
+    function checkCapacity(cityId: string) {
+      const city = db.cities.find(record => record.id === cityId)!;
+      const limit = residentLimit(city.rank);
+      if (db.pokemon.filter(p => p.cityId === cityId).length >= limit) fail(409, `${city.name} is full: its rank allows ${limit} residents. Raise the city rank or move a resident out first.`);
+    }
+
+    /** Clears the skill or action a resident worked on before it leaves its city. */
+    function leaveCity(p: Row) {
+      const city = p.cityId ? db.cities.find(record => record.id === p.cityId) : null;
+      if (!city?.assignments?.[p.id]) return;
+      const { [p.id]: _removed, ...rest } = city.assignments;
+      city.assignments = rest;
+      put('cities', city);
     }
 
     function generate(name: string, body: Json, isEncounter = false) {
@@ -483,13 +537,14 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       let record: Row = { ...body, id: body.id ?? body._id ?? crypto.randomUUID(), userId: owner };
       if (name === 'pokemon') {
         checkPokemonReferences(body);
-        record = newPokemon({ ...record, ...assignment(body) });
+        const destination = assignment(body);
+        if (destination.cityId) checkCapacity(destination.cityId);
+        record = newPokemon({ ...record, ...destination });
       }
       if (name === 'cities') {
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
-        record = { id: crypto.randomUUID(), userId: owner,
-          skills: Object.fromEntries(CITY_SKILLS.map(key => [key, 0])), tags: [], ...fields };
+        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
       }
@@ -514,7 +569,9 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const update = { ...body };
       delete update.id; delete update.userId;
       if (name === 'cities') {
-        Object.assign(record, cityFields(body));
+        Object.assign(record, cityFields(body, record));
+        delete record.skills;
+        delete record.tagValues;
         put(name, record);
         return reply(hydrate(name, record));
       }
@@ -529,6 +586,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (record.cityId && destination.cityId === null && !destination.trainerId && body.takeOwnership !== true) {
           fail(400, 'Move this resident to another city, a trainer, or explicitly take it into My Pokemon.');
         }
+        if (destination.cityId && destination.cityId !== record.cityId) checkCapacity(destination.cityId);
+        if ('cityId' in destination && destination.cityId !== record.cityId) leaveCity(record);
         Object.assign(update, destination);
         delete update.takeOwnership;
       }
@@ -540,7 +599,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
             const trainerId = body.pokemonIds.includes(p.id) ? record.id : p.trainerId === record.id ? null : p.trainerId;
             if (trainerId !== p.trainerId || (trainerId === record.id && p.cityId)) {
               p.trainerId = trainerId;
-              if (trainerId === record.id) p.cityId = null;
+              if (trainerId === record.id && p.cityId) {
+                leaveCity(p);
+                p.cityId = null;
+              }
               put('pokemon', p);
             }
           }
