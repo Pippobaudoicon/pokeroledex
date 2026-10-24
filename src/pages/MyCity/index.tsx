@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown, FlaskConical, Plus } from "lucide-react";
+import { Building2, ChevronDown, FlaskConical, Plus, Tag } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CITY_SKILLS, RANKS, type Campaign, type City, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
-import { cityRankGroups } from "../../../shared/cities";
+import { CITY_SKILLS, RANKS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
+import { cityLimits, cityRankGroups, cityValues } from "../../../shared/cities";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { button } from "@/components/kit/button";
 import { PageHeader } from "@/components/kit/PageHeader";
@@ -19,6 +19,7 @@ import { cn, formatEnumName } from "@/lib/utils";
 
 const field = "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9";
 const panel = "rounded-2xl bg-surface p-4 shadow-card";
+const skillLabel = (skill: CitySkill) => formatEnumName(skill);
 // Science has no matching work icon, so it falls back to a flask.
 const SkillIcon = ({ skill }: { skill: CitySkill }) =>
   skill === "science"
@@ -183,26 +184,27 @@ const CitySettings = ({ city, residentCount }: { city: City; residentCount: numb
     }}>
       <h2 className="text-title-3 font-semibold">City settings</h2>
       <label className="flex flex-col gap-2">City name<input required maxLength={100} className={field} value={name} onChange={event => setName(event.target.value)} /></label>
-      <p className="text-subhead text-label-2">Set city-wide skills manually from 0 to 10. These are not automatically calculated from residents.</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {CITY_SKILLS.map(skill => <label key={skill} className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2"><SkillIcon skill={skill} />{formatEnumName(skill)}</span>
-          <input aria-label={`City ${skill}`} type="number" required min={0} max={10} step={1} className={`${field} max-w-20`} value={skills[skill]}
-            onChange={event => setSkills({ ...skills, [skill]: event.target.valueAsNumber })} />
-        </label>)}
-      </div>
+      <label className="flex flex-col gap-2">City rank
+        <select className={field} value={rank} onChange={event => setRank(event.target.value as Rank)}>
+          {RANKS.map(option => {
+            const limits = cityLimits(option);
+            return <option key={option} value={option} disabled={limits.residents < residentCount}>
+              {formatEnumName(option)} · up to {limits.residents} residents, skills up to {limits.skill}
+            </option>;
+          })}
+        </select>
+      </label>
+      <p className="text-footnote text-label-2">Ranks that cannot hold the current {residentCount} residents are unavailable.</p>
       <div className="space-y-3">
-        <h3 className="font-semibold">Custom action tags</h3>
-        <p className="text-footnote text-label-2">Describe capabilities such as Can heal or Can produce food.</p>
-        <div className="space-y-2">{tags.map(entry => <div key={entry.name} className="flex items-center gap-2">
-          <span className="flex-1">{entry.name}</span>
-          <input aria-label={`Value for ${entry.name}`} type="number" required min={0} max={999} step={1} className={`${field} max-w-24`} value={Number.isNaN(entry.value) ? "" : entry.value}
-            onChange={event => setTags(tags.map(tag => tag === entry ? { ...tag, value: event.target.valueAsNumber } : tag))} />
-          <button type="button" aria-label={`Remove tag ${entry.name}`} className={button({ variant: "tinted", size: "sm" })} onClick={() => setTags(tags.filter(tag => tag !== entry))}>Remove ×</button>
+        <h3 className="font-semibold">Custom actions</h3>
+        <p className="text-footnote text-label-2">Describe capabilities such as Can heal or Can produce food, then assign residents to them like skills. Removing an action unassigns its residents.</p>
+        <div className="space-y-2">{tags.map(value => <div key={value} className="flex items-center gap-2">
+          <span className="flex-1">{value}</span>
+          <button type="button" aria-label={`Remove action ${value}`} className={button({ variant: "tinted", size: "sm" })} onClick={() => setTags(tags.filter(tag => tag !== value))}>Remove ×</button>
         </div>)}</div>
         <div className="flex gap-2">
-          <input aria-label="New action tag" maxLength={80} className={field} value={tag} onChange={event => setTag(event.target.value)} placeholder="Can heal" />
-          <button type="button" disabled={!tag.trim() || tags.length >= 50} className={button({ variant: "gray" })} onClick={() => { if (!tags.some(entry => entry.name === tag.trim())) setTags([...tags, { name: tag.trim(), value: 0 }]); setTag(""); }}>Add tag</button>
+          <input aria-label="New action" maxLength={80} className={field} value={tag} onChange={event => setTag(event.target.value)} placeholder="Can heal" />
+          <button type="button" disabled={!tag.trim() || tags.length >= 50} className={button({ variant: "gray" })} onClick={() => { setTags([...new Set([...tags, tag.trim()])]); setTag(""); }}>Add action</button>
         </div>
       </div>
       <button disabled={change.isPending || !name.trim()} className={button({ variant: "filled" })}>Save city</button>
@@ -484,10 +486,10 @@ export const MyCityPage = () => {
               <p className="mt-1 mb-4 text-footnote text-label-2">Expand or collapse a rank to see all types. Each filled pip is one Pokémon; dual-type Pokémon count under both types.</p>
               <CityTypeOverview key={city.id} residents={residents} />
             </section>
-            <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities</h2>
-              <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{formatEnumName(skill)} {city.skills[skill]}</span>)}</div>
-              {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No city skills set yet.</p>}
-              <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag.name} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag.name}: {tag.value}</span>)}</div>
+            <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities <span className="text-footnote font-normal text-label-2">(max {city.limits.skill})</span></h2>
+              <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{skillLabel(skill)} {city.skills[skill]}</span>)}</div>
+              {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No residents are working on city skills yet. Assign them in Skills & actions.</p>}
+              <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}: {city.tagValues[tag] ?? 0}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
           </> : tab === "settings" ? <>

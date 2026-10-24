@@ -559,3 +559,17 @@ test('the city work skills migration carries over matching skills and turns tags
     assert.deepEqual(data[2], { id: 't1', skills: { crafts: 2 } });
   } finally { db.close(); }
 });
+
+test('the city string tags migration turns name and value tags back into action names', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    migrate(db, 1, 3);
+    const insert = db.prepare('INSERT INTO records (owner, collection, id, data) VALUES (?, ?, ?, ?)');
+    insert.run('city:c1', 'cities', 'c1', JSON.stringify({ id: 'c1', name: 'Pallet', tags: ['Can heal', 'Can produce food'] }));
+    insert.run('city:c2', 'cities', 'c2', JSON.stringify({ id: 'c2', name: 'Viridian' }));
+    migrate(db, 4, 5);
+    const data = db.prepare('SELECT data FROM records ORDER BY seq').all().map(row => JSON.parse(row.data));
+    assert.deepEqual(data[0].tags, ['Can heal', 'Can produce food']);
+    assert.deepEqual(data[1].tags, []);
+  } finally { db.close(); }
+});

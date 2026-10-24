@@ -360,10 +360,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         fields.rank = body.rank;
       }
       if ('tags' in body) {
-        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: Json) => typeof tag?.name !== 'string' || !tag.name.trim() || tag.name.trim().length > 80
-          || !Number.isInteger(tag.value) || tag.value < 0 || tag.value > 999)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters with a whole-number value from 0 to 999.');
-        const tags: Json[] = body.tags.map((tag: Json) => ({ name: tag.name.trim(), value: tag.value }));
-        fields.tags = tags.filter((tag, index) => tags.findIndex(other => other.name === tag.name) === index);
+        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 80)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters.');
+        fields.tags = [...new Set(body.tags.map((tag: string) => tag.trim()))];
       }
       const tags = (fields.tags ?? city?.tags ?? []) as string[];
       const assignments: Json = { ...city?.assignments };

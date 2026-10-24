@@ -105,7 +105,9 @@ the sum of its residents' bonuses, capped by the city rank:
 
 Mega Evolutions and alternate forms (Rotom Wash, Aegislash Blade) use their base
 form's bonus. Values are calculated from the residents, so they cannot be set
-by hand; values saved by hand before this change are ignored. Removing an action
+by hand; values saved by hand before this change are ignored, and migration
+`0005_city_string_tags.sql` turns the `{ name, value }` actions from
+`0004_city_work_skills.sql` back into plain action names. Removing an action
 or moving a resident out of the city unassigns it. City settings below the board
 edit the name, rank and custom actions; save them explicitly.
 

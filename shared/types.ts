@@ -33,7 +33,7 @@ export interface City {
   assignments: Record<string, CityAssignment>;
   /** What each current resident adds to the skill or action it works on, keyed by Pokemon ID. */
   bonuses: Record<string, number>;
-  /** Emails of everyone who shares the city, the creator first. */
+  /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
 }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
