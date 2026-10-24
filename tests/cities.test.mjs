@@ -3,14 +3,34 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { handleApi } from '../worker/api.ts';
-import { cityRankGroups, cityTypeCounts } from '../shared/cities.ts';
-import { POKEMON_TYPES } from '../shared/types.ts';
+import { cityLimits, cityRankGroups, cityTypeCounts, residentBonus } from '../shared/cities.ts';
+import { CITY_SKILLS, POKEMON_TYPES } from '../shared/types.ts';
 
 const species = {
   id: 'charmander', name: 'Charmander', types: ['FIRE', 'FLYING'], baseHp: 3,
   baseStats: { vitality: 1, insight: 1 }, possibleMoves: [],
   abilityOneId: null, abilityTwoId: null, hiddenAbilityId: null, eventAbilityId: null,
 };
+
+// A small Pokedex: a three-stage line with a Mega and a branch, a two-stage line,
+// a species that never evolves with an alternate form, a legendary, and a broken link.
+// Every harness serves it because the Worker caches reference data per isolate.
+const evo = (type, targetId, kind = 'LEVEL') => ({ type, targetId, kind });
+const dex = [
+  { id: 'ralts', evolutions: [evo('TO', 'kirlia')] },
+  { id: 'kirlia', evolutions: [evo('FROM', 'ralts'), evo('TO', 'gardevoir'), evo('TO', 'gallade', 'STONE')] },
+  { id: 'gardevoir', evolutions: [evo('FROM', 'kirlia'), evo('TO', 'gardevoir-mega', 'MEGA')] },
+  { id: 'gallade', evolutions: [evo('FROM', 'kirlia', 'STONE')] },
+  { id: 'gardevoir-mega', evolutions: [evo('FROM', 'gardevoir', 'MEGA')] },
+  { id: 'magikarp', evolutions: [evo('TO', 'gyarados')] },
+  { id: 'gyarados', evolutions: [evo('FROM', 'magikarp')] },
+  { id: 'rotom', evolutions: [evo('TO', 'rotom-wash', 'FORM')] },
+  { id: 'rotom-wash', evolutions: [evo('FROM', 'rotom', 'FORM')] },
+  { id: 'tauros', evolutions: [] },
+  { id: 'mewtwo', legendary: true, evolutions: [evo('TO', 'mewtwo-mega', 'MEGA')] },
+  { id: 'mewtwo-mega', evolutions: [evo('FROM', 'mewtwo', 'MEGA')] },
+  { id: 'silvally', evolutions: [evo('FROM', 'missing-type-null')] },
+].map(entry => ({ ...species, name: entry.id, types: ['NORMAL'], legendary: false, ...entry }));
 
 const migrationsDir = new URL('../migrations/', import.meta.url);
 function migrate(db, from = 1, until = Infinity) {
@@ -47,11 +67,12 @@ function harness() {
     ASSETS: {
       async fetch(url) {
         const name = String(url).split('/').pop();
-        return Response.json(name === 'pokemon-templates.json' ? [species] : name === 'rankup-attributes.json' ? {} : []);
+        return Response.json(name === 'pokemon-templates.json' ? [species, ...dex] : name === 'rankup-attributes.json' ? {} : []);
       },
     },
   };
   return {
+    db,
     close: () => db.close(),
     async request(path, method = 'GET', body = undefined, owner = 'alice') {
       const url = new URL(`https://local.test/api/${path}`);
@@ -125,26 +146,31 @@ test('rank overview includes all 18 types, zeroes and uncapped counts in rank or
   assert.deepEqual(cityRankGroups([]), []);
 });
 
-test('city CRUD persists separate cities, skills and tags, and protects ownership', async () => {
+test('city CRUD persists separate cities, rank and tags, and protects ownership', async () => {
   const h = harness();
   try {
     const first = await h.request('cities', 'POST', { name: '  Pallet Town  ' });
     assert.equal(first.status, 201);
     assert.equal(first.body.name, 'Pallet Town');
-    assert.equal(first.body.skills.science, 0);
+    assert.equal(first.body.rank, 'UNRANKED');
+    assert.deepEqual(first.body.limits, { residents: 7, skill: 6 });
+    assert.deepEqual(first.body.skills, Object.fromEntries(CITY_SKILLS.map(skill => [skill, 0])));
+    assert.deepEqual(first.body.assignments, {});
     const second = await h.request('cities', 'POST', { name: 'Viridian City' });
     assert.notEqual(first.body.id, second.body.id);
     const path = `cities/${first.body.id}`;
     const updated = await h.request(path, 'PATCH', {
-      name: 'New Pallet', skills: { science: 10, mining: 2, planting: 3 },
+      name: 'New Pallet', rank: 'ADVANCED', skills: { science: 10 }, tagValues: { 'Can heal': 9 },
       tags: [' Can heal ', 'Can heal', 'Can produce food'], userId: 'mallory', id: 'changed',
     });
     assert.equal(updated.status, 200);
     assert.equal(updated.body.id, first.body.id);
     assert.equal(updated.body.userId, 'alice');
-    assert.equal(updated.body.skills.science, 10);
-    assert.equal(updated.body.skills.planting, 3);
+    assert.equal(updated.body.rank, 'ADVANCED');
+    assert.deepEqual(updated.body.limits, { residents: 19, skill: 10 });
+    assert.equal(updated.body.skills.science, 0, 'skills are derived from residents, not set manually');
     assert.deepEqual(updated.body.tags, ['Can heal', 'Can produce food']);
+    assert.deepEqual(updated.body.tagValues, { 'Can heal': 0, 'Can produce food': 0 });
     assert.equal((await h.request(path)).body.name, 'New Pallet');
     assert.equal((await h.request('cities')).body.length, 2);
     assert.deepEqual((await h.request('cities', 'GET', undefined, 'bob')).body, []);
@@ -154,18 +180,109 @@ test('city CRUD persists separate cities, skills and tags, and protects ownershi
   } finally { h.close(); }
 });
 
-test('city validation rejects malformed names, skill ratings, tags and request bodies', async () => {
+test('city validation rejects malformed names, ranks, assignments, tags and request bodies', async () => {
   const h = harness();
   try {
     for (const body of [
       null, [], { name: '' }, { name: ' ' }, { name: 'a'.repeat(101) },
-      { name: 'Test', skills: null }, { name: 'Test', skills: [] },
-      ...[-1, 11, 1.5, '3'].map(science => ({ name: 'Test', skills: { science } })),
-      { name: 'Test', skills: { nonexistent: 2 } },
+      ...['', 'GOD', null, 3].map(rank => ({ name: 'Test', rank })),
+      { name: 'Test', assignments: null }, { name: 'Test', assignments: [] }, { name: 'Test', assignments: { someone: 'skill:mining' } },
       { name: 'Test', tags: [3] }, { name: 'Test', tags: [' '] },
       { name: 'Test', tags: ['a'.repeat(81)] }, { name: 'Test', tags: Array(51).fill('heal') },
     ]) assert.equal((await h.request('cities', 'POST', body)).status, 400, JSON.stringify(body));
     assert.deepEqual((await h.request('cities')).body, []);
+  } finally { h.close(); }
+});
+
+test('city limits grow with rank: 4 + 3 x level residents and 5 + level skill', () => {
+  assert.deepEqual(['UNRANKED', 'STARTER', 'ROOKIE', 'STANDARD', 'ADVANCED', 'CHAMPION'].map(rank => [rank, cityLimits(rank)]), [
+    ['UNRANKED', { residents: 7, skill: 6 }], ['STARTER', { residents: 10, skill: 7 }], ['ROOKIE', { residents: 13, skill: 8 }],
+    ['STANDARD', { residents: 16, skill: 9 }], ['ADVANCED', { residents: 19, skill: 10 }], ['CHAMPION', { residents: 31, skill: 14 }],
+  ]);
+});
+
+test('resident bonus follows evolution stage, never-evolving species and legendaries', () => {
+  const byId = new Map(dex.map(entry => [entry.id, entry]));
+  const bonus = id => residentBonus(byId.get(id), target => byId.get(target) ?? null);
+  assert.deepEqual(Object.fromEntries(dex.map(entry => [entry.id, bonus(entry.id)])), {
+    ralts: 1, kirlia: 2, gardevoir: 3, gallade: 3, 'gardevoir-mega': 3,
+    magikarp: 1, gyarados: 2,
+    rotom: 2, 'rotom-wash': 2, tauros: 2,
+    mewtwo: 5, 'mewtwo-mega': 5,
+    silvally: 2,
+  });
+});
+
+test('skills and actions are the capped sum of assigned residents and follow them', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet', tags: ['Can heal'] })).body;
+    const path = `cities/${city.id}`;
+    const add = async id => (await h.request('pokemon', 'POST', { pokemonTemplateId: id, cityId: city.id })).body.id;
+    const ralts = await add('ralts');
+    const gardevoir = await add('gardevoir');
+    const tauros = await add('tauros');
+    const mewtwo = await add('mewtwo');
+    const assign = (assignments, owner) => h.request(path, 'PATCH', { assignments }, owner);
+
+    let result = await assign({ [ralts]: 'skill:mining', [gardevoir]: 'skill:mining', [tauros]: 'tag:Can heal' });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.bonuses, { [ralts]: 1, [gardevoir]: 3, [tauros]: 2, [mewtwo]: 5 });
+    assert.equal(result.body.skills.mining, 4);
+    assert.equal(result.body.tagValues['Can heal'], 2);
+    assert.equal(result.body.assignments[mewtwo], undefined);
+
+    // Assignments merge, so one member's change keeps the others; null unassigns.
+    result = await assign({ [mewtwo]: 'skill:mining', [ralts]: null });
+    assert.equal(result.body.skills.mining, 6, 'Unranked caps the 8 from Gardevoir and Mewtwo at 6');
+    assert.equal(result.body.tagValues['Can heal'], 2);
+    assert.deepEqual(Object.keys(result.body.assignments).sort(), [gardevoir, mewtwo, tauros].sort());
+    assert.equal((await h.request(path, 'PATCH', { rank: 'ADVANCED' })).body.skills.mining, 8);
+
+    for (const assignments of [{ [ralts]: 'skill:cooking' }, { [ralts]: 'tag:Can fly' }, { [ralts]: 'mining' }, { [ralts]: 3 }]) {
+      assert.equal((await assign(assignments)).status, 400, JSON.stringify(assignments));
+    }
+    const outsider = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'tauros' })).body.id;
+    assert.equal((await assign({ [outsider]: 'skill:farming' })).status, 400);
+
+    // Removing an action unassigns its residents; leaving the city clears the assignment.
+    result = await h.request(path, 'PATCH', { tags: [] });
+    assert.equal(result.body.assignments[tauros], undefined);
+    assert.deepEqual(result.body.tagValues, {});
+    assert.equal((await h.request('pokemon', 'PATCH', { id: mewtwo, takeOwnership: true })).status, 200);
+    assert.equal((await h.request(path)).body.skills.mining, 3);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: mewtwo, cityId: city.id })).status, 200);
+    assert.equal((await h.request(path)).body.assignments[mewtwo], undefined, 'a returning resident starts unassigned');
+  } finally { h.close(); }
+});
+
+test('a city holds at most its rank\'s residents and cannot drop below its population', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    for (let i = 0; i < 7; i++) assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id })).status, 201);
+    assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id })).status, 409);
+    const personal = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id })).body.id;
+    assert.equal((await h.request('pokemon', 'PATCH', { id: personal, cityId: city.id })).status, 409);
+    assert.equal((await h.request('pokemon', 'GET')).body.length, 1, 'the rejected Pokemon stays personal');
+    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER' })).status, 200);
+    assert.equal((await h.request('pokemon', 'PATCH', { id: personal, cityId: city.id })).status, 200);
+    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { rank: 'UNRANKED' })).status, 409);
+    assert.equal((await h.request(`cities/${city.id}`)).body.rank, 'STARTER');
+  } finally { h.close(); }
+});
+
+test('a legacy city above its cap can still save name and actions without changing rank', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet', rank: 'STARTER' })).body;
+    for (let i = 0; i < 8; i++) assert.equal((await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id })).status, 201);
+    h.db.prepare("UPDATE records SET data = json_remove(data, '$.rank') WHERE collection = 'cities' AND id = ?").run(city.id);
+    assert.equal((await h.request(`cities/${city.id}`)).body.rank, 'UNRANKED');
+    const saved = await h.request(`cities/${city.id}`, 'PATCH', { name: 'Viridian', rank: 'UNRANKED', tags: ['Can heal'] });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.name, 'Viridian');
+    assert.deepEqual(saved.body.tags, ['Can heal']);
   } finally { h.close(); }
 });
 
@@ -311,8 +428,8 @@ test('invited members see, edit, add and take residents like the creator', async
 
     assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, stats: { brawl: 3 } }, bob)).status, 200);
     assert.equal((await h.request(`pokemon/${resident.id}`)).body.stats.brawl, 3);
-    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { skills: { science: 4 } }, bob)).body.skills.science, 4);
-    assert.equal((await h.request(`cities/${city.id}`)).body.skills.science, 4);
+    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [resident.id]: 'skill:science' } }, bob)).body.skills.science, 2);
+    assert.equal((await h.request(`cities/${city.id}`)).body.skills.science, 2);
 
     const bobs = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id }, bob)).body;
     assert.equal((await h.request('pokemon', 'PATCH', { id: bobs.id, cityId: city.id }, bob)).status, 200);

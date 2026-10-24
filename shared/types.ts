@@ -13,21 +13,33 @@ export type Social = typeof SOCIALS[number];
 export type Skill = typeof SKILLS[number];
 export type TrainerSkill = typeof TRAINER_SKILLS[number];
 export const CITY_SKILLS = ['generating_electricity', 'mining', 'handiwork', 'medicine_production', 'transporting', 'farming', 'planting', 'science'] as const;
-export const CITY_SKILL_MAX = 10;
 export type CitySkill = typeof CITY_SKILLS[number];
 export type CitySkills = Record<CitySkill, number>;
+/** Where a resident works: `skill:<city skill>` or `tag:<action tag text>`. */
+export type CityAssignment = `skill:${CitySkill}` | `tag:${string}`;
 export interface City {
   id: string;
   userId: string;
   name: string;
+  rank: Rank;
+  /** Resident and skill caps for the city's rank (shared/cities.ts). */
+  limits: { residents: number; skill: number };
+  /** Sum of assigned residents' bonuses, capped at `limits.skill`. */
   skills: CitySkills;
   tags: string[];
-  /** Numeric value per action tag, keyed by tag text. */
+  /** Same as `skills`, per action tag, keyed by tag text. */
   tagValues: Record<string, number>;
+  /** Current residents' work, keyed by Pokemon ID. Unassigned residents are absent. */
+  assignments: Record<string, CityAssignment>;
+  /** What each current resident adds to the skill or action it works on, keyed by Pokemon ID. */
+  bonuses: Record<string, number>;
   /** Emails of everyone who shares the city, the creator first. */
   members: string[];
 }
-export type CityBody = Pick<City, 'name' | 'skills' | 'tags' | 'tagValues'>;
+export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
+  /** Merged into the stored assignments; `null` unassigns a resident. */
+  assignments?: Record<string, CityAssignment | null>;
+};
 export type StatKey = Attribute | Social | Skill | TrainerSkill | 'happiness' | 'loyalty' | 'will';
 export type Stats = Record<StatKey, number>;
 export type AttributeStats = Record<Attribute, number>;

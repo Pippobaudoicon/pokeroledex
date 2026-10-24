@@ -80,11 +80,34 @@ transfers: another city, a trainer, or **Assign to me (My Pokémon)**.
 Residents cannot simply be removed or deleted, and a city must be empty before
 it can be deleted.
 
-**Skills & actions** edits the city's name, city skills (Generating Electricity, Mining, Handiwork, Medicine Production, Transporting, Farming, Planting, Science; whole
-numbers from 0 to 10), and up to 50 custom action tags such as "Can heal" or
-"Can produce food". Save explicitly; skills are manual city ratings, not
-automatically derived from residents. Crafting suggestions and dual-type weighting
-are not part of this version.
+Every city has a rank, like trainers and Pokémon (new and older cities start
+Unranked). With the rank level counted from 1 (Unranked) to 9 (Champion), a city
+holds at most **4 + 3 × level** residents (Unranked 7, Starter 10, Rookie 13,
+Standard 16…) and every skill or action shows at most **5 + level** (Unranked 6,
+Starter 7 … Advanced 10). Adding or moving a Pokémon into a full city fails, and
+a city cannot drop to a rank that is too small for its current residents.
+
+**Skills & actions** lets you put residents to work: drag a resident from
+**Unassigned** onto a city skill (Generating Electricity, Mining, Handiwork,
+Medicine Production, Transporting, Farming, Planting, Science) or a custom action
+such as "Can heal". Dragging works with a mouse or touch and scrolls near the
+screen edges. You can also tap or press Enter on a resident, then on its
+destination. Escape cancels. Each resident works on one skill or action at a time. A skill's value is
+the sum of its residents' bonuses, capped by the city rank:
+
+| Resident | Bonus |
+| --- | --- |
+| First evolution stage (Charmander, Pichu, Eevee) | +1 |
+| Second stage (Charmeleon, Pikachu, Vaporeon) | +2 |
+| Third stage (Charizard, Raichu, Gardevoir) | +3 |
+| Species that never evolve (Tauros, Rotom) | +2 |
+| Legendary | +5 |
+
+Mega Evolutions and alternate forms (Rotom Wash, Aegislash Blade) use their base
+form's bonus. Values are calculated from the residents, so they cannot be set
+by hand; values saved by hand before this change are ignored. Removing an action
+or moving a resident out of the city unassigns it. City settings below the board
+edit the name, rank and custom actions; save them explicitly.
 
 ### Sharing a city
 
@@ -109,8 +132,12 @@ Cities and their residents are stored in D1 under the owner `city:<city id>`, an
 a Pokémon into or out of a city moves its record between that city and the
 person's own records. `/api/cities` supports GET/POST, `/api/cities/:id` supports
 GET/PATCH/DELETE (leave when shared), and `POST /api/cities/:id/members` with
-`{ email }` invites a member. Assignment changes use the existing Pokémon PATCH
-endpoint and validate destinations among the person's trainers and cities.
+`{ email }` invites a member. City PATCH accepts `name`, `rank`, `tags` and
+`assignments` (`{ "<pokemon id>": "skill:mining" | "tag:Can heal" | null }`,
+merged into the stored assignments so members' changes don't overwrite each
+other); the response adds the derived `limits`, `skills`, `tagValues` and each
+resident's `bonuses`. Moving a Pokémon to a city or trainer uses the existing Pokémon PATCH
+endpoint and validates destinations among the person's trainers and cities.
 `GET /api/pokemon` and `/api/pokemon/minimal` list only personal Pokémon;
 `GET /api/pokemon/all` includes city residents for city management.
 Taking ownership explicitly uses `{ id, takeOwnership: true }` on Pokémon PATCH.

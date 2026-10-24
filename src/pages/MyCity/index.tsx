@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown, FlaskConical, Plus } from "lucide-react";
+import { Building2, ChevronDown, FlaskConical, Plus, Tag } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CITY_SKILLS, RANKS, type Campaign, type City, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
-import { cityRankGroups } from "../../../shared/cities";
+import { CITY_SKILLS, RANKS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
+import { cityLimits, cityRankGroups, cityValues } from "../../../shared/cities";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { button } from "@/components/kit/button";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Picker } from "@/components/kit/Picker";
-import { RankBall, TypePill } from "@/components/kit/Pills";
+import { RankBadge, RankBall, TypePill } from "@/components/kit/Pills";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
@@ -51,14 +51,39 @@ function useCityChange() {
       await Promise.all(["cities", "pokemon", "trainers"].map(key => client.invalidateQueries({ queryKey: [key], refetchType: "all" })));
       toast({ title: "City changes saved" });
     },
-    onError: (error: ApiFetchError) => {
-      const detail = error.stack;
-      toast({
-        title: "City changes could not be saved",
-        description: detail && typeof detail === "object" && "payload" in detail && typeof detail.payload === "string"
-          ? detail.payload : "Check your connection and try again.",
-      });
+    onError: (error: ApiFetchError) => toast({ title: "City changes could not be saved", description: errorText(error) }),
+  });
+}
+
+const errorText = (error: ApiFetchError) => {
+  const detail = error.stack;
+  return detail && typeof detail === "object" && "payload" in detail && typeof detail.payload === "string"
+    ? detail.payload : "Check your connection and try again.";
+};
+
+/** Moves one resident to a skill, an action or back to unassigned, updating the page before the server answers. */
+function useCityWork(city: City) {
+  const client = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ pokemonId, target }: { pokemonId: string; target: CityAssignment | null }) =>
+      apiFetch<City>({ url: `/cities/${encodeURIComponent(city.id)}`, method: "patch", body: { assignments: { [pokemonId]: target } } satisfies CityBody }),
+    onMutate: async ({ pokemonId, target }) => {
+      await client.cancelQueries({ queryKey: ["cities"] });
+      const previous = client.getQueryData<City[]>(["cities"]);
+      client.setQueryData<City[]>(["cities"], cities => cities?.map(entry => {
+        if (entry.id !== city.id) return entry;
+        const { [pokemonId]: _old, ...assignments } = entry.assignments;
+        if (target) assignments[pokemonId] = target;
+        return { ...entry, assignments, ...cityValues(entry.rank, entry.tags, assignments, entry.bonuses) };
+      }));
+      return { previous };
     },
+    onError: (error: ApiFetchError, _change, context) => {
+      if (context?.previous) client.setQueryData(["cities"], context.previous);
+      toast({ title: "The assignment could not be saved", description: errorText(error) });
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: ["cities"] }),
   });
 }
 
@@ -105,8 +130,9 @@ const AddPokemon = ({ city, pokemon, cities }: { city: City; pokemon: Pokemon[];
   });
   const candidates = pokemon.filter(entry => entry.cityId !== city.id);
   const failed = campaigns.isError || templates.isError;
+  const full = pokemon.filter(entry => entry.cityId === city.id).length >= city.limits.residents;
   return <>
-    <button type="button" onClick={() => setOpen(true)} className={button({ variant: "filled" })}><Plus aria-hidden className="size-4" />Add Pokémon</button>
+    <button type="button" onClick={() => setOpen(true)} disabled={full} title={full ? `${city.name} is full for its rank` : undefined} className={button({ variant: "filled" })}><Plus aria-hidden className="size-4" />Add Pokémon</button>
     <Sheet open={open} onOpenChange={setOpen} title={`Add to ${city.name}`} initialExpanded>
       <form className="space-y-4 p-4" onSubmit={event => {
         event.preventDefault();
@@ -144,39 +170,39 @@ const AddPokemon = ({ city, pokemon, cities }: { city: City; pokemon: Pokemon[];
 
 const CitySettings = ({ city, residentCount }: { city: City; residentCount: number }) => {
   const [name, setName] = React.useState(city.name);
-  const [skills, setSkills] = React.useState(city.skills);
+  const [rank, setRank] = React.useState(city.rank);
   const [tags, setTags] = React.useState(city.tags);
-  const [tagValues, setTagValues] = React.useState(city.tagValues);
   const [tag, setTag] = React.useState("");
   const change = useCityChange();
   const navigate = useNavigate();
   return <div className="space-y-5">
     <form className={`${panel} space-y-5`} onSubmit={event => {
       event.preventDefault();
-      change.mutate({ kind: "settings", id: city.id, body: { name, skills, tags, tagValues } });
+      change.mutate({ kind: "settings", id: city.id, body: { name, rank, tags } });
     }}>
-      <h2 className="text-title-3 font-semibold">City skills and actions</h2>
+      <h2 className="text-title-3 font-semibold">City settings</h2>
       <label className="flex flex-col gap-2">City name<input required maxLength={100} className={field} value={name} onChange={event => setName(event.target.value)} /></label>
-      <p className="text-subhead text-label-2">Set city-wide skills manually from 0 to 10. These are not automatically calculated from residents.</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {CITY_SKILLS.map(skill => <label key={skill} className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-2"><SkillIcon skill={skill} />{skillLabel(skill)}</span>
-          <input aria-label={`City ${skill}`} type="number" required min={0} max={10} step={1} className={`${field} max-w-20`} value={skills[skill]}
-            onChange={event => setSkills({ ...skills, [skill]: event.target.valueAsNumber })} />
-        </label>)}
-      </div>
+      <label className="flex flex-col gap-2">City rank
+        <select className={field} value={rank} onChange={event => setRank(event.target.value as Rank)}>
+          {RANKS.map(option => {
+            const limits = cityLimits(option);
+            return <option key={option} value={option} disabled={limits.residents < residentCount}>
+              {formatEnumName(option)} · up to {limits.residents} residents, skills up to {limits.skill}
+            </option>;
+          })}
+        </select>
+      </label>
+      <p className="text-footnote text-label-2">Ranks that cannot hold the current {residentCount} residents are unavailable.</p>
       <div className="space-y-3">
-        <h3 className="font-semibold">Custom action tags</h3>
-        <p className="text-footnote text-label-2">Describe capabilities such as Can heal or Can produce food.</p>
+        <h3 className="font-semibold">Custom actions</h3>
+        <p className="text-footnote text-label-2">Describe capabilities such as Can heal or Can produce food, then assign residents to them like skills. Removing an action unassigns its residents.</p>
         <div className="space-y-2">{tags.map(value => <div key={value} className="flex items-center gap-2">
           <span className="flex-1">{value}</span>
-          <input aria-label={`Value for ${value}`} type="number" min={0} max={999} step={1} className={`${field} max-w-24`} value={Number.isNaN(tagValues[value]) ? "" : tagValues[value] ?? 0}
-            onChange={event => setTagValues({ ...tagValues, [value]: event.target.valueAsNumber })} />
-          <button type="button" aria-label={`Remove tag ${value}`} className={button({ variant: "tinted", size: "sm" })} onClick={() => setTags(tags.filter(tag => tag !== value))}>Remove ×</button>
+          <button type="button" aria-label={`Remove action ${value}`} className={button({ variant: "tinted", size: "sm" })} onClick={() => setTags(tags.filter(tag => tag !== value))}>Remove ×</button>
         </div>)}</div>
         <div className="flex gap-2">
-          <input aria-label="New action tag" maxLength={80} className={field} value={tag} onChange={event => setTag(event.target.value)} placeholder="Can heal" />
-          <button type="button" disabled={!tag.trim() || tags.length >= 50} className={button({ variant: "gray" })} onClick={() => { setTags([...new Set([...tags, tag.trim()])]); setTag(""); }}>Add tag</button>
+          <input aria-label="New action" maxLength={80} className={field} value={tag} onChange={event => setTag(event.target.value)} placeholder="Can heal" />
+          <button type="button" disabled={!tag.trim() || tags.length >= 50} className={button({ variant: "gray" })} onClick={() => { setTags([...new Set([...tags, tag.trim()])]); setTag(""); }}>Add action</button>
         </div>
       </div>
       <button disabled={change.isPending || !name.trim()} className={button({ variant: "filled" })}>Save city</button>
@@ -217,7 +243,7 @@ const CityMembers = ({ city }: { city: City }) => {
   </section>;
 };
 
-const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; cities: City[]; trainers: Trainer[] }) => {
+const TransferPokemon = ({ pokemon, cities, trainers, allPokemon }: { pokemon: Pokemon; cities: City[]; trainers: Trainer[]; allPokemon: Pokemon[] }) => {
   const [destination, setDestination] = React.useState("");
   const change = useCityChange();
   return <form className="flex flex-wrap items-center gap-2" onSubmit={event => {
@@ -229,10 +255,155 @@ const TransferPokemon = ({ pokemon, cities, trainers }: { pokemon: Pokemon; citi
       <option value="">Choose destination</option>
       <option value="personal">Assign to me (My Pokémon)</option>
       {trainers.map(trainer => <option key={trainer.id} value={`trainer:${trainer.id}`}>Trainer: {trainer.name}</option>)}
-      {cities.filter(city => city.id !== pokemon.cityId).map(city => <option key={city.id} value={`city:${city.id}`}>City: {city.name}</option>)}
+      {cities.filter(city => city.id !== pokemon.cityId).map(city => {
+        const full = allPokemon.filter(entry => entry.cityId === city.id).length >= city.limits.residents;
+        return <option key={city.id} value={`city:${city.id}`} disabled={full}>City: {city.name}{full ? " (full)" : ""}</option>;
+      })}
     </select>
     <button disabled={!destination || change.isPending} className={button({ variant: "tinted", size: "sm" })}>Move</button>
   </form>;
+};
+
+type WorkTarget = CityAssignment | "unassigned";
+const targetLabel = (target: WorkTarget) =>
+  target === "unassigned" ? "Unassigned" : target.startsWith("skill:") ? skillLabel(target.slice(6) as CitySkill) : target.slice(4);
+
+/** Drag residents (or tap one, then a skill) to choose the skill or action each one works on. */
+const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }) => {
+  const work = useCityWork(city);
+  const [selected, setSelected] = React.useState<string | null>(null);
+  const [drag, setDrag] = React.useState<{ id: string; x: number; y: number; over: WorkTarget | null } | null>(null);
+  const press = React.useRef<{ id: string; x: number; y: number; dragged: boolean; clientY?: number } | null>(null);
+  const totals = new Map<WorkTarget, number>();
+  for (const [id, target] of Object.entries(city.assignments)) totals.set(target, (totals.get(target) ?? 0) + (city.bonuses[id] ?? 0));
+  const targets: WorkTarget[] = [...CITY_SKILLS.map(skill => `skill:${skill}` as const), ...city.tags.map(tag => `tag:${tag}` as const)];
+  const placed = (target: WorkTarget) => residents.filter(resident => (city.assignments[resident.id] ?? "unassigned") === target);
+  const name = (resident: Pokemon) => resident.nickname || resident.pokemonTemplate.name;
+
+  const move = (id: string, target: WorkTarget) => {
+    setSelected(null);
+    if ((city.assignments[id] ?? "unassigned") !== target) work.mutate({ pokemonId: id, target: target === "unassigned" ? null : target });
+  };
+  const targetAt = (x: number, y: number) =>
+    (document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-city-target]")?.dataset.cityTarget ?? null) as WorkTarget | null;
+
+  React.useEffect(() => {
+    if (!selected) return;
+    const cancel = (event: KeyboardEvent) => { if (event.key === "Escape") setSelected(null); };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [selected]);
+
+  // Scroll the page while a dragged resident is held near the top or bottom edge.
+  const dragging = !!drag;
+  React.useEffect(() => {
+    if (!dragging) return;
+    let frame = requestAnimationFrame(function step() {
+      const pointer = press.current;
+      if (pointer?.dragged && pointer.clientY !== undefined) {
+        const edge = 72;
+        const y = pointer.clientY;
+        const speed = y < edge ? -(edge - y) / 4 : y > window.innerHeight - edge ? (y - window.innerHeight + edge) / 4 : 0;
+        if (speed) {
+          window.scrollBy(0, speed);
+          setDrag(current => current && { ...current, over: targetAt(current.x, current.y) });
+        }
+      }
+      frame = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dragging]);
+
+  const chip = (resident: Pokemon) => {
+    const bonus = city.bonuses[resident.id] ?? 0;
+    const current = city.assignments[resident.id] ?? "unassigned";
+    return <button key={resident.id} type="button" draggable={false} aria-pressed={selected === resident.id}
+      aria-label={`${name(resident)}, +${bonus}, ${targetLabel(current)}. ${selected === resident.id ? "Selected: choose where it works." : "Select to move."}`}
+      className={cn("relative flex w-18 touch-none select-none flex-col items-center gap-0.5 rounded-xl bg-surface p-1 text-caption shadow-card outline-none focus-visible:outline-2 focus-visible:outline-focus cursor-grab",
+        selected === resident.id && "ring-2 ring-tint", drag?.id === resident.id && "opacity-40")}
+      onPointerDown={event => {
+        if (event.button !== 0) return;
+        window.getSelection()?.removeAllRanges();
+        // Capture at once so a fast flick that leaves the chip still drags it.
+        event.currentTarget.setPointerCapture(event.pointerId);
+        press.current = { id: resident.id, x: event.clientX, y: event.clientY, dragged: false };
+      }}
+      onDragStart={event => event.preventDefault()}
+      onPointerMove={event => {
+        const start = press.current;
+        if (!start || start.id !== resident.id) return;
+        if (!start.dragged && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 6) return;
+        if (!start.dragged) {
+          start.dragged = true;
+          setSelected(null);
+        }
+        start.clientY = event.clientY;
+        setDrag({ id: resident.id, x: event.clientX, y: event.clientY, over: targetAt(event.clientX, event.clientY) });
+      }}
+      onPointerUp={event => {
+        if (press.current?.dragged) {
+          const target = targetAt(event.clientX, event.clientY);
+          if (target) move(resident.id, target);
+        }
+        setDrag(null);
+      }}
+      onPointerCancel={() => { press.current = null; setDrag(null); }}
+      onClick={() => {
+        if (press.current?.dragged) { press.current = null; return; }
+        press.current = null;
+        setSelected(selected === resident.id ? null : resident.id);
+      }}>
+      <Sprite image={resident.pokemonTemplate.image} set="box" className="h-10 w-12 pointer-events-none" />
+      <span className="w-full truncate text-center">{name(resident)}</span>
+      <span className="absolute -top-1.5 -right-1.5 rounded-full bg-tint px-1.5 text-caption font-semibold text-on-tint tabular-nums">+{bonus}</span>
+    </button>;
+  };
+
+  const zone = (target: WorkTarget, header: React.ReactNode) => {
+    const members = placed(target);
+    return <div key={target} data-city-target={target}
+      className={cn("flex min-w-0 flex-col gap-2 rounded-xl bg-fill p-3 transition-shadow",
+        drag?.over === target && "ring-2 ring-tint", selected && "ring-1 ring-tint/40")}>
+      <button type="button" disabled={!selected} onClick={() => selected && move(selected, target)}
+        aria-label={selected ? `Move ${name(residents.find(resident => resident.id === selected)!)} to ${targetLabel(target)}` : targetLabel(target)}
+        className="flex min-h-9 items-center gap-2 rounded-lg text-left font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-default">
+        {header}
+      </button>
+      <div className="flex min-h-14 flex-wrap gap-2">
+        {members.map(chip)}
+        {!members.length && <span className="self-center text-footnote text-label-2">{target === "unassigned" ? "Every resident is working." : "Drop a Pokémon here"}</span>}
+      </div>
+    </div>;
+  };
+
+  const value = (target: WorkTarget) => {
+    const total = totals.get(target) ?? 0;
+    return <span className="ml-auto shrink-0 text-footnote tabular-nums text-label-2" title={total > city.limits.skill ? `Residents add ${total}; the city rank caps it at ${city.limits.skill}.` : undefined}>
+      <span className="text-body font-semibold text-label">{Math.min(total, city.limits.skill)}</span> / {city.limits.skill}{total > city.limits.skill && " max"}
+    </span>;
+  };
+
+  const dragged = drag && residents.find(resident => resident.id === drag.id);
+  return <section className={`${panel} space-y-4`}>
+    <div>
+      <h2 className="text-title-3 font-semibold">Skills & actions</h2>
+      <p className="mt-1 text-footnote text-label-2">Drag a resident onto a skill or action, or tap it and then tap where it works. Each skill is the sum of its residents: first stage +1, second +2, third +3, species that never evolve +2, legendaries +5. {formatEnumName(city.rank)} cities cap every skill at {city.limits.skill}.</p>
+    </div>
+    {!residents.length ? <p>No residents yet. Add a Pokémon to put it to work.</p> : <>
+      {zone("unassigned", <><span>Unassigned</span><span className="ml-auto text-footnote font-normal text-label-2">{placed("unassigned").length} of {residents.length}</span></>)}
+      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {targets.map(target => zone(target, <>
+          {target.startsWith("skill:") ? <SkillIcon skill={target.slice(6) as CitySkill} /> : <Tag aria-hidden className="size-5 shrink-0" />}
+          <span className="min-w-0 truncate">{targetLabel(target)}</span>
+          {value(target)}
+        </>))}
+      </div>
+      {!city.tags.length && <p className="text-footnote text-label-2">Add custom actions in City settings below to assign residents to them too.</p>}
+    </>}
+    {dragged && <div aria-hidden className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2" style={{ left: drag.x, top: drag.y }}>
+      <Sprite image={dragged.pokemonTemplate.image} set="box" className="h-14 w-17 drop-shadow-lg" />
+    </div>}
+  </section>;
 };
 
 const CityTypeOverview = ({ residents }: { residents: Pokemon[] }) => {
@@ -299,19 +470,24 @@ export const MyCityPage = () => {
           </div>
           {tab === "overview" ? <>
             <section className={panel}>
-              <h2 className="text-title-3 font-semibold">{city.name}: {residents.length} Pokémon</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-title-3 font-semibold">{city.name}</h2>
+                <RankBadge rank={city.rank} />
+                <span className="ml-auto text-subhead tabular-nums text-label-2">{residents.length} / {city.limits.residents} Pokémon</span>
+              </div>
               <p className="mt-1 mb-4 text-footnote text-label-2">Expand or collapse a rank to see all types. Each filled pip is one Pokémon; dual-type Pokémon count under both types.</p>
               <CityTypeOverview key={city.id} residents={residents} />
             </section>
-            <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities</h2>
+            <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities <span className="text-footnote font-normal text-label-2">(max {city.limits.skill})</span></h2>
               <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{skillLabel(skill)} {city.skills[skill]}</span>)}</div>
-              {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No city skills set yet.</p>}
+              {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No residents are working on city skills yet. Assign them in Skills & actions.</p>}
               <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}: {city.tagValues[tag] ?? 0}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
           </> : tab === "settings" ? <>
+            <CityWorkBoard city={city} residents={residents} />
             <CityMembers key={city.id} city={city} />
-            <CitySettings key={JSON.stringify(city)} city={city} residentCount={residents.length} />
+            <CitySettings key={`${city.id}:${city.name}:${city.rank}:${city.tags.join("\n")}`} city={city} residentCount={residents.length} />
           </> :
             <section className={panel}><h2 className="mb-3 text-title-3 font-semibold">Pokémon roster ({residents.length})</h2>
               {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="divide-y divide-hairline">{residents.map(resident => <li key={resident.id} className="space-y-3 py-4">
@@ -321,7 +497,7 @@ export const MyCityPage = () => {
                     <span className="mt-1 flex gap-1">{resident.pokemonTemplate.types.map(type => <TypePill key={type} type={type} size="sm" />)}</span>
                   </span>
                 </Link>
-                <TransferPokemon key={`${resident.id}:${resident.cityId}`} pokemon={resident} cities={cities.data!} trainers={trainers.data!} />
+                <TransferPokemon key={`${resident.id}:${resident.cityId}`} pokemon={resident} cities={cities.data!} trainers={trainers.data!} allPokemon={pokemon.data!} />
               </li>)}</ul>}
             </section>}
         </>}
