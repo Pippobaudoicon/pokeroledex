@@ -42,11 +42,11 @@ const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected
 );
 
 const PokemonCard = ({ pokemon }: { pokemon: T.PokemonMinimal }) => (
-  <li>
+  <li className="min-w-0">
     <Link
       to={`/myPokemon/${pokemon.id}`}
       title={pokemon.name}
-      className={cn("flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-4 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill", pokemon.shiny && shinyRing)}
+      className={cn("flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-3 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill sm:p-4", pokemon.shiny && shinyRing)}
     >
       <Sprite image={pokemon.image} set="book" className="size-24 lg:size-28" />
       <span className="line-clamp-2 min-h-[2.8em] w-full text-body font-semibold">{pokemon.name}</span>
@@ -151,7 +151,7 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
             <p className="mb-2 px-1 text-footnote font-medium text-label-2" aria-live="polite">
               {list?.length} {list?.length === 1 ? "Pokémon" : "Pokémon"}
             </p>
-            <ul className={compact ? "overflow-hidden rounded-xl bg-surface shadow-card" : "grid grid-cols-[repeat(auto-fill,220px)] justify-center gap-4 sm:justify-start"}>
+            <ul className={compact ? "overflow-hidden rounded-xl bg-surface shadow-card" : "grid grid-cols-[repeat(2,minmax(0,220px))] justify-center gap-3 sm:grid-cols-[repeat(auto-fill,220px)] sm:justify-start sm:gap-4"}>
               {list?.map((pokemon) => compact ? (
                 <PokemonRow key={pokemon.id} pokemon={pokemon} selected={pokemon.id === selectedId} />
               ) : (
