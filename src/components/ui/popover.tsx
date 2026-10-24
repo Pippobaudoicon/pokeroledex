@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 
-import { cn } from "@/lib/utils";
+import { cn, keepKeyboardDown } from "@/lib/utils";
 
 const Popover = PopoverPrimitive.Root;
 
@@ -14,6 +14,7 @@ const PopoverContent = React.forwardRef<
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
       ref={ref}
+      onOpenAutoFocus={keepKeyboardDown}
       align={align}
       sideOffset={sideOffset}
       className={cn(

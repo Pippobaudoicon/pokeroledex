@@ -76,7 +76,7 @@ function reply(value: unknown, status = 200) {
 
 export async function handleApi(request: Request, env: Env, url: URL, owner: string): Promise<Response> {
   try {
-    const [name, action, id] = url.pathname.replace(/^\/api\/*/, '').split('/').filter(Boolean).map(decodeURIComponent);
+    const [name, action, id, member] = url.pathname.replace(/^\/api\/*/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const method = request.method;
     const body = ['POST', 'PATCH', 'PUT'].includes(method) ? await readBody(request) : {};
     const reference = await loadReference(env.ASSETS, url.origin);
@@ -104,6 +104,25 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return reply(status === 200 ? result : { status, payload: result.message }, status);
     }
     if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
+    // Give one of your own Pokemon (not a city resident) to a player who already has records or
+    // a city here. It leaves your trainers; it gets a new id if theirs is taken, as two people
+    // can import the same campaign from pokeroledex.nl.
+    if (name === 'pokemon' && action && id === 'send' && method === 'POST') {
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      if (email === owner) fail(400, 'This Pokemon is already yours.');
+      const { results: known } = await env.DB.prepare(`SELECT 1 FROM records WHERE owner = ?
+        UNION ALL SELECT 1 FROM city_members WHERE email = ? LIMIT 1`).bind(email, email).all();
+      if (!known.length) fail(404, `No player uses ${email || 'that email'} here.`);
+      const { results: [row] } = await env.DB.prepare(`SELECT data, EXISTS (SELECT 1 FROM records copy
+          WHERE copy.owner = ? AND copy.collection = 'pokemon' AND copy.id = records.id) AS taken
+        FROM records WHERE owner = ? AND collection = 'pokemon' AND id = ?`).bind(email, owner, action).all<{ data: string; taken: number }>();
+      if (!row) fail(404, 'Pokemon not found. City residents must be taken into My Pokemon first.');
+      const record: Row = { ...JSON.parse(row.data), userId: email, trainerId: null, cityId: null };
+      if (row.taken) record.id = crypto.randomUUID();
+      await env.DB.prepare('UPDATE records SET owner = ?, id = ?, data = ? WHERE owner = ? AND collection = ? AND id = ?')
+        .bind(email, record.id, JSON.stringify(record), owner, 'pokemon', action).run();
+      return reply({ id: record.id, email });
+    }
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
     const db: Collections = Object.fromEntries(collectionNames.map(name => [name, []]));
     // The stored owner of each loaded record, so changes are written back to the right place.
@@ -123,7 +142,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     const foreign = await loadForeign(db, reference as unknown as Collections);
     const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
     const writes: D1PreparedStatement[] = [];
-    const response = route({ db, partitions, members, foreign, templatesInUse }, reference, writes, method, name, action, id, body);
+    const response = route({ db, partitions, members, foreign, templatesInUse }, reference, writes, method, name, action, id, member, body);
     if (writes.length) await env.DB.batch(writes);
     return response;
   } catch (error) {
@@ -184,7 +203,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
   function route(state: { db: Collections; partitions: Map<Row, string>; members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string> },
     reference: Reference, writes: D1PreparedStatement[],
-    method: string, name: string, action: string | undefined, id: string | undefined, body: Json): Response {
+    method: string, name: string, action: string | undefined, id: string | undefined, member: string | undefined, body: Json): Response {
     const { db, partitions, members, foreign, templatesInUse } = state;
     const referenceRows = reference as unknown as Collections;
 
@@ -341,8 +360,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         fields.rank = body.rank;
       }
       if ('tags' in body) {
-        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: unknown) => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 80)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters.');
-        fields.tags = [...new Set(body.tags.map((tag: string) => tag.trim()))];
+        if (!Array.isArray(body.tags) || body.tags.length > 50 || body.tags.some((tag: Json) => typeof tag?.name !== 'string' || !tag.name.trim() || tag.name.trim().length > 80
+          || !Number.isInteger(tag.value) || tag.value < 0 || tag.value > 999)) fail(400, 'Use up to 50 action tags, each 1 to 80 characters with a whole-number value from 0 to 999.');
+        const tags: Json[] = body.tags.map((tag: Json) => ({ name: tag.name.trim(), value: tag.value }));
+        fields.tags = tags.filter((tag, index) => tags.findIndex(other => other.name === tag.name) === index);
       }
       const tags = (fields.tags ?? city?.tags ?? []) as string[];
       const assignments: Json = { ...city?.assignments };
@@ -485,6 +506,18 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(city.id, email));
       members.set(city.id, [...current, email]);
       return reply(hydrate(name, city), 201);
+    }
+    // The longest-standing member (the creator, unless they left) leads the city and can remove others.
+    if (name === 'cities' && action && id === 'members' && member && method === 'DELETE') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      const current = members.get(city.id) ?? [];
+      if (current[0] !== owner) fail(403, 'Only the city leader can remove members.');
+      if (member === owner) fail(400, 'Leave the city instead of removing yourself.');
+      if (!current.includes(member)) fail(404, `${member} is not a member of this city.`);
+      writes.push(env.DB.prepare('DELETE FROM city_members WHERE city_id = ? AND email = ?').bind(city.id, member));
+      members.set(city.id, current.filter(email => email !== member));
+      return reply(hydrate(name, city));
     }
     if (method === 'GET') {
       if (name === 'pokemon' && action === 'all') return reply(db.pokemon.map(pokemon));

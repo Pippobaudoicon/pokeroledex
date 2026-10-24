@@ -9,7 +9,7 @@ import { button } from "@/components/kit/button";
 import { Group, Row } from "@/components/kit/List";
 import { MoveRow } from "@/components/kit/MoveRow";
 import { PageHeader } from "@/components/kit/PageHeader";
-import { RankBall, TypePill, typeColor } from "@/components/kit/Pills";
+import { RankBadge, RankBall, TypePill, typeColor } from "@/components/kit/Pills";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sprite } from "@/components/kit/Sprite";
@@ -85,7 +85,10 @@ const Hero = ({ template, layout, onClose }: { template: Summary; layout: Layout
           #{template.dexID || template.number}
           {template.dexCategory && <span className="font-normal"> · {template.dexCategory}</span>}
         </p>
-        <h2 className="font-display text-title-1 leading-tight break-words">{template.name}</h2>
+        <div className="flex flex-wrap items-center gap-x-2">
+          <h2 className="font-display text-title-1 leading-tight break-words">{template.name}</h2>
+          <RankBadge rank={template.recommendedRank} />
+        </div>
         <div className="mt-2 flex flex-wrap gap-1">
           {template.types.map((type) => (
             <TypePill key={type} type={type} />
@@ -120,34 +123,49 @@ const AttributeRow = ({ name, base, max }: { name: string; base: number; max: nu
   </div>
 );
 
-const matchupLabels: [4 | 2 | 0.5 | 0.25 | 0, string][] = [
-  [4, "Very weak to"],
-  [2, "Weak to"],
-  [0.5, "Resists"],
-  [0.25, "Strongly resists"],
-  [0, "Immune to"],
+const matchupRows: [4 | 2 | 0.5 | 0.25 | 0, string, string, string][] = [
+  [4, "4×", "bg-green-700", "Very weak to"],
+  [2, "2×", "bg-green-600", "Weak to"],
+  [0.5, "½×", "bg-red-600", "Resists"],
+  [0.25, "¼×", "bg-red-700", "Strongly resists"],
+  [0, "0×", "bg-purple-700", "Immune to"],
 ];
 
-const Matchups = ({ types }: { types: T.PokemonType[] }) => {
-  const { getDefensiveChart } = useTypeEffectiveness();
-  const chart = getDefensiveChart(types[0], types[1]);
+/** Attacking types that don't hit this type combination for normal damage, by multiplier. Also the Pokémon sheet's type hover. */
+export const MatchupTable = ({ types }: { types: T.PokemonType[] }) => {
+  const chart = useTypeEffectiveness().getDefensiveChart(types[0], types[1]);
   return (
-    <Group title="Type matchups">
-      {matchupLabels
-        .filter(([multiplier]) => chart[multiplier].length > 0)
-        .map(([multiplier, label]) => (
-          <div key={multiplier} className="flex flex-col gap-1.5 border-b border-hairline px-4 py-2.5 last:border-b-0 lg:px-3 lg:py-2">
-            <span className="text-subhead text-label-2">{label}</span>
-            <span className="flex flex-wrap gap-1">
-              {chart[multiplier].map((type) => (
-                <TypePill key={type} type={type} size="sm" />
-              ))}
-            </span>
-          </div>
-        ))}
-    </Group>
+    <table className="w-full">
+      <tbody>
+        {matchupRows
+          .filter(([multiplier]) => chart[multiplier].length > 0)
+          .map(([multiplier, text, color, label]) => (
+            <tr key={multiplier} className="border-b border-hairline last:border-b-0">
+              <th scope="row" className="w-11 py-2 pr-2 align-top">
+                <span className={cn("grid h-6 w-9 place-items-center rounded-md text-footnote font-semibold text-white", color)}>{text}</span>
+              </th>
+              <td className="py-2">
+                <span className="block text-footnote text-label-2">{label}</span>
+                <span className="mt-1 flex flex-wrap gap-1">
+                  {chart[multiplier].map((type) => (
+                    <TypePill key={type} type={type} size="sm" />
+                  ))}
+                </span>
+              </td>
+            </tr>
+          ))}
+      </tbody>
+    </table>
   );
 };
+
+const Matchups = ({ types }: { types: T.PokemonType[] }) => (
+  <Group title="Type matchups">
+    <div className="px-4 lg:px-3">
+      <MatchupTable types={types} />
+    </div>
+  </Group>
+);
 
 const abilityList = (template: Summary) =>
   (

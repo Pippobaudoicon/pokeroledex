@@ -90,6 +90,19 @@ export const usePokemonControllerRemove = (options?: MutationOptions<unknown, Po
   });
 };
 
+export type PokemonControllerSendVariables = { pathParams: { id: string }; body: { email: string } } & FetcherExtraProps;
+
+const fetchPokemonControllerSend = (variables: PokemonControllerSendVariables, signal?: AbortSignal) =>
+  apiFetch<{ id: string; email: string }>({ url: "/pokemon/{id}/send", method: "post", ...variables, signal });
+
+export const usePokemonControllerSend = (options?: MutationOptions<{ id: string; email: string }, PokemonControllerSendVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<{ id: string; email: string }, ApiFetchError, PokemonControllerSendVariables>({
+    mutationFn: (variables) => fetchPokemonControllerSend({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};
+
 export type NaturesControllerFindAllVariables = {} & FetcherExtraProps;
 
 const fetchNaturesControllerFindAll = (variables: NaturesControllerFindAllVariables, signal?: AbortSignal) =>
