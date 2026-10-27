@@ -1,5 +1,7 @@
 // Domain and API types shared by the frontend and the Worker. Shapes are taken from
 // data/reference/*.json (captured from pokeroledex.nl) and the local API in worker/api.ts.
+import type { Habitat, HabitatFilter, PokemonHabitatEntry } from './habitats.ts';
+export type { Habitat } from './habitats.ts';
 
 export const RANKS = ['UNRANKED', 'STARTER', 'ROOKIE', 'STANDARD', 'ADVANCED', 'EXPERT', 'ACE', 'MASTER', 'CHAMPION'] as const;
 export const ATTRIBUTES = ['strength', 'dexterity', 'vitality', 'special', 'insight'] as const;
@@ -61,13 +63,6 @@ export type ItemPocket = 'HELD_ITEMS' | 'MEDICINE' | 'TRAINER_ITEMS' | 'EVOLUTIO
 export type ItemCategory =
   | 'TYPE_BOOSTING' | 'BATTLE_ITEM' | 'MEGA_STONE' | 'STATUS' | 'BERRY' | 'MON_BOOSTING'
   | 'HEALING' | 'Z_CRYSTAL' | 'VITAMIN';
-export type Habitat =
-  | 'BADLANDS_SCRUBLANDS_AND_WASTELANDS' | 'BEACHES' | 'CAVES' | 'CITIES' | 'DESERTS'
-  | 'ELECTROMAGNETICALLY_ACTIVE_AREAS' | 'FIELDS_AND_MEADOWS' | 'GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES'
-  | 'GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES' | 'LAKES' | 'LAKESIDES_AND_RIVERSIDES' | 'MOUNTAINS'
-  | 'OCEANIC_ABYSSES' | 'OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF' | 'POLAR_SEAS' | 'PONDS'
-  | 'RUINS_AND_CEMETERIES' | 'STREAMS_AND_RIVERS' | 'SWAMPS_BOGS_AND_MARSHES' | 'TEMPERATE_DECIDUOUS_FORESTS'
-  | 'TROPICAL_JUNGLES' | 'TROPICAL_SEAS_AND_CORAL_REEFS' | 'TUNDRAS_AND_BOREAL_FORESTS' | 'VOLCANOES' | 'WOODLANDS';
 export type RankUpMethod = 'RANDOM' | 'OPTIMIZED' | 'MIN_MAX';
 export type LegendaryFilter = 'NONE' | 'ALL' | 'ONLY';
 
@@ -205,6 +200,7 @@ export interface PokemonTemplate {
   evolutions: Evolution[];
   image: string;
   habitats: Habitat[];
+  habitatProvenance?: PokemonHabitatEntry;
   hash: string | null;
   campaign: Campaign | null;
   abilityOne: Ability | null;
@@ -352,7 +348,7 @@ export interface GeneratePokemonBody extends SelectionBody {
   seed?: number;
   numberToGenerate?: number;
   pokemonTemplateId?: string;
-  habitats?: Habitat[];
+  habitats?: HabitatFilter[];
   includeLegendary?: LegendaryFilter;
   rankOrBelow?: boolean;
   rankUpMethod?: RankUpMethod;
@@ -371,7 +367,7 @@ export interface GenerateEncounterBody extends SelectionBody {
   name?: string;
   types?: PokemonType[];
   generations?: number[];
-  habitats?: Habitat[];
+  habitats?: HabitatFilter[];
   ranks?: Rank[];
   rankOrBelow?: boolean;
   includeLegendary?: LegendaryFilter;

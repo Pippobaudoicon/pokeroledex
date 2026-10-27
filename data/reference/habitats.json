@@ -1,0 +1,188 @@
+[
+  {
+    "id": "FORESTS",
+    "name": "Forests",
+    "macroId": "FOREST",
+    "pokemonCount": 254
+  },
+  {
+    "id": "TROPICAL_FORESTS",
+    "name": "Tropical Forests & Jungles",
+    "macroId": "FOREST",
+    "pokemonCount": 64
+  },
+  {
+    "id": "GRASSLANDS",
+    "name": "Grasslands & Savannas",
+    "macroId": "OPEN_LAND",
+    "pokemonCount": 155
+  },
+  {
+    "id": "FIELDS_AND_MEADOWS",
+    "name": "Fields & Meadows",
+    "macroId": "OPEN_LAND",
+    "pokemonCount": 110
+  },
+  {
+    "id": "FARMLANDS",
+    "name": "Farmlands",
+    "macroId": "OPEN_LAND",
+    "pokemonCount": 2
+  },
+  {
+    "id": "GARDENS",
+    "name": "Gardens",
+    "macroId": "OPEN_LAND",
+    "pokemonCount": 1
+  },
+  {
+    "id": "LAKES_AND_PONDS",
+    "name": "Lakes & Ponds",
+    "macroId": "WATER",
+    "pokemonCount": 81
+  },
+  {
+    "id": "RIVERS_AND_STREAMS",
+    "name": "Rivers & Streams",
+    "macroId": "WATER",
+    "pokemonCount": 41
+  },
+  {
+    "id": "FRESHWATER_SHORES",
+    "name": "Lakeshores & Riverbanks",
+    "macroId": "WATER",
+    "pokemonCount": 51
+  },
+  {
+    "id": "WETLANDS",
+    "name": "Wetlands",
+    "macroId": "WATER",
+    "pokemonCount": 57
+  },
+  {
+    "id": "OCEANS",
+    "name": "Oceans",
+    "macroId": "WATER",
+    "pokemonCount": 75
+  },
+  {
+    "id": "DEEP_SEAS",
+    "name": "Deep Seas",
+    "macroId": "WATER",
+    "pokemonCount": 18
+  },
+  {
+    "id": "CORAL_REEFS",
+    "name": "Coral Reefs",
+    "macroId": "WATER",
+    "pokemonCount": 29
+  },
+  {
+    "id": "SEAFLOORS",
+    "name": "Seafloors",
+    "macroId": "WATER",
+    "pokemonCount": 7
+  },
+  {
+    "id": "COASTS_AND_ISLANDS",
+    "name": "Coasts, Beaches & Islands",
+    "macroId": "WATER",
+    "pokemonCount": 58
+  },
+  {
+    "id": "ICE_AND_SNOW",
+    "name": "Frozen Areas & Glaciers",
+    "macroId": "ICE",
+    "pokemonCount": 27
+  },
+  {
+    "id": "SNOWY_MOUNTAINS",
+    "name": "Snowy Mountains",
+    "macroId": "ICE",
+    "pokemonCount": 14
+  },
+  {
+    "id": "ICY_CAVES",
+    "name": "Icy Caves",
+    "macroId": "ICE",
+    "pokemonCount": 2
+  },
+  {
+    "id": "POLAR_SEAS",
+    "name": "Polar Seas",
+    "macroId": "ICE",
+    "pokemonCount": 22
+  },
+  {
+    "id": "TUNDRA_AND_TAIGA",
+    "name": "Tundra & Boreal Forests",
+    "macroId": "ICE",
+    "pokemonCount": 37
+  },
+  {
+    "id": "MOUNTAINS",
+    "name": "Mountains & Peaks",
+    "macroId": "HIGHLANDS",
+    "pokemonCount": 161
+  },
+  {
+    "id": "ROCKY_AREAS",
+    "name": "Rocky Areas & Cliffs",
+    "macroId": "HIGHLANDS",
+    "pokemonCount": 29
+  },
+  {
+    "id": "CAVES_AND_UNDERGROUND",
+    "name": "Caves & Underground",
+    "macroId": "HIGHLANDS",
+    "pokemonCount": 103
+  },
+  {
+    "id": "DESERTS",
+    "name": "Deserts",
+    "macroId": "ARID",
+    "pokemonCount": 46
+  },
+  {
+    "id": "BADLANDS_AND_SCRUBLANDS",
+    "name": "Badlands, Scrublands & Wastelands",
+    "macroId": "ARID",
+    "pokemonCount": 46
+  },
+  {
+    "id": "VOLCANOES",
+    "name": "Volcanoes",
+    "macroId": "ARID",
+    "pokemonCount": 44
+  },
+  {
+    "id": "URBAN_AREAS",
+    "name": "Settlements & Buildings",
+    "macroId": "SETTLEMENTS",
+    "pokemonCount": 124
+  },
+  {
+    "id": "POWER_PLANTS",
+    "name": "Power Plants & Electrical Areas",
+    "macroId": "SETTLEMENTS",
+    "pokemonCount": 25
+  },
+  {
+    "id": "ABANDONED_PLACES",
+    "name": "Ruins, Cemeteries & Abandoned Buildings",
+    "macroId": "SETTLEMENTS",
+    "pokemonCount": 48
+  },
+  {
+    "id": "OUTER_SPACE",
+    "name": "Outer Space",
+    "macroId": "OTHERWORLDLY",
+    "pokemonCount": 0
+  },
+  {
+    "id": "OTHER_DIMENSIONS",
+    "name": "Other Dimensions & Ultra Space",
+    "macroId": "OTHERWORLDLY",
+    "pokemonCount": 12
+  }
+]

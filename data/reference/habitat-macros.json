@@ -1,0 +1,89 @@
+[
+  {
+    "id": "FOREST",
+    "name": "Forests",
+    "habitats": [
+      "FORESTS",
+      "TROPICAL_FORESTS"
+    ],
+    "pokemonCount": 284
+  },
+  {
+    "id": "OPEN_LAND",
+    "name": "Open Land",
+    "habitats": [
+      "GRASSLANDS",
+      "FIELDS_AND_MEADOWS",
+      "FARMLANDS",
+      "GARDENS"
+    ],
+    "pokemonCount": 234
+  },
+  {
+    "id": "WATER",
+    "name": "Water & Coasts",
+    "habitats": [
+      "LAKES_AND_PONDS",
+      "RIVERS_AND_STREAMS",
+      "FRESHWATER_SHORES",
+      "WETLANDS",
+      "OCEANS",
+      "DEEP_SEAS",
+      "CORAL_REEFS",
+      "SEAFLOORS",
+      "COASTS_AND_ISLANDS"
+    ],
+    "pokemonCount": 251
+  },
+  {
+    "id": "ICE",
+    "name": "Ice & Snow",
+    "habitats": [
+      "ICE_AND_SNOW",
+      "SNOWY_MOUNTAINS",
+      "ICY_CAVES",
+      "POLAR_SEAS",
+      "TUNDRA_AND_TAIGA"
+    ],
+    "pokemonCount": 86
+  },
+  {
+    "id": "HIGHLANDS",
+    "name": "Mountains & Underground",
+    "habitats": [
+      "MOUNTAINS",
+      "ROCKY_AREAS",
+      "CAVES_AND_UNDERGROUND"
+    ],
+    "pokemonCount": 267
+  },
+  {
+    "id": "ARID",
+    "name": "Arid & Volcanic",
+    "habitats": [
+      "DESERTS",
+      "BADLANDS_AND_SCRUBLANDS",
+      "VOLCANOES"
+    ],
+    "pokemonCount": 122
+  },
+  {
+    "id": "SETTLEMENTS",
+    "name": "Settlements & Ruins",
+    "habitats": [
+      "URBAN_AREAS",
+      "POWER_PLANTS",
+      "ABANDONED_PLACES"
+    ],
+    "pokemonCount": 183
+  },
+  {
+    "id": "OTHERWORLDLY",
+    "name": "Otherworldly",
+    "habitats": [
+      "OUTER_SPACE",
+      "OTHER_DIMENSIONS"
+    ],
+    "pokemonCount": 12
+  }
+]

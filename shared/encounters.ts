@@ -1,4 +1,5 @@
 import { RANKS } from './types.ts';
+import { matchesHabitats } from './habitats.ts';
 import type { GenerateEncounterBody, PokemonTemplate } from './types.ts';
 
 const generationEnds = [151, 251, 386, 493, 649, 721, 809, 905, 1025];
@@ -32,7 +33,7 @@ export function matchesEncounterFilters(template: PokemonTemplate, body: Generat
   if (names.length && !names.some(name => template.name.toLowerCase().includes(name))) return false;
   if (body.types?.length && !body.types.some(type => template.types.includes(type))) return false;
   if (body.generations?.length && !body.generations.includes(generationFor(template.number) ?? 0)) return false;
-  if (body.habitats?.length && !body.habitats.some(habitat => template.habitats.includes(habitat))) return false;
+  if (!matchesHabitats(template.habitats, body.habitats)) return false;
   if (body.ranks?.length && !body.ranks.some(rank => body.rankOrBelow !== false
     ? RANKS.indexOf(template.recommendedRank) <= RANKS.indexOf(rank)
     : template.recommendedRank === rank)) return false;

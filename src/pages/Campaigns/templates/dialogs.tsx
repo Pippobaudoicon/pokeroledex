@@ -2,6 +2,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { v4 } from "uuid";
 import type * as T from "../../../../shared/types";
+import { normalizeHabitats } from "../../../../shared/habitats";
 import type { ApiFetchError } from "@/api/client";
 import {
   useAbilitiesControllerFindAllByCampaign,
@@ -214,7 +215,7 @@ const toFormData = (template: T.PokemonTemplate): TemplateFormData => ({
   abilityTwoId: template.abilityTwo?.id ?? "",
   hiddenAbilityId: template.hiddenAbility?.id ?? "",
   eventAbilityId: template.eventAbility?.id ?? "",
-  habitats: template.habitats ?? [],
+  habitats: normalizeHabitats(template.habitats ?? []),
   moves: (template.possibleMoves ?? []).map((possibleMove) => ({
     moveId: possibleMove.move.id,
     rank: possibleMove.rank,

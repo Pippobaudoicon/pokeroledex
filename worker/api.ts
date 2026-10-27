@@ -6,6 +6,7 @@ import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/ty
 import { cityLimits, cityValues, isCitySkill, residentBonus } from '../shared/cities.ts';
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
+import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
 import type { Env } from './index.ts';
 import { askRulebook } from './ask.ts';
 import { IssueError, openIssue } from './github.ts';
@@ -242,8 +243,9 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
     function template(record: Row | null): Row | null {
       if (!record) return null;
-      if (!record.campaignId) return record;
-      const result: Row = { ...record, campaign: lookup('campaigns', record.campaignId) };
+      const normalized = { ...record, habitats: normalizeHabitats(record.habitats ?? []) };
+      if (!record.campaignId) return normalized;
+      const result: Row = { ...normalized, campaign: lookup('campaigns', record.campaignId) };
       for (const key of ['abilityOne', 'abilityTwo', 'hiddenAbility', 'eventAbility']) {
         result[key] = lookup('abilities', record[`${key}Id`]);
       }
@@ -411,6 +413,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
 
     function generate(name: string, body: Json, isEncounter = false) {
+      if (name === 'pokemon' && 'habitats' in body &&
+          (!Array.isArray(body.habitats) || !body.habitats.every(isHabitatFilter))) {
+        fail(400, 'Choose valid habitat categories or specific habitats.');
+      }
       const random = randomSource(body.seed ?? Date.now());
       const choose = <T>(list: T[]) => list[Math.floor(random() * list.length)];
       const count = Number(body.numberToGenerate ?? 1);
@@ -426,7 +432,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       } else {
         if (!ranks.includes(body.rank)) fail(400, 'Choose a valid rank.');
         candidates = candidates.filter(p => body.pokemonTemplateId ? p.id === body.pokemonTemplateId :
-          (!body.habitats?.length || body.habitats.some((h: string) => p.habitats.includes(h))) &&
+          matchesHabitats(p.habitats, body.habitats) &&
           (body.includeLegendary === 'ALL' || (body.includeLegendary === 'ONLY' ? p.legendary : !p.legendary)) &&
           (body.rankOrBelow ? ranks.indexOf(p.recommendedRank) <= ranks.indexOf(body.rank) : p.recommendedRank === body.rank));
       }
@@ -536,6 +542,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
     if (method === 'POST' && !action) {
       let record: Row = { ...body, id: body.id ?? body._id ?? crypto.randomUUID(), userId: owner };
+      if (name === 'pokemon-templates' && 'habitats' in body) {
+        if (!Array.isArray(body.habitats) || !body.habitats.every(isHabitat)) fail(400, 'Choose valid specific habitats.');
+        record.habitats = normalizeHabitats(body.habitats);
+      }
       if (name === 'pokemon') {
         checkPokemonReferences(body);
         const destination = assignment(body);
@@ -568,6 +578,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'pokemon' && body.rank !== undefined && !(RANKS as readonly unknown[]).includes(body.rank)) fail(400, 'Choose a valid rank.');
       if (name === 'pokemon') checkPokemonReferences(body);
       const update = { ...body };
+      if (name === 'pokemon-templates' && 'habitats' in body) {
+        if (!Array.isArray(body.habitats) || !body.habitats.every(isHabitat)) fail(400, 'Choose valid specific habitats.');
+        update.habitats = normalizeHabitats(body.habitats);
+      }
       delete update.id; delete update.userId;
       if (name === 'cities') {
         Object.assign(record, cityFields(body, record));

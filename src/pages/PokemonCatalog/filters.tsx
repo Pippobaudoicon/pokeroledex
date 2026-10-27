@@ -1,6 +1,9 @@
 import * as React from "react";
 import type * as T from "../../../shared/types";
-import { Habitat, Rank } from "@/api/schemas";
+import { habitatName, matchesHabitats } from "../../../shared/habitats";
+import type { HabitatFilter } from "../../../shared/habitats";
+import { Rank } from "@/api/schemas";
+import { HabitatPicker } from "@/components/HabitatPicker";
 import { Chip, Stepper, Switch } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
 import { Picker } from "@/components/kit/Picker";
@@ -12,7 +15,7 @@ export interface DexFilters {
   types: T.PokemonType[];
   rank: T.Rank | "";
   andLower: boolean;
-  habitats: T.Habitat[];
+  habitats: HabitatFilter[];
   moveId: string;
   abilityId: string;
   minimums: Partial<Record<T.Attribute, number>>;
@@ -42,7 +45,7 @@ export const useDexPredicate = (filters: DexFilters) => {
       (filters.types.length === 0 || filters.types.every((type) => pokemon.types.includes(type))) &&
       (rankIndex < 0 ||
         (filters.andLower ? ranks.indexOf(pokemon.recommendedRank) <= rankIndex : ranks.indexOf(pokemon.recommendedRank) === rankIndex)) &&
-      (filters.habitats.length === 0 || filters.habitats.some((habitat) => pokemon.habitats.includes(habitat))) &&
+      matchesHabitats(pokemon.habitats, filters.habitats) &&
       (!filters.moveId || learnerSet.has(pokemon.id)) &&
       (!filters.abilityId || abilitiesOf(pokemon).some((ability) => ability?.id === filters.abilityId)) &&
       Object.entries(filters.minimums).every(([stat, minimum]) => pokemon.baseStats[stat as T.Attribute] >= (minimum ?? 0));
@@ -65,10 +68,6 @@ const useMoveItems = () => {
   );
   return { items, loading: isFetching };
 };
-
-const toggle = <V,>(list: V[], value: V) => (list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value]);
-
-const habitatName = (habitat: string) => formatEnumName(habitat).replace(/ And /g, " & ");
 
 /** Everything but types, which sit above the list. Shown in a sheet. */
 export const FilterForm = ({
@@ -133,15 +132,7 @@ export const FilterForm = ({
         ))}
       </Group>
       <Group title="Habitats" footer="Matches any of the picked habitats.">
-        <div className="flex flex-wrap gap-1.5 p-3">
-          {Object.values(Habitat)
-            .sort()
-            .map((habitat) => (
-              <Chip key={habitat} pressed={filters.habitats.includes(habitat)} onClick={() => set("habitats", toggle(filters.habitats, habitat))}>
-                {habitatName(habitat)}
-              </Chip>
-            ))}
-        </div>
+        <HabitatPicker selected={filters.habitats} onChange={habitats => set("habitats", habitats)} />
       </Group>
     </div>
   );

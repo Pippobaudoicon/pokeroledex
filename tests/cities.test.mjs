@@ -40,7 +40,7 @@ function migrate(db, from = 1, until = Infinity) {
   }
 }
 
-function harness() {
+function harness(referenceOverrides = {}) {
   const db = new DatabaseSync(':memory:');
   migrate(db);
   const prepare = (sql) => {
@@ -67,6 +67,7 @@ function harness() {
     ASSETS: {
       async fetch(url) {
         const name = String(url).split('/').pop();
+        if (Object.hasOwn(referenceOverrides, name)) return Response.json(referenceOverrides[name]);
         return Response.json(name === 'pokemon-templates.json' ? [species, ...dex] : name === 'rankup-attributes.json' ? {} : []);
       },
     },
@@ -82,6 +83,49 @@ function harness() {
     },
   };
 }
+
+test('habitat macros work in both generator APIs and campaign habitats normalize on reads and writes', async () => {
+  const h = harness({ 'natures.json': [{ id: 'test-nature', name: 'Test' }] });
+  try {
+    const campaign = (await h.request('campaigns', 'POST', { name: 'Habitats' })).body;
+    const make = async (name, habitats) => h.request('pokemon-templates', 'POST', {
+      ...species, id: undefined, dexID: name, number: 1, name, campaignId: campaign.id,
+      recommendedRank: 'UNRANKED', legendary: false, genderType: 'N', habitats, possibleMoves: [], evolutions: [],
+    });
+    const cold = await make('Cold species', ['GLACIERS', 'COLD_AREAS', 'ICY_CAVES']);
+    const mountain = await make('Mountain species', ['MOUNTAINS', 'MOUNTAIN_PEAKS']);
+    assert.equal(cold.status, 201);
+    assert.deepEqual(cold.body.habitats, ['ICE_AND_SNOW', 'ICY_CAVES']);
+    assert.deepEqual(mountain.body.habitats, ['MOUNTAINS']);
+    const stored = JSON.parse(h.db.prepare('SELECT data FROM records WHERE id = ?').get(cold.body.id).data);
+    assert.deepEqual(stored.habitats, ['ICE_AND_SNOW', 'ICY_CAVES']);
+    // Simulate an existing imported template that predates normalization.
+    h.db.prepare('UPDATE records SET data = json_set(data, \'$.habitats\', json(?)) WHERE id = ?')
+      .run(JSON.stringify(['GLACIERS', 'COLD_AREAS']), cold.body.id);
+    assert.deepEqual((await h.request(`pokemon-templates/${cold.body.id}`)).body.habitats, ['ICE_AND_SNOW']);
+    const selection = { campaignIds: [campaign.id], includeCore: false, rank: 'UNRANKED', seed: 1, numberToGenerate: 1, excludeForms: false };
+    for (const route of ['pokemon/generate', 'pokemon/encounter']) {
+      for (const habitats of [['ICE'], ['GLACIERS'], ['ICE_AND_SNOW'], ['FOREST', 'ICE']]) {
+        const generated = await h.request(route, 'POST', { ...selection, habitats });
+        assert.equal(generated.status, 200, JSON.stringify(generated.body));
+        assert.equal(generated.body.length, 1);
+        assert.equal(generated.body[0].pokemonTemplate.id, cold.body.id);
+        assert.deepEqual(generated.body[0].pokemonTemplate.habitats, ['ICE_AND_SNOW']);
+      }
+      const generated = await h.request(route, 'POST', { ...selection, habitats: ['HIGHLANDS'] });
+      assert.equal(generated.body[0].pokemonTemplate.id, mountain.body.id);
+      for (const habitats of [['INVALID'], 'ICE', [null]]) {
+        assert.equal((await h.request(route, 'POST', { ...selection, habitats })).status, 400);
+      }
+    }
+    const updated = await h.request('pokemon-templates', 'PATCH', { id: cold.body.id, habitats: ['CITIES', 'HOUSES'] });
+    assert.equal(updated.status, 200);
+    assert.deepEqual(updated.body.habitats, ['URBAN_AREAS']);
+    assert.equal((await make('Invalid', ['ICE'])).status, 400);
+    assert.equal((await h.request('pokemon-templates', 'PATCH', { id: cold.body.id, habitats: ['INVALID'] })).status, 400);
+    assert.deepEqual((await h.request(`pokemon-templates/${cold.body.id}`)).body.habitats, ['URBAN_AREAS']);
+  } finally { h.close(); }
+});
 
 test('Pokemon nicknames persist in sheets, parties and collection names and can be cleared', async () => {
   const h = harness();

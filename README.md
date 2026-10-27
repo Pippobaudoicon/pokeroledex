@@ -22,7 +22,8 @@ Without access to this Cloudflare account, run `pnpm dev:offline` instead: no lo
 | `pnpm dev` | Local development (frontend + Worker + local D1) |
 | `pnpm dev:offline` | The same without a Cloudflare login; the rulebook bucket is local and Ask is unavailable |
 | `pnpm typecheck` | Strict type check of the app, the Worker and the build scripts |
-| `pnpm test` | City counting, persistence, assignment, validation and sharing regression tests |
+| `pnpm test` | City, persistence, sharing, habitat extraction and reference coverage regression tests |
+| `pnpm habitats:refresh` | Collect and normalize Bulbapedia habitats (resumes from the local article cache) |
 | `pnpm build` | Production build into `dist/` |
 | `pnpm preview` | Serve the production build locally (its API needs the Access login, see below) |
 | `pnpm deploy` | Build, apply migrations to the remote D1 database, deploy |
@@ -219,6 +220,47 @@ Rendering the 641 pages takes about 13 minutes on 8 cores; finished pages are ke
 
 - **Reference data** (1,196 Pokémon forms, 892 moves, 394 items, 305 abilities, 25 natures, rank-up tables) lives in `data/reference/` and is published read-only as `/reference/*.json`.
 - **Your data** (Pokémon sheets, trainers, campaigns, custom entries, notes) is stored in D1, in one `records` table, under the owner's email. Back it up with `pnpm exec wrangler d1 export pokeroledex --remote --output backup.sql` (or `--local`).
+
+### Custom habitats
+
+Core habitats are replaced at reference-build time, not fetched at runtime:
+
+- `data/reference/pokemon-habitats.json` contains one record per Pokédex template, including forms: normalized habitat IDs, source article/revision/sections, status, and the species name when inherited.
+- `data/reference/habitats.json` saves the 31 normalized specific habitats, their `macroId`, and Pokémon/form counts (including zero counts).
+- `data/reference/habitat-macros.json` saves the eight macro habitats, their specific habitat IDs, and distinct Pokémon/form counts. A Pokémon assigned to several specifics in a macro is counted only once for that macro.
+- Both catalogs and `pokemon-habitats.json` are published at `/reference/<name>.json`.
+- `shared/habitats.ts` defines the taxonomy, labels, legacy aliases and matching used by the Pokédex, both generators and campaign template editor.
+
+The initial collection queried all 1,023 species articles for 1,196 templates (including Egg). It contains **408 documented assignments**, **80 explicitly inherited form assignments**, **707 entries awaiting review**, and **one not-applicable Egg**. The original 73 effective habitat values are now normalized into **31 specific habitats under eight macros**; 30 specifics currently have Pokémon assigned, while Outer Space is available for future/campaign assignments. This is a conservative automated extraction, not a fully human-reviewed habitat database. An unmatched statement does not prove a Pokémon lacks a documented habitat.
+
+| Macro habitat | Specific habitats |
+| --- | --- |
+| Forests | Forests; Tropical Forests & Jungles |
+| Open Land | Grasslands & Savannas; Fields & Meadows; Farmlands; Gardens |
+| Water & Coasts | Lakes & Ponds; Rivers & Streams; Lakeshores & Riverbanks; Wetlands; Oceans; Deep Seas; Coral Reefs; Seafloors; Coasts, Beaches & Islands |
+| Ice & Snow | Frozen Areas & Glaciers; Snowy Mountains; Icy Caves; Polar Seas; Tundra & Boreal Forests |
+| Mountains & Underground | Mountains & Peaks; Rocky Areas & Cliffs; Caves & Underground |
+| Arid & Volcanic | Deserts; Badlands, Scrublands & Wastelands; Volcanoes |
+| Settlements & Ruins | Settlements & Buildings; Power Plants & Electrical Areas; Ruins, Cemeteries & Abandoned Buildings |
+| Otherworldly | Outer Space; Other Dimensions & Ultra Space |
+
+Pokémon store **specific habitat IDs only**, deduplicated and sorted; macro membership is derived. The Pokédex and both generators use the same grouped picker: select an entire macro or individual specifics, and a Pokémon matches **any** selection. Each macro has a distinct colored icon. In both generators, the whole Habitats section starts collapsed, shows the selection count, and preserves selections and expanded specifics when closed. Ordinary mountains/peaks do **not** imply Ice & Snow. Every specific belongs to one macro; Polar Seas and Icy Caves belong to Ice & Snow, not Water & Coasts or Mountains & Underground. Pokémon can belong to multiple macros through multiple specific habitats.
+
+Synonyms merge into a single stored value: forest/woodland/temperate forest → `FORESTS`; plains/prairies/savannas → `GRASSLANDS`; rivers/streams → `RIVERS_AND_STREAMS`; bogs/swamps/marshes → `WETLANDS`; houses/buildings/cities → `URBAN_AREAS`. Legacy combined categories map to one broad normalized value, not every possible child: for example, Glaciers/Mountain Peaks/Icy Caves → `ICE_AND_SNOW` without inventing separate icy-cave evidence. The complete alias mapping is in `shared/habitats.ts`.
+
+The collector examines **Biology** and **Pokédex entries**, not game encounter locations or the older FireRed/LeafGreen habitat classification. It normalizes synonyms and separates regional/form evidence. Where form-specific evidence matches, it takes precedence over shared species evidence; otherwise a form may explicitly inherit shared species habitats. If no supported statement matches, the entry is marked `needs-review` and **retains the normalized equivalent of its original API habitats**. The original captured Pokémon snapshot is unchanged. The Pokédex profile shows macros, specific habitats, the source or review fallback, and a link to the captured article revision.
+
+Existing campaign templates and legacy API filter values remain readable through the alias mapping. Campaign responses normalize old IDs without modifying their stored records; creating or updating a template's habitats persists canonical IDs. The campaign editor offers only normalized specifics and previews their macros. Macro IDs are accepted by generator filters, but rejected as stored Pokémon habitat values. Campaign assignments are not replaced with Bulbapedia data.
+
+```sh
+pnpm habitats:refresh
+pnpm habitats:refresh --refresh
+pnpm build
+```
+
+The first command resumes/reprocesses cached articles in `node_modules/.cache/pokeroledex-habitats/`; `--refresh` fetches current revisions again. Requests use the public MediaWiki API in small sequential batches. Failures stop collection explicitly; completed article batches remain cached. Collection rewrites the habitat assignments and both catalogs, so review the Git diff before retaining a refresh or overwriting manual edits. No article prose is stored in the published datasets.
+
+To curate an assignment, edit its record in `pokemon-habitats.json`, using specific IDs from `shared/habitats.ts`, a source revision and section, and `documented` (or `inherited` with `inheritedFrom`). Run `pnpm build` to apply it, normalize/deduplicate stored assignments, and regenerate both the checked-in and published specific/macro catalogs. A reference refresh cannot silently erase overrides: the original captured Pokémon JSON stays unchanged, and the build applies the separate dataset. Missing/stale template mappings fail the build and require running the collector again.
 
 ### Import from pokeroledex.nl
 

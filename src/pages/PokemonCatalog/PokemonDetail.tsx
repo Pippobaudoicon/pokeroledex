@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, Plus, X } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
+import { habitatMacros, habitatName, normalizeHabitats } from "../../../shared/habitats";
 import { Link, useNavigate } from "react-router-dom";
 import { usePokemonControllerCreate, usePokemonTemplatesControllerFindOne } from "@/api/components";
 import { Rank } from "@/api/schemas";
@@ -204,7 +205,22 @@ const Overview = ({ template }: { template: Summary }) => (
         <Row title="Height" value={`${template.height} m`} />
         <Row title="Weight" value={`${template.weight} kg`} />
         {template.habitats.length > 0 && (
-          <Row title="Habitats" subtitle={template.habitats.map((habitat) => formatEnumName(habitat).replace(/ And /g, " & ")).join(", ")} />
+          <>
+            <Row title="Macro habitats" subtitle={habitatMacros(template.habitats).map(habitatName).join(", ")} />
+            <Row title="Habitats" subtitle={normalizeHabitats(template.habitats).map(habitatName).join(", ")} />
+          </>
+        )}
+        {template.habitatProvenance && (
+          <Row title="Habitat source" subtitle={
+            <span>
+              {template.habitatProvenance.status === "needs-review" ? "Original API habitats · awaiting review" :
+                template.habitatProvenance.status === "inherited" ? "Bulbapedia · inherited from species" :
+                  template.habitatProvenance.status === "not-applicable" ? "Not applicable" : "Bulbapedia"}
+              {template.habitatProvenance.source && (
+                <> · <a className="underline" href={`${template.habitatProvenance.source.url}?oldid=${template.habitatProvenance.source.revisionId}`} target="_blank" rel="noreferrer">View source</a></>
+              )}
+            </span>
+          } />
         )}
       </Group>
       <Matchups types={template.types} />

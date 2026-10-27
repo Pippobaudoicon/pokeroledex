@@ -1,5 +1,6 @@
 import { FaPlus, FaTrash } from "react-icons/fa6";
 import { ATTRIBUTES } from "../../../../shared/types";
+import { HABITAT_MACROS, habitatMacros, habitatName } from "../../../../shared/habitats";
 import type * as T from "../../../../shared/types";
 import {
   EvolutionDirection,
@@ -95,7 +96,7 @@ const typeOptions = Object.values(PokemonType).map((type) => ({
   value: type,
 }));
 const habitatOptions = Object.values(Habitat)
-  .map((habitat) => ({ label: formatEnumName(habitat), value: habitat }))
+  .map((habitat) => ({ label: habitatName(habitat), value: habitat }))
   .sort((a, b) => a.label.localeCompare(b.label));
 const evolutionDirectionOptions = Object.values(EvolutionDirection).map((direction) => ({
   label: formatEnumName(direction),
@@ -511,6 +512,9 @@ export const PokemonTemplateForm = ({
             }}
             placeholder="Select habitats..."
           />
+          <p className="text-sm text-muted-foreground">
+            Macro habitats: {habitatMacros(formData.habitats).map(macro => HABITAT_MACROS[macro].name).join(", ") || "None"}
+          </p>
         </div>
         <div className="space-y-3">
           <div className="flex items-center justify-between border-b pb-1">

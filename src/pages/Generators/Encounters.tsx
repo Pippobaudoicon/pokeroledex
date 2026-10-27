@@ -3,7 +3,9 @@ import { ChevronDown, Copy, Lock, Sparkles, Unlock, X } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { generationFor, isMythical } from "../../../shared/encounters";
 import { apiFetch } from "@/api/client";
-import { Habitat, LegendaryFilter, PokemonType, Rank, RankUpMethod } from "@/api/schemas";
+import { LegendaryFilter, PokemonType, Rank, RankUpMethod } from "@/api/schemas";
+import { HabitatPicker } from "@/components/HabitatPicker";
+import { habitatName } from "../../../shared/habitats";
 import { button } from "@/components/kit/button";
 import { Stepper } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
@@ -19,7 +21,7 @@ import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
 import { cn, formatEnumName } from "@/lib/utils";
-import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, habitatEmoji, habitatNames, SeedInput, ToggleField } from "./fields";
+import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, SeedInput, ToggleField } from "./fields";
 
 interface EncounterEntry {
   pokemon: T.Pokemon;
@@ -194,11 +196,8 @@ export const EncounterGenerator = () => {
             selected={(settings.generations ?? []).map(String)}
             onChange={(generations) => setSettings({ ...settings, generations: generations.map(Number) })}
           />
-          <ChoiceGroup
-            label="Habitats"
-            options={Object.values(Habitat)
-              .sort((a, b) => habitatNames[a].localeCompare(habitatNames[b]))
-              .map((habitat) => ({ value: habitat, label: habitatNames[habitat], icon: <span aria-hidden>{habitatEmoji[habitat]}</span> }))}
+          <HabitatPicker
+            collapsible
             selected={settings.habitats ?? []}
             onChange={(habitats) => setSettings({ ...settings, habitats })}
           />
@@ -343,7 +342,7 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
           {shiny && <ShinyMark />}
         </div>
         <p className="text-footnote text-label-2">
-          {species.habitats.map((habitat) => habitatNames[habitat]).join(", ") || "No habitat listed"}
+          {species.habitats.map(habitatName).join(", ") || "No habitat listed"}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" aria-haspopup="dialog" onClick={onDetails} className={button({ variant: "tinted", size: "sm" })}>
@@ -534,7 +533,7 @@ export const GeneratedEncounterList = () => {
   const copy = async () => {
     const lines = entries.map(({ pokemon, shinyRoll }) => {
       const species = pokemon.pokemonTemplate;
-      return `${species.name} (#${species.number}) | Rank ${pokemon.rank} | Types: ${species.types.join(", ")} | Habitat: ${species.habitats.map((habitat) => habitatNames[habitat]).join(", ")} | HP: ${pokemon.currentHp}/${species.baseHp + getTotalStat(pokemon, "vitality")}${shinyRoll.every((die) => die === 20) ? " | SHINY" : ""}`;
+      return `${species.name} (#${species.number}) | Rank ${pokemon.rank} | Types: ${species.types.join(", ")} | Habitat: ${species.habitats.map(habitatName).join(", ")} | HP: ${pokemon.currentHp}/${species.baseHp + getTotalStat(pokemon, "vitality")}${shinyRoll.every((die) => die === 20) ? " | SHINY" : ""}`;
     });
     try {
       await navigator.clipboard.writeText(lines.join("\n"));

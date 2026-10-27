@@ -3,7 +3,8 @@ import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
 import { useItemsControllerGenerate, usePokemonControllerGenerate } from "@/api/components";
-import { Habitat, ItemCategory, ItemPocket, LegendaryFilter, Rank, RankUpMethod } from "@/api/schemas";
+import { ItemCategory, ItemPocket, LegendaryFilter, Rank, RankUpMethod } from "@/api/schemas";
+import { HabitatPicker } from "@/components/HabitatPicker";
 import { ItemCard } from "@/components/ItemCard";
 import { button } from "@/components/kit/button";
 import { Group } from "@/components/kit/List";
@@ -19,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatEnumName } from "@/lib/utils";
 import { GeneratorContentProvider, useGeneratorContent } from "./context";
 import { EncounterGenerator, GeneratedEncounterList } from "./Encounters";
-import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, habitatNames, SeedInput, ToggleField } from "./fields";
+import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, SeedInput, ToggleField } from "./fields";
 
 type PokemonSettings = Required<Omit<T.GeneratePokemonBody, keyof T.SelectionBody | "pokemonTemplateId">> &
   Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
@@ -214,9 +215,8 @@ const PokemonGenerator = () => {
           </div>
         </Group>
         <Group title="Habitats">
-          <ChoiceGroup
-            label="Habitats"
-            options={Object.values(Habitat).map((habitat) => ({ value: habitat, label: habitatNames[habitat] }))}
+          <HabitatPicker
+            collapsible
             selected={settings.habitats}
             onChange={(habitats) => setSettings({ ...settings, habitats })}
           />

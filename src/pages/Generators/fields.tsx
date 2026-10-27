@@ -1,6 +1,5 @@
 import * as React from "react";
 import { ChevronDown, Dices } from "lucide-react";
-import { Habitat } from "@/api/schemas";
 import { Chip, Switch } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
 
@@ -107,59 +106,3 @@ export const GeneratorEmpty = ({ title, description }: { title: string; descript
     <p className="max-w-sm text-subhead text-label-2">{description}</p>
   </div>
 );
-
-export const habitatNames: Record<Habitat, string> = {
-  CITIES: "Cities",
-  TEMPERATE_DECIDUOUS_FORESTS: "Temperate Deciduous Forests",
-  BADLANDS_SCRUBLANDS_AND_WASTELANDS: "Badlands, Scrublands, and Wastelands",
-  ELECTROMAGNETICALLY_ACTIVE_AREAS: "Electromagnetically Active Areas",
-  WOODLANDS: "Woodlands",
-  TROPICAL_JUNGLES: "Tropical Jungles",
-  CAVES: "Caves",
-  FIELDS_AND_MEADOWS: "Fields and Meadows",
-  SWAMPS_BOGS_AND_MARSHES: "Swamps, Bogs, and Marshes",
-  GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES: "Grasslands, Savannas, Plains, and Prairies",
-  MOUNTAINS: "Mountains",
-  RUINS_AND_CEMETERIES: "Ruins and Cemeteries",
-  TUNDRAS_AND_BOREAL_FORESTS: "Tundras and Boreal Forests",
-  LAKESIDES_AND_RIVERSIDES: "Lakesides and Riversides",
-  GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES: "Glaciers, Mountain Peaks, and Icy Caves",
-  VOLCANOES: "Volcanoes",
-  LAKES: "Lakes",
-  BEACHES: "Beaches",
-  PONDS: "Ponds",
-  STREAMS_AND_RIVERS: "Streams and Rivers",
-  OCEANIC_ABYSSES: "Oceanic Abysses",
-  POLAR_SEAS: "Polar Seas",
-  TROPICAL_SEAS_AND_CORAL_REEFS: "Tropical Seas and Coral Reefs",
-  OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF: "Open Ocean and the Continental Shelf",
-  DESERTS: "Deserts",
-};
-
-export const habitatEmoji: Record<Habitat, string> = {
-  CITIES: "🏙️",
-  TEMPERATE_DECIDUOUS_FORESTS: "🍂",
-  BADLANDS_SCRUBLANDS_AND_WASTELANDS: "🏜️",
-  ELECTROMAGNETICALLY_ACTIVE_AREAS: "⚡",
-  WOODLANDS: "🌲",
-  TROPICAL_JUNGLES: "🌴",
-  CAVES: "🦇",
-  FIELDS_AND_MEADOWS: "🌼",
-  SWAMPS_BOGS_AND_MARSHES: "🐸",
-  GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES: "🌾",
-  MOUNTAINS: "⛰️",
-  RUINS_AND_CEMETERIES: "🪦",
-  TUNDRAS_AND_BOREAL_FORESTS: "🌨️",
-  LAKESIDES_AND_RIVERSIDES: "🏞️",
-  GLACIERS_MOUNTAIN_PEAKS_AND_ICY_CAVES: "🧊",
-  VOLCANOES: "🌋",
-  LAKES: "🛶",
-  BEACHES: "🏖️",
-  PONDS: "🪷",
-  STREAMS_AND_RIVERS: "💧",
-  OCEANIC_ABYSSES: "🦑",
-  POLAR_SEAS: "🐧",
-  TROPICAL_SEAS_AND_CORAL_REEFS: "🪸",
-  OPEN_OCEAN_AND_THE_CONTINENTAL_SHELF: "🌊",
-  DESERTS: "🌵",
-};
