@@ -38,7 +38,7 @@ Without access to this Cloudflare account, run `pnpm dev:offline` instead: no lo
 
 Workers Builds publishes branch previews with `wrangler preview`. The `previews` block in `wrangler.jsonc` connects them to the separate `pokeroledex-preview` database, initialized with the same schema as production. Preview records start empty. The rulebook's read-only R2 files and AI Search instance are shared.
 
-Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behind Access → Previews only** and choose the email login policy. Set `previews.vars.ACCESS_AUD` to that Access application's **Application Audience (AUD) tag** from Zero Trust → Access → Applications → Additional settings. The Worker verifies signed login tokens against this preview audience and `previews.vars.ACCESS_TEAM_DOMAIN`.
+Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behind Access → Previews only**. Its policy lets in members of the `new-era-horde` GitHub organization (Include → *GitHub Organization*, logging in with GitHub). The organization restricts third-party access, so the Access login's GitHub OAuth app must be granted to it under GitHub → Settings → Applications → Authorized OAuth Apps → the app → Organization access. Set `previews.vars.ACCESS_AUD` to that Access application's **Application Audience (AUD) tag** from Zero Trust → Access → Applications → Additional settings. The Worker verifies signed login tokens against this preview audience and `previews.vars.ACCESS_TEAM_DOMAIN`.
 
 ### Production login
 
