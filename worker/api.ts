@@ -3,7 +3,9 @@
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
 // records, works on them in memory and writes back only the records it changed.
 import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
-import { cityLimits, cityValues, isCitySkill, residentBonus } from '../shared/cities.ts';
+import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
+import { canWork } from '../shared/crafting.ts';
+import { speciesWorkProfile } from '../shared/crafting-data.ts';
 import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
@@ -294,14 +296,13 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const rank = (RANKS as readonly unknown[]).includes(record.rank) ? record.rank : 'UNRANKED';
         const stored = (record.assignments ?? {}) as Json;
         const residents = db.pokemon.filter(p => p.cityId === record.id);
-        const assignments = Object.fromEntries(residents.filter(p => validTarget(stored[p.id], tags)).map(p => [p.id, stored[p.id]]));
-        const bonuses = Object.fromEntries(residents.map(p => {
-          const species = lookup('pokemon-templates', p.pokemonTemplateId);
-          return [p.id, species ? residentBonus(species as PokemonTemplate, id => lookup('pokemon-templates', id) as PokemonTemplate | null) : 0];
-        }));
-        const { skills: _skills, tagValues: _tagValues, ...rest } = record;
-        return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses,
-          ...cityValues(rank, tags, assignments, bonuses), members: members.get(record.id) ?? [] };
+        const work = Object.fromEntries(residents.map(p => [p.id, residentWork(p)]));
+        const assignments = Object.fromEntries(residents.filter(p => canAssign(stored[p.id], tags, work[p.id].profile)).map(p => [p.id, stored[p.id]]));
+        const bonuses = Object.fromEntries(residents.map(p => [p.id, work[p.id].bonus]));
+        const profiles = Object.fromEntries(residents.map(p => [p.id, work[p.id].profile]));
+        const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, ...rest } = record;
+        return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
+          ...cityValues(rank, tags, assignments, work), members: members.get(record.id) ?? [] };
       }
       return referenceRecord(name, record);
     }
@@ -336,10 +337,15 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return { nickname: body.nickname.trim() };
     }
 
-    function validTarget(target: unknown, tags: string[]) {
-      if (typeof target !== 'string') return false;
-      if (target.startsWith('skill:')) return isCitySkill(target.slice(6));
-      return target.startsWith('tag:') && tags.includes(target.slice(4));
+    /** A resident's bonus, the work profile of its species and its types; see shared/cities.ts. */
+    function residentWork(p: Row): ResidentWork {
+      const species = lookup('pokemon-templates', p.pokemonTemplateId) as PokemonTemplate | null;
+      if (!species) return { bonus: 0, profile: {}, types: [] };
+      return {
+        bonus: residentBonus(species, id => lookup('pokemon-templates', id) as PokemonTemplate | null),
+        profile: speciesWorkProfile(species, reference['pokemon-templates']),
+        types: species.types,
+      };
     }
 
     function residentLimit(rank: unknown) {
@@ -371,14 +377,26 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if ('assignments' in body) {
         if (!body.assignments || typeof body.assignments !== 'object' || Array.isArray(body.assignments)) fail(400, 'City assignments must be an object.');
         for (const [id, target] of Object.entries(body.assignments as Json)) {
-          if (!city || !db.pokemon.some(p => p.id === id && p.cityId === city.id)) fail(400, 'Only residents of this city can be assigned to its skills and actions.');
-          if (target !== null && !validTarget(target, tags)) fail(400, 'Choose a city skill or one of the city\'s actions.');
+          const resident = city && db.pokemon.find(p => p.id === id && p.cityId === city.id);
+          if (!resident) fail(400, 'Only residents of this city can be assigned to its skills and actions.');
+          if (target !== null) {
+            const { profile } = residentWork(resident);
+            const skill = typeof target === 'string' && target.startsWith('skill:') ? target.slice(6) : null;
+            if (skill && isCitySkill(skill) && !canWork(profile, skill)) {
+              const species = lookup('pokemon-templates', resident.pokemonTemplateId);
+              fail(400, `${resident.nickname || species?.name || 'This Pokémon'} cannot work ${skill[0].toUpperCase()}${skill.slice(1)}.`);
+            }
+            if (!canAssign(target, tags, profile)) fail(400, 'Choose a city skill or one of the city\'s actions.');
+          }
           if (target === null) delete assignments[id];
           else assignments[id] = target;
         }
       }
       if ('assignments' in body || 'tags' in body) {
-        fields.assignments = Object.fromEntries(Object.entries(assignments).filter(([, target]) => validTarget(target, tags)));
+        fields.assignments = Object.fromEntries(Object.entries(assignments).filter(([id, target]) => {
+          const resident = db.pokemon.find(p => p.id === id);
+          return canAssign(target, tags, resident ? residentWork(resident).profile : {});
+        }));
       }
       return fields;
     }

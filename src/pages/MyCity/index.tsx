@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown, FlaskConical, Plus, Tag } from "lucide-react";
+import { Anvil, Building2, ChevronDown, Cpu, FlaskConical, HeartPulse, Landmark, Microscope, Plus, Scissors, Search, Sparkles, Tag, type LucideIcon } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CITY_SKILLS, RANKS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
-import { cityLimits, cityRankGroups, cityValues } from "../../../shared/cities";
+import { CITY_SKILLS, CRAFTING_SKILLS, POKEMON_TYPES, RANKS, SUPPORT_SKILLS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type ProfileSkill, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
+import { cityLimits, cityRankGroups, cityValues, type ResidentWork } from "../../../shared/cities";
+import { canWork, workBonus } from "../../../shared/crafting";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { button } from "@/components/kit/button";
 import { PageHeader } from "@/components/kit/PageHeader";
@@ -21,11 +22,17 @@ import { cn, formatEnumName } from "@/lib/utils";
 const field = "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9";
 const panel = "rounded-2xl bg-surface p-4 shadow-card";
 const skillLabel = (skill: CitySkill) => formatEnumName(skill);
-// Science has no matching work icon, so it falls back to a flask.
-const SkillIcon = ({ skill }: { skill: CitySkill }) =>
-  skill === "science"
-    ? <FlaskConical aria-hidden className="size-5 shrink-0" />
-    : <img src={`/images/myCity/${skill}.webp`} alt="" width={20} height={20} className="size-5 shrink-0 object-contain" />;
+const skillIcons: Record<CitySkill, LucideIcon> = {
+  apothecary: FlaskConical, craftsmanship: Scissors, technology: Cpu, metallurgy: Anvil, archaeology: Landmark,
+  research: Microscope, nursing: HeartPulse, foraging: Search, catalyst: Sparkles,
+};
+const SkillIcon = ({ skill }: { skill: CitySkill }) => {
+  const Icon = skillIcons[skill];
+  return <Icon aria-hidden className="size-5 shrink-0" />;
+};
+/** What cityValues needs per resident: the city's bonus and profile, and the species' types. */
+const residentWork = (city: City, residents: Pokemon[]): Record<string, ResidentWork> =>
+  Object.fromEntries(residents.map(resident => [resident.id, { bonus: city.bonuses[resident.id] ?? 0, profile: city.profiles[resident.id] ?? {}, types: resident.pokemonTemplate.types }]));
 type Change =
   | { kind: "create"; name: string }
   | { kind: "settings"; id: string; body: CityBody }
@@ -65,7 +72,7 @@ const errorText = (error: ApiFetchError) => {
 };
 
 /** Moves one resident to a skill, an action or back to unassigned, updating the page before the server answers. */
-function useCityWork(city: City) {
+function useCityWork(city: City, residents: Pokemon[]) {
   const client = useQueryClient();
   const { toast } = useToast();
   return useMutation({
@@ -78,7 +85,7 @@ function useCityWork(city: City) {
         if (entry.id !== city.id) return entry;
         const { [pokemonId]: _old, ...assignments } = entry.assignments;
         if (target) assignments[pokemonId] = target;
-        return { ...entry, assignments, ...cityValues(entry.rank, entry.tags, assignments, entry.bonuses) };
+        return { ...entry, assignments, ...cityValues(entry.rank, entry.tags, assignments, residentWork(entry, residents)) };
       }));
       return { previous };
     },
@@ -279,18 +286,29 @@ const targetLabel = (target: WorkTarget) =>
 
 /** Drag residents (or tap one, then a skill) to choose the skill or action each one works on. */
 const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }) => {
-  const work = useCityWork(city);
+  const work = useCityWork(city, residents);
   const [selected, setSelected] = React.useState<string | null>(null);
   const [drag, setDrag] = React.useState<{ id: string; x: number; y: number; over: WorkTarget | null } | null>(null);
   const press = React.useRef<{ id: string; x: number; y: number; dragged: boolean; clientY?: number } | null>(null);
+  const allowed = (id: string, target: WorkTarget) => !target.startsWith("skill:") || canWork(city.profiles[id] ?? {}, target.slice(6) as CitySkill);
+  /** What a resident adds where it works: half bonus on half skills; Catalyst shows its strength. */
+  const contribution = (id: string, target: WorkTarget) => {
+    const bonus = city.bonuses[id] ?? 0;
+    return target.startsWith("skill:") && target !== "skill:catalyst" ? workBonus(bonus, city.profiles[id]?.[target.slice(6) as ProfileSkill]) : bonus;
+  };
   const totals = new Map<WorkTarget, number>();
-  for (const [id, target] of Object.entries(city.assignments)) totals.set(target, (totals.get(target) ?? 0) + (city.bonuses[id] ?? 0));
-  const targets: WorkTarget[] = [...CITY_SKILLS.map(skill => `skill:${skill}` as const), ...city.tags.map(tag => `tag:${tag}` as const)];
+  for (const [id, target] of Object.entries(city.assignments)) totals.set(target, (totals.get(target) ?? 0) + contribution(id, target));
+  const groups: [string, WorkTarget[]][] = [
+    ["Crafting skills", CRAFTING_SKILLS.map(skill => `skill:${skill}` as const)],
+    ["Support skills", SUPPORT_SKILLS.map(skill => `skill:${skill}` as const)],
+    ["Actions", city.tags.map(tag => `tag:${tag}` as const)],
+  ];
   const placed = (target: WorkTarget) => residents.filter(resident => (city.assignments[resident.id] ?? "unassigned") === target);
   const name = (resident: Pokemon) => resident.nickname || resident.pokemonTemplate.name;
 
   const move = (id: string, target: WorkTarget) => {
     setSelected(null);
+    if (!allowed(id, target)) return;
     if ((city.assignments[id] ?? "unassigned") !== target) work.mutate({ pokemonId: id, target: target === "unassigned" ? null : target });
   };
   const targetAt = (x: number, y: number) =>
@@ -324,10 +342,11 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   }, [dragging]);
 
   const chip = (resident: Pokemon) => {
-    const bonus = city.bonuses[resident.id] ?? 0;
     const current = city.assignments[resident.id] ?? "unassigned";
+    const bonus = contribution(resident.id, current);
+    const half = current.startsWith("skill:") && city.profiles[resident.id]?.[current.slice(6) as ProfileSkill] === "half";
     return <button key={resident.id} type="button" draggable={false} aria-pressed={selected === resident.id}
-      aria-label={`${name(resident)}${resident.shiny ? " (shiny)" : ""}, +${bonus}, ${targetLabel(current)}. ${selected === resident.id ? "Selected: choose where it works." : "Select to move."}`}
+      aria-label={`${name(resident)}${resident.shiny ? " (shiny)" : ""}, +${bonus}${half ? " (half bonus)" : ""}, ${targetLabel(current)}. ${selected === resident.id ? "Selected: choose where it works." : "Select to move."}`}
       className={cn("relative flex w-18 touch-none select-none flex-col items-center gap-0.5 rounded-xl bg-surface p-1 text-caption shadow-card outline-none focus-visible:outline-2 focus-visible:outline-focus cursor-grab",
         selected === resident.id ? "ring-2 ring-tint" : resident.shiny && shinyRing, drag?.id === resident.id && "opacity-40")}
       onPointerDown={event => {
@@ -364,17 +383,21 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
       }}>
       <Sprite image={resident.pokemonTemplate.image} set="box" className="h-10 w-12 pointer-events-none" />
       <span className="w-full truncate text-center">{name(resident)}</span>
-      <span className="absolute -top-1.5 -right-1.5 rounded-full bg-tint px-1.5 text-caption font-semibold text-on-tint tabular-nums">+{bonus}</span>
+      <span className={cn("absolute -top-1.5 -right-1.5 rounded-full px-1.5 text-caption font-semibold tabular-nums", half ? "bg-tint/25 text-tint" : "bg-tint text-on-tint")}
+        title={half ? "Half bonus: this species is only partly suited to this skill." : undefined}>+{bonus}</span>
     </button>;
   };
 
+  const active = drag?.id ?? selected;
   const zone = (target: WorkTarget, header: React.ReactNode) => {
     const members = placed(target);
+    const blocked = !!active && !allowed(active, target);
+    const activeName = active ? name(residents.find(resident => resident.id === active)!) : "";
     return <div key={target} data-city-target={target}
-      className={cn("flex min-w-0 flex-col gap-2 rounded-xl bg-fill p-3 transition-shadow",
-        drag?.over === target && "ring-2 ring-tint", selected && "ring-1 ring-tint/40")}>
-      <button type="button" disabled={!selected} onClick={() => selected && move(selected, target)}
-        aria-label={selected ? `Move ${name(residents.find(resident => resident.id === selected)!)} to ${targetLabel(target)}` : targetLabel(target)}
+      className={cn("flex min-w-0 flex-col gap-2 rounded-xl bg-fill p-3 transition-[box-shadow,opacity]",
+        blocked ? "opacity-40" : [drag?.over === target && "ring-2 ring-tint", selected && "ring-1 ring-tint/40"])}>
+      <button type="button" disabled={!selected || blocked} onClick={() => selected && move(selected, target)}
+        aria-label={blocked ? `${activeName} cannot work ${targetLabel(target)}` : selected ? `Move ${activeName} to ${targetLabel(target)}` : targetLabel(target)}
         className="flex min-h-9 items-center gap-2 rounded-lg text-left font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-default">
         {header}
       </button>
@@ -386,6 +409,13 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   };
 
   const value = (target: WorkTarget) => {
+    if (target === "skill:catalyst") {
+      const types = POKEMON_TYPES.filter(type => city.catalysts[type]);
+      return <span className="ml-auto flex flex-wrap justify-end gap-1">
+        {types.map(type => <span key={type} title={`${formatEnumName(type)}: strength ${city.catalysts[type]}`}><TypePill type={type} size="sm" /></span>)}
+        {!types.length && <span className="text-footnote font-normal text-label-2">No types</span>}
+      </span>;
+    }
     const total = totals.get(target) ?? 0;
     return <span className="ml-auto shrink-0 text-footnote tabular-nums text-label-2" title={total > city.limits.skill ? `Residents add ${total}; the city rank caps it at ${city.limits.skill}.` : undefined}>
       <span className="text-body font-semibold text-label">{Math.min(total, city.limits.skill)}</span> / {city.limits.skill}{total > city.limits.skill && " max"}
@@ -396,17 +426,20 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   return <section className={`${panel} space-y-4`}>
     <div>
       <h2 className="text-title-3 font-semibold">Skills & actions</h2>
-      <p className="mt-1 text-footnote text-label-2">Drag a resident onto a skill or action, or tap it and then tap where it works. Each skill is the sum of its residents: first stage +1, second +2, third +3, species that never evolve +2, legendaries +5. {formatEnumName(city.rank)} cities cap every skill at {city.limits.skill}.</p>
+      <p className="mt-1 text-footnote text-label-2">Drag a resident onto a skill or action, or tap it and then tap where it works. A resident's species decides which skills it can work, at full or half bonus (see its Pokédex page; a pale badge marks half). The full bonus is: first stage +1, second +2, third +3, species that never evolve +2, legendaries +5. Catalyst takes any resident and adds no value: it provides its types to recipes that need them. {formatEnumName(city.rank)} cities cap every skill at {city.limits.skill}.</p>
     </div>
     {!residents.length ? <p>No residents yet. Add a Pokémon to put it to work.</p> : <>
       {zone("unassigned", <><span>Unassigned</span><span className="ml-auto text-footnote font-normal text-label-2">{placed("unassigned").length} of {residents.length}</span></>)}
-      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {targets.map(target => zone(target, <>
-          {target.startsWith("skill:") ? <SkillIcon skill={target.slice(6) as CitySkill} /> : <Tag aria-hidden className="size-5 shrink-0" />}
-          <span className="min-w-0 truncate">{targetLabel(target)}</span>
-          {value(target)}
-        </>))}
-      </div>
+      {groups.filter(([, targets]) => targets.length).map(([title, targets]) => <div key={title} className="space-y-2">
+        <h3 className="text-subhead font-semibold text-label-2">{title}</h3>
+        <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {targets.map(target => zone(target, <>
+            {target.startsWith("skill:") ? <SkillIcon skill={target.slice(6) as CitySkill} /> : <Tag aria-hidden className="size-5 shrink-0" />}
+            <span className="min-w-0 truncate">{targetLabel(target)}</span>
+            {value(target)}
+          </>))}
+        </div>
+      </div>)}
       {!city.tags.length && <p className="text-footnote text-label-2">Add custom actions in City settings below to assign residents to them too.</p>}
     </>}
     {dragged && <div aria-hidden className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2" style={{ left: drag.x, top: drag.y }}>
@@ -488,8 +521,10 @@ export const MyCityPage = () => {
               <CityTypeOverview key={city.id} residents={residents} />
             </section>
             <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities <span className="text-footnote font-normal text-label-2">(max {city.limits.skill})</span></h2>
-              <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{skillLabel(skill)} {city.skills[skill]}</span>)}</div>
+              <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => skill !== "catalyst" && city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{skillLabel(skill)} {city.skills[skill]}</span>)}</div>
               {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No residents are working on city skills yet. Assign them in Skills & actions.</p>}
+              {city.skills.catalyst > 0 && <div className="mt-3 flex flex-wrap items-center gap-2"><SkillIcon skill="catalyst" /><span>Catalyst types</span>
+                {POKEMON_TYPES.filter(type => city.catalysts[type]).map(type => <span key={type} title={`Strength ${city.catalysts[type]}`}><TypePill type={type} size="sm" /></span>)}</div>}
               <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}: {city.tagValues[tag] ?? 0}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>

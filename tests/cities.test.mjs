@@ -227,7 +227,7 @@ test('city CRUD persists separate cities, rank and tags, and protects ownership'
     assert.notEqual(first.body.id, second.body.id);
     const path = `cities/${first.body.id}`;
     const updated = await h.request(path, 'PATCH', {
-      name: 'New Pallet', rank: 'ADVANCED', skills: { science: 10 }, tagValues: { 'Can heal': 9 },
+      name: 'New Pallet', rank: 'ADVANCED', skills: { research: 10 }, tagValues: { 'Can heal': 9 },
       tags: [' Can heal ', 'Can heal', 'Can produce food'], userId: 'mallory', id: 'changed',
     });
     assert.equal(updated.status, 200);
@@ -235,7 +235,7 @@ test('city CRUD persists separate cities, rank and tags, and protects ownership'
     assert.equal(updated.body.userId, 'alice');
     assert.equal(updated.body.rank, 'ADVANCED');
     assert.deepEqual(updated.body.limits, { residents: 19, skill: 10 });
-    assert.equal(updated.body.skills.science, 0, 'skills are derived from residents, not set manually');
+    assert.equal(updated.body.skills.research, 0, 'skills are derived from residents, not set manually');
     assert.deepEqual(updated.body.tags, ['Can heal', 'Can produce food']);
     assert.deepEqual(updated.body.tagValues, { 'Can heal': 0, 'Can produce food': 0 });
     assert.equal((await h.request(path)).body.name, 'New Pallet');
@@ -253,7 +253,7 @@ test('city validation rejects malformed names, ranks, assignments, tags and requ
     for (const body of [
       null, [], { name: '' }, { name: ' ' }, { name: 'a'.repeat(101) },
       ...['', 'GOD', null, 3].map(rank => ({ name: 'Test', rank })),
-      { name: 'Test', assignments: null }, { name: 'Test', assignments: [] }, { name: 'Test', assignments: { someone: 'skill:mining' } },
+      { name: 'Test', assignments: null }, { name: 'Test', assignments: [] }, { name: 'Test', assignments: { someone: 'skill:metallurgy' } },
       { name: 'Test', tags: [3] }, { name: 'Test', tags: [' '] },
       { name: 'Test', tags: ['a'.repeat(81)] }, { name: 'Test', tags: Array(51).fill('heal') },
     ]) assert.equal((await h.request('cities', 'POST', body)).status, 400, JSON.stringify(body));
@@ -292,34 +292,66 @@ test('skills and actions are the capped sum of assigned residents and follow the
     const mewtwo = await add('mewtwo');
     const assign = (assignments, owner) => h.request(path, 'PATCH', { assignments }, owner);
 
-    let result = await assign({ [ralts]: 'skill:mining', [gardevoir]: 'skill:mining', [tauros]: 'tag:Can heal' });
+    let result = await assign({ [ralts]: 'skill:craftsmanship', [gardevoir]: 'skill:craftsmanship', [tauros]: 'tag:Can heal' });
     assert.equal(result.status, 200);
     assert.deepEqual(result.body.bonuses, { [ralts]: 1, [gardevoir]: 3, [tauros]: 2, [mewtwo]: 5 });
-    assert.equal(result.body.skills.mining, 4);
+    assert.equal(result.body.skills.craftsmanship, 4);
     assert.equal(result.body.tagValues['Can heal'], 2);
     assert.equal(result.body.assignments[mewtwo], undefined);
 
     // Assignments merge, so one member's change keeps the others; null unassigns.
-    result = await assign({ [mewtwo]: 'skill:mining', [ralts]: null });
-    assert.equal(result.body.skills.mining, 6, 'Unranked caps the 8 from Gardevoir and Mewtwo at 6');
+    result = await assign({ [mewtwo]: 'skill:craftsmanship', [ralts]: null });
+    assert.equal(result.body.skills.craftsmanship, 6, 'Unranked caps the 8 from Gardevoir and Mewtwo at 6');
     assert.equal(result.body.tagValues['Can heal'], 2);
     assert.deepEqual(Object.keys(result.body.assignments).sort(), [gardevoir, mewtwo, tauros].sort());
-    assert.equal((await h.request(path, 'PATCH', { rank: 'ADVANCED' })).body.skills.mining, 8);
+    assert.equal((await h.request(path, 'PATCH', { rank: 'ADVANCED' })).body.skills.craftsmanship, 8);
 
-    for (const assignments of [{ [ralts]: 'skill:cooking' }, { [ralts]: 'tag:Can fly' }, { [ralts]: 'mining' }, { [ralts]: 3 }]) {
+    for (const assignments of [{ [ralts]: 'skill:cooking' }, { [ralts]: 'tag:Can fly' }, { [ralts]: 'craftsmanship' }, { [ralts]: 3 }]) {
       assert.equal((await assign(assignments)).status, 400, JSON.stringify(assignments));
     }
     const outsider = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'tauros' })).body.id;
-    assert.equal((await assign({ [outsider]: 'skill:farming' })).status, 400);
+    assert.equal((await assign({ [outsider]: 'skill:nursing' })).status, 400);
 
     // Removing an action unassigns its residents; leaving the city clears the assignment.
     result = await h.request(path, 'PATCH', { tags: [] });
     assert.equal(result.body.assignments[tauros], undefined);
     assert.deepEqual(result.body.tagValues, {});
     assert.equal((await h.request('pokemon', 'PATCH', { id: mewtwo, takeOwnership: true })).status, 200);
-    assert.equal((await h.request(path)).body.skills.mining, 3);
+    assert.equal((await h.request(path)).body.skills.craftsmanship, 3);
     assert.equal((await h.request('pokemon', 'PATCH', { id: mewtwo, cityId: city.id })).status, 200);
     assert.equal((await h.request(path)).body.assignments[mewtwo], undefined, 'a returning resident starts unassigned');
+  } finally { h.close(); }
+});
+
+test('a resident works only skills its species allows, at full or half bonus, and Catalyst takes anyone', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    const path = `cities/${city.id}`;
+    const add = async id => (await h.request('pokemon', 'POST', { pokemonTemplateId: id, cityId: city.id })).body.id;
+    const gardevoir = await add('gardevoir');
+    const tauros = await add('tauros');
+    const charmander = await add(species.id);
+
+    // The test species are Normal (full Craftsmanship and Nursing, half Technology); Charmander is Fire/Flying.
+    let result = (await h.request(path)).body;
+    assert.deepEqual(result.profiles[gardevoir], { craftsmanship: 'full', technology: 'half', nursing: 'full' });
+    assert.deepEqual(result.profiles[charmander], { craftsmanship: 'half', technology: 'half', metallurgy: 'full', foraging: 'full' });
+
+    const refused = await h.request(path, 'PATCH', { assignments: { [gardevoir]: 'skill:metallurgy' } });
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.payload, /gardevoir cannot work Metallurgy/);
+
+    result = (await h.request(path, 'PATCH', { assignments: { [gardevoir]: 'skill:technology', [tauros]: 'skill:catalyst', [charmander]: 'skill:catalyst' } })).body;
+    assert.equal(result.skills.technology, 1, 'half of Gardevoir\'s 3, rounded down');
+    assert.deepEqual(result.catalysts, { NORMAL: 2, FIRE: 2, FLYING: 2 });
+    assert.equal(result.skills.catalyst, 3, 'Catalyst counts the types it provides');
+
+    // A stored assignment the species cannot work (from older data) is dropped when the city is read.
+    h.db.prepare('UPDATE records SET data = json_set(data, \'$.assignments.\' || ?, \'skill:apothecary\') WHERE id = ?').run(tauros, city.id);
+    result = (await h.request(path)).body;
+    assert.equal(result.assignments[tauros], undefined);
+    assert.equal(result.skills.apothecary, 0);
   } finally { h.close(); }
 });
 
@@ -495,8 +527,8 @@ test('invited members see, edit, add and take residents like the creator', async
 
     assert.equal((await h.request('pokemon', 'PATCH', { id: resident.id, stats: { brawl: 3 } }, bob)).status, 200);
     assert.equal((await h.request(`pokemon/${resident.id}`)).body.stats.brawl, 3);
-    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [resident.id]: 'skill:science' } }, bob)).body.skills.science, 2);
-    assert.equal((await h.request(`cities/${city.id}`)).body.skills.science, 2);
+    assert.equal((await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [resident.id]: 'skill:metallurgy' } }, bob)).body.skills.metallurgy, 2);
+    assert.equal((await h.request(`cities/${city.id}`)).body.skills.metallurgy, 2);
 
     const bobs = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id }, bob)).body;
     assert.equal((await h.request('pokemon', 'PATCH', { id: bobs.id, cityId: city.id }, bob)).status, 200);
@@ -638,5 +670,29 @@ test('the city string tags migration turns name and value tags back into action 
     const data = db.prepare('SELECT data FROM records ORDER BY seq').all().map(row => JSON.parse(row.data));
     assert.deepEqual(data[0].tags, ['Can heal', 'Can produce food']);
     assert.deepEqual(data[1].tags, []);
+  } finally { db.close(); }
+});
+
+test('the city crafting skills migration moves assignments to the closest new skill', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    migrate(db, 1, 5);
+    const insert = db.prepare('INSERT INTO records (owner, collection, id, data) VALUES (?, ?, ?, ?)');
+    insert.run('city:c1', 'cities', 'c1', JSON.stringify({ id: 'c1', name: 'Pallet', tags: ['Can heal'], assignments: {
+      a: 'skill:medicine_production', b: 'skill:farming', c: 'skill:planting', d: 'skill:handiwork', e: 'skill:generating_electricity',
+      f: 'skill:mining', g: 'skill:science', h: 'skill:transporting', i: 'tag:Can heal',
+    } }));
+    insert.run('city:c2', 'cities', 'c2', JSON.stringify({ id: 'c2', name: 'Viridian', assignments: {} }));
+    insert.run('city:c3', 'cities', 'c3', JSON.stringify({ id: 'c3', name: 'Pewter' }));
+    insert.run('alice', 'pokemon', 'p1', JSON.stringify({ id: 'p1', assignments: { a: 'skill:mining' } }));
+    migrate(db, 6, 6);
+    const data = db.prepare('SELECT data FROM records ORDER BY seq').all().map(row => JSON.parse(row.data));
+    assert.deepEqual(data[0].assignments, {
+      a: 'skill:apothecary', b: 'skill:apothecary', c: 'skill:apothecary', d: 'skill:craftsmanship', e: 'skill:technology',
+      f: 'skill:metallurgy', g: 'skill:research', h: 'skill:foraging', i: 'tag:Can heal',
+    });
+    assert.deepEqual(data[1].assignments, {});
+    assert.equal(data[2].assignments, undefined);
+    assert.deepEqual(data[3].assignments, { a: 'skill:mining' });
   } finally { db.close(); }
 });

@@ -2,6 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, Plus, X } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
+import { CITY_SKILLS, CRAFTING_SKILLS } from "../../../shared/types";
+import { speciesWorkProfile } from "../../../shared/crafting-data";
 import { habitatMacros, habitatName, normalizeHabitats } from "../../../shared/habitats";
 import { Link, useNavigate } from "react-router-dom";
 import { usePokemonControllerCreate, usePokemonTemplatesControllerFindOne } from "@/api/components";
@@ -168,6 +170,20 @@ const Matchups = ({ types }: { types: T.PokemonType[] }) => (
   </Group>
 );
 
+/** Which city skills this species can work, from shared/crafting.ts and its exceptions. */
+const CityWork = ({ template, dex }: { template: Summary; dex: Summary[] }) => {
+  const profile = speciesWorkProfile(template, dex);
+  const skills = CITY_SKILLS.filter((skill): skill is T.ProfileSkill => skill !== "catalyst" && !!profile[skill]);
+  return (
+    <Group title="City work" footer="In a city it adds its full bonus to full skills and half to half skills. Any Pokémon can be a Catalyst.">
+      {skills.map((skill) => (
+        <Row key={skill} title={formatEnumName(skill)} subtitle={(CRAFTING_SKILLS as readonly string[]).includes(skill) ? "Crafting" : "Support"}
+          value={<span className={cn("font-semibold", profile[skill] === "full" ? "text-label" : "text-label-2")}>{profile[skill] === "full" ? "Full" : "Half"}</span>} />
+      ))}
+    </Group>
+  );
+};
+
 const abilityList = (template: Summary) =>
   (
     [
@@ -178,7 +194,7 @@ const abilityList = (template: Summary) =>
     ] as const
   ).filter((entry): entry is [T.Ability, "Hidden" | "Event" | undefined] => entry[0] != null);
 
-const Overview = ({ template }: { template: Summary }) => (
+const Overview = ({ template, dex }: { template: Summary; dex: Summary[] }) => (
   <div className="grid gap-6 @2xl:grid-cols-2 @2xl:gap-5">
     <div className="flex flex-col gap-6 @2xl:gap-5">
       <Group title="Attributes" footer="Filled: base. Hollow: room to grow up to the max.">
@@ -224,6 +240,7 @@ const Overview = ({ template }: { template: Summary }) => (
         )}
       </Group>
       <Matchups types={template.types} />
+      <CityWork template={template} dex={dex} />
       {template.description && (
         <Group title="Pokédex entry">
           <p className="px-4 py-3 text-body leading-relaxed text-label lg:px-3">{template.description}</p>
@@ -382,7 +399,7 @@ export const PokemonDetail = ({ id, layout, onClose }: { id: string; layout: Lay
         />
         </div>
         <div {...segmentPanelProps("dex", tab)} tabIndex={-1} className="outline-none animate-in fade-in-0 [--tw-duration:150ms]" key={tab}>
-          {tab === "overview" && <Overview template={template} />}
+          {tab === "overview" && <Overview template={template} dex={dex ?? []} />}
           {tab === "moves" && <Moves id={id} />}
           {tab === "evolutions" && <Evolutions template={template} dex={dex ?? []} />}
         </div>

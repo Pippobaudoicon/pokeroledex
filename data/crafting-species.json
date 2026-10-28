@@ -1,0 +1,20 @@
+{
+  "Porygon": { "line": true, "skills": { "technology": "full", "research": "full" }, "note": "Built from code" },
+  "Rotom": { "line": true, "skills": { "technology": "full" }, "note": "Possesses appliances" },
+  "Klink": { "line": true, "skills": { "technology": "full", "metallurgy": "full" }, "note": "Living gears" },
+  "Happiny": { "line": true, "skills": { "nursing": "full", "apothecary": "full" }, "note": "Pokémon Center nurses" },
+  "Audino": { "skills": { "nursing": "full", "apothecary": "full" }, "note": "Pokémon Center nurse" },
+  "Hatenna": { "line": true, "skills": { "nursing": "full" }, "note": "Senses and soothes emotions" },
+  "Comfey": { "skills": { "apothecary": "full", "nursing": "full" }, "note": "Healing flower garlands" },
+  "Miltank": { "skills": { "apothecary": "full", "nursing": "full" }, "note": "Moomoo Milk" },
+  "Shuckle": { "skills": { "apothecary": "full" }, "note": "Ferments Berry Juice" },
+  "Smeargle": { "skills": { "craftsmanship": "full" }, "note": "Artist" },
+  "Timburr": { "line": true, "skills": { "craftsmanship": "full", "metallurgy": "full" }, "note": "Construction workers" },
+  "Tinkatink": { "line": true, "skills": { "metallurgy": "full", "craftsmanship": "full" }, "note": "Forges its own hammer" },
+  "Klefki": { "skills": { "metallurgy": "full", "craftsmanship": "full" }, "note": "Collects keys" },
+  "Sableye": { "skills": { "metallurgy": "full" }, "note": "Eats gems" },
+  "Carbink": { "skills": { "metallurgy": "full" }, "note": "Living gem" },
+  "Unown": { "skills": { "archaeology": "full", "research": "full" }, "note": "Ancient script" },
+  "Bronzor": { "line": true, "skills": { "archaeology": "full" }, "note": "Found in ancient ruins" },
+  "Delibird": { "skills": { "foraging": "full" }, "note": "Carries and gives away food" }
+}

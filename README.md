@@ -116,12 +116,28 @@ Starter 7 … Advanced 10). Adding or moving a Pokémon into a full city fails, 
 a city cannot drop to a rank that is too small for its current residents.
 
 **Skills & actions** lets you put residents to work: drag a resident from
-**Unassigned** onto a city skill (Generating Electricity, Mining, Handiwork,
-Medicine Production, Transporting, Farming, Planting, Science) or a custom action
-such as "Can heal". Dragging works with a mouse or touch and scrolls near the
-screen edges. You can also tap or press Enter on a resident, then on its
-destination. Escape cancels. Each resident works on one skill or action at a time. A skill's value is
-the sum of its residents' bonuses, capped by the city rank:
+**Unassigned** onto a city skill or a custom action such as "Can heal". Dragging
+works with a mouse or touch and scrolls near the screen edges. You can also tap
+or press Enter on a resident, then on its destination. Escape cancels. Each
+resident works on one skill or action at a time.
+
+City skills are grouped for crafting (see `docs/crafting-plan.md`):
+
+| Kind | Skills |
+| --- | --- |
+| Crafting (dice for recipes) | Apothecary, Craftsmanship, Technology, Metallurgy, Archaeology |
+| Support | Research (unlocks recipes), Nursing, Foraging, Catalyst |
+
+A resident's species decides which skills it can work. Its **work profile**
+(shown under **City work** on its Pokédex page) is full, half or closed for each
+skill. It starts from the species' types, and a high max attribute raises it:
+6+ turns half into full, 7+ opens a skill at half. Hand-tuned exceptions live in
+`data/crafting-species.json`. The rules are in `shared/crafting.ts`, and
+`pnpm crafting:report` writes every species' profile and every item's recipe to
+`docs/crafting-review/`. **Catalyst** takes any resident: it adds no value and
+instead provides the resident's types, at its bonus, to recipes that need them.
+A skill's value is the sum of its residents' bonuses, half (at least 1) for a
+half skill, capped by the city rank:
 
 | Resident | Bonus |
 | --- | --- |
@@ -135,7 +151,12 @@ Mega Evolutions and alternate forms (Rotom Wash, Aegislash Blade) use their base
 form's bonus. Values are calculated from the residents, so they cannot be set
 by hand; values saved by hand before this change are ignored, and migration
 `0005_city_string_tags.sql` turns the `{ name, value }` actions from
-`0004_city_work_skills.sql` back into plain action names. Removing an action
+`0004_city_work_skills.sql` back into plain action names. Migration
+`0006_city_crafting_skills.sql` moves assignments from the old work skills to the
+closest new skill (Medicine Production, Farming and Planting to Apothecary;
+Handiwork to Craftsmanship; Generating Electricity to Technology; Mining to
+Metallurgy; Science to Research; Transporting to Foraging). Assignments the
+species cannot work are dropped, so those residents show up unassigned. Removing an action
 or moving a resident out of the city unassigns it. City settings below the board
 edit the name, rank and custom actions; save them explicitly.
 
@@ -163,10 +184,10 @@ a Pokémon into or out of a city moves its record between that city and the
 person's own records. `/api/cities` supports GET/POST, `/api/cities/:id` supports
 GET/PATCH/DELETE (leave when shared), and `POST /api/cities/:id/members` with
 `{ email }` invites a member. City PATCH accepts `name`, `rank`, `tags` and
-`assignments` (`{ "<pokemon id>": "skill:mining" | "tag:Can heal" | null }`,
+`assignments` (`{ "<pokemon id>": "skill:metallurgy" | "tag:Can heal" | null }`,
 merged into the stored assignments so members' changes don't overwrite each
-other); the response adds the derived `limits`, `skills`, `tagValues` and each
-resident's `bonuses`. Moving a Pokémon to a city or trainer uses the existing Pokémon PATCH
+other; a skill the resident's species cannot work is refused); the response adds the derived `limits`, `skills`, `tagValues`,
+`catalysts` (type → strongest Catalyst bonus) and each resident's `bonuses` and `profiles`. Moving a Pokémon to a city or trainer uses the existing Pokémon PATCH
 endpoint and validates destinations among the person's trainers and cities.
 `GET /api/pokemon` and `/api/pokemon/minimal` list only personal Pokémon;
 `GET /api/pokemon/all` includes city residents for city management.

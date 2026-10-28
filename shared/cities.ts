@@ -1,4 +1,5 @@
-import { CITY_SKILLS, POKEMON_TYPES, RANKS, type CityAssignment, type CitySkill, type CitySkills, type Evolution, type Pokemon, type PokemonType, type Rank } from './types.ts';
+import { CITY_SKILLS, POKEMON_TYPES, RANKS, type CityAssignment, type CitySkill, type CitySkills, type Evolution, type Pokemon, type PokemonType, type ProfileSkill, type Rank, type WorkProfile } from './types.ts';
+import { canWork, workBonus } from './crafting.ts';
 
 /** Rank level counts from 1 (Unranked) to 9 (Champion). */
 export function cityLimits(rank: Rank) {
@@ -39,14 +40,39 @@ export function residentBonus(template: EvolutionNode, resolve: (id: string) => 
   return stage;
 }
 
-/** Totals per skill and action tag, each capped at the rank's skill limit. */
-export function cityValues(rank: Rank, tags: string[], assignments: Record<string, CityAssignment>, bonuses: Record<string, number>) {
+/** What cityValues needs to know about each resident, keyed by Pokemon ID. */
+export interface ResidentWork { bonus: number; profile: WorkProfile; types: readonly PokemonType[] }
+
+/** A target is valid if it is a city skill the resident's profile allows, or one of the city's action tags. */
+export function canAssign(target: unknown, tags: string[], profile: WorkProfile) {
+  if (typeof target !== 'string') return false;
+  if (target.startsWith('skill:')) return isCitySkill(target.slice(6)) && canWork(profile, target.slice(6) as CitySkill);
+  return target.startsWith('tag:') && tags.includes(target.slice(4));
+}
+
+/**
+ * Totals per skill and action tag, each capped at the rank's skill limit. A resident adds its full
+ * bonus to actions and to skills its profile has at full, half of it at half. Catalyst residents add
+ * no value; they provide their types, each at the strongest bonus, and Catalyst counts those types.
+ */
+export function cityValues(rank: Rank, tags: string[], assignments: Record<string, CityAssignment>, residents: Record<string, ResidentWork>) {
   const totals = new Map<string, number>();
-  for (const [id, target] of Object.entries(assignments)) totals.set(target, (totals.get(target) ?? 0) + (bonuses[id] ?? 0));
+  const catalysts: Partial<Record<PokemonType, number>> = {};
+  for (const [id, target] of Object.entries(assignments)) {
+    const resident = residents[id];
+    if (!resident) continue;
+    if (target === 'skill:catalyst') {
+      for (const type of resident.types) catalysts[type] = Math.max(catalysts[type] ?? 0, resident.bonus);
+      continue;
+    }
+    const amount = target.startsWith('skill:') ? workBonus(resident.bonus, resident.profile[target.slice(6) as ProfileSkill]) : resident.bonus;
+    totals.set(target, (totals.get(target) ?? 0) + amount);
+  }
   const cap = (target: string) => Math.min(totals.get(target) ?? 0, cityLimits(rank).skill);
   return {
-    skills: Object.fromEntries(CITY_SKILLS.map(skill => [skill, cap(`skill:${skill}`)])) as CitySkills,
+    skills: Object.fromEntries(CITY_SKILLS.map(skill => [skill, skill === 'catalyst' ? Object.keys(catalysts).length : cap(`skill:${skill}`)])) as CitySkills,
     tagValues: Object.fromEntries(tags.map(tag => [tag, cap(`tag:${tag}`)])),
+    catalysts,
   };
 }
 

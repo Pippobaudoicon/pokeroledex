@@ -14,9 +14,19 @@ export type Attribute = typeof ATTRIBUTES[number];
 export type Social = typeof SOCIALS[number];
 export type Skill = typeof SKILLS[number];
 export type TrainerSkill = typeof TRAINER_SKILLS[number];
-export const CITY_SKILLS = ['generating_electricity', 'mining', 'handiwork', 'medicine_production', 'transporting', 'farming', 'planting', 'science'] as const;
+/** City skills (docs/crafting-plan.md): crafting skills give the dice for their recipes; support skills do not. */
+export const CRAFTING_SKILLS = ['apothecary', 'craftsmanship', 'technology', 'metallurgy', 'archaeology'] as const;
+export const SUPPORT_SKILLS = ['research', 'nursing', 'foraging', 'catalyst'] as const;
+export const CITY_SKILLS = [...CRAFTING_SKILLS, ...SUPPORT_SKILLS] as const;
+export type CraftingSkill = typeof CRAFTING_SKILLS[number];
+export type SupportSkill = typeof SUPPORT_SKILLS[number];
 export type CitySkill = typeof CITY_SKILLS[number];
 export type CitySkills = Record<CitySkill, number>;
+/** Skills that depend on a species' work profile. Catalyst accepts every resident. */
+export type ProfileSkill = Exclude<CitySkill, 'catalyst'>;
+export type WorkLevel = 'full' | 'half';
+/** What a species can work: `full` adds its whole bonus, `half` half of it, absent skills are closed. */
+export type WorkProfile = Partial<Record<ProfileSkill, WorkLevel>>;
 /** Where a resident works: `skill:<city skill>` or `tag:<action tag text>`. */
 export type CityAssignment = `skill:${CitySkill}` | `tag:${string}`;
 export interface City {
@@ -26,15 +36,19 @@ export interface City {
   rank: Rank;
   /** Resident and skill caps for the city's rank (shared/cities.ts). */
   limits: { residents: number; skill: number };
-  /** Sum of assigned residents' bonuses, capped at `limits.skill`. */
+  /** Assigned residents' contributions, capped at `limits.skill`. Catalyst counts the types it provides. */
   skills: CitySkills;
   tags: string[];
   /** Same as `skills`, per action tag, keyed by tag text. */
   tagValues: Record<string, number>;
   /** Current residents' work, keyed by Pokemon ID. Unassigned residents are absent. */
   assignments: Record<string, CityAssignment>;
-  /** What each current resident adds to the skill or action it works on, keyed by Pokemon ID. */
+  /** Each current resident's full bonus (evolution stage), keyed by Pokemon ID. */
   bonuses: Record<string, number>;
+  /** Each current resident's species work profile, keyed by Pokemon ID. */
+  profiles: Record<string, WorkProfile>;
+  /** Types the Catalyst residents provide, with the strongest bonus of each. */
+  catalysts: Partial<Record<PokemonType, number>>;
   /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
 }
