@@ -4,9 +4,9 @@
 // records, works on them in memory and writes back only the records it changed.
 import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
-import { canWork } from '../shared/crafting.ts';
-import { speciesWorkProfile } from '../shared/crafting-data.ts';
-import type { GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
+import { canWork, checkFaces, countSuccesses, craftBlockers, craftPool, itemRecipe, researchBlockers, rollDice, TIERS } from '../shared/crafting.ts';
+import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
+import type { City, GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
 import type { Env } from './index.ts';
@@ -279,12 +279,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       } as Pokemon;
     }
 
+    function inventory(entries: Row[] | undefined) {
+      return (entries ?? []).map((entry: Row) => ({ ...entry,
+        item: entry.itemId ? find('items', entry.itemId) : { ...entry, id: `custom-${entry.id}` },
+      })).filter((entry: Row) => entry.item);
+    }
+
     function trainer(record: Row): Trainer {
       return { ...record, nature: find('natures', record.natureId),
         pokemon: db.pokemon.filter(p => p.trainerId === record.id).map(pokemon),
-        inventory: (record.inventory ?? []).map((entry: Row) => ({ ...entry,
-          item: entry.itemId ? find('items', entry.itemId) : { ...entry, id: `custom-${entry.id}` },
-        })).filter((entry: Row) => entry.item),
+        inventory: inventory(record.inventory),
       } as Trainer;
     }
 
@@ -302,7 +306,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const profiles = Object.fromEntries(residents.map(p => [p.id, work[p.id].profile]));
         const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, ...rest } = record;
         return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
-          ...cityValues(rank, tags, assignments, work), members: members.get(record.id) ?? [] };
+          ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory), research: record.research ?? {},
+          members: members.get(record.id) ?? [] };
       }
       return referenceRecord(name, record);
     }
@@ -346,6 +351,17 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         profile: speciesWorkProfile(species, reference['pokemon-templates']),
         types: species.types,
       };
+    }
+
+    /** Adds `quantity` of an entry; reference items stack on an entry for the same item. */
+    function addToInventory(entries: Row[], entry: Json, quantity: number) {
+      const same = entry.itemId ? entries.find(candidate => candidate.itemId === entry.itemId) : undefined;
+      if (same) {
+        same.quantity += quantity;
+        return;
+      }
+      const { id: _id, item: _item, quantity: _quantity, ...fields } = entry;
+      entries.push({ ...fields, id: crypto.randomUUID(), quantity });
     }
 
     function residentLimit(rank: unknown) {
@@ -542,6 +558,61 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       members.set(city.id, current.filter(email => email !== member));
       return reply(hydrate(name, city));
     }
+    // Crafting (docs/crafting-plan.md): the leader rolls crafts and research; dice may come from a physical roll.
+    if (name === 'cities' && action && (id === 'craft' || id === 'research') && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if ((members.get(city.id) ?? [])[0] !== owner) fail(403, 'Only the city leader can craft and research.');
+      const item = typeof body.itemId === 'string' ? reference.items.find(entry => entry.id === body.itemId) : undefined;
+      if (!item) fail(400, 'Choose a reference item.');
+      const recipe = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
+      const current = hydrate(name, city) as City;
+      const state = { rank: current.rank, skills: current.skills, catalysts: current.catalysts, research: current.research };
+      const blockers = id === 'craft' ? craftBlockers(recipe, state) : researchBlockers(recipe, state);
+      if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
+      const pool = id === 'craft' ? craftPool(recipe, current.skills) : current.skills.research;
+      const problem = body.faces === undefined ? null : checkFaces(body.faces, pool);
+      if (problem) fail(400, problem);
+      const faces: number[] = body.faces ?? rollDice(pool, () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32);
+      const successes = countSuccesses(faces);
+      const roll = { itemId: item.id, pool, faces, successes };
+      if (id === 'craft') {
+        const quantity = Math.floor(successes / TIERS[recipe.tier].effort);
+        if (quantity) {
+          city.inventory ??= [];
+          addToInventory(city.inventory, { itemId: item.id }, quantity);
+          put(name, city);
+        }
+        return reply({ city: hydrate(name, city), roll: { ...roll, quantity } });
+      }
+      const needed = TIERS[recipe.tier].research!.steps;
+      const steps = Math.min(needed, (city.research?.[item.id] ?? 0) + successes);
+      if (successes) {
+        city.research = { ...city.research, [item.id]: steps };
+        put(name, city);
+      }
+      return reply({ city: hydrate(name, city), roll: { ...roll, steps, needed, unlocked: steps >= needed } });
+    }
+    // Any member can move items between one of their trainers and the city.
+    if (name === 'cities' && action && id === 'inventory' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      const trainerRecord = db.trainers.find(record => record.id === body.trainerId);
+      if (!trainerRecord) fail(400, 'Choose one of your trainers.');
+      if (body.direction !== 'deposit' && body.direction !== 'withdraw') fail(400, 'Choose to deposit or withdraw.');
+      if (!Number.isInteger(body.quantity) || body.quantity < 1) fail(400, 'Choose how many to move.');
+      const [from, to] = body.direction === 'deposit' ? [trainerRecord, city] : [city, trainerRecord];
+      const entry = (from.inventory ?? []).find((candidate: Row) => candidate.id === body.entryId);
+      if (!entry) fail(404, body.direction === 'deposit' ? 'That item is not in the trainer\'s inventory.' : 'That item is not in the city storage.');
+      if (entry.quantity < body.quantity) fail(409, `Only ${entry.quantity} available.`);
+      entry.quantity -= body.quantity;
+      if (!entry.quantity) from.inventory = from.inventory.filter((candidate: Row) => candidate !== entry);
+      to.inventory ??= [];
+      addToInventory(to.inventory, entry, body.quantity);
+      put('cities', city);
+      put('trainers', trainerRecord);
+      return reply({ city: hydrate(name, city), trainer: hydrate('trainers', trainerRecord) });
+    }
     if (method === 'GET') {
       if (name === 'pokemon' && action === 'all') return reply(db.pokemon.map(pokemon));
       if (!action || action === 'minimal') {
@@ -573,7 +644,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'cities') {
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
-        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, ...fields };
+        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, inventory: [], research: {}, ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
       }
@@ -659,6 +730,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           return reply({ id: action, left: true });
         }
         if (db.pokemon.some(p => p.cityId === action)) fail(409, 'Move every resident to another city or take ownership before deleting this city.');
+        if (db.cities[index].inventory?.length) fail(409, 'Withdraw the stored items before deleting this city.');
         writes.push(env.DB.prepare('DELETE FROM city_members WHERE city_id = ?').bind(action));
       }
       if (name === 'pokemon' && db.pokemon[index].cityId) fail(409, 'City residents must be moved to another city or assigned to you, not deleted.');

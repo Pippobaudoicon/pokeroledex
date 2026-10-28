@@ -49,9 +49,21 @@ export interface City {
   profiles: Record<string, WorkProfile>;
   /** Types the Catalyst residents provide, with the strongest bonus of each. */
   catalysts: Partial<Record<PokemonType, number>>;
+  /** Items the city has crafted or members deposited; any member can withdraw them. */
+  inventory: HydratedInventoryEntry[];
+  /** Research steps done per item ID; a recipe unlocks when it reaches its tier's steps. */
+  research: Record<string, number>;
   /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
 }
+/** A craft or research roll: the dice, typed in from a physical roll or rolled by the server. */
+export interface CityRollBody { itemId: string; faces?: number[] }
+export interface CityRoll { itemId: string; pool: number; faces: number[]; successes: number }
+export interface CityCraftResult { city: City; roll: CityRoll & { quantity: number } }
+export interface CityResearchResult { city: City; roll: CityRoll & { steps: number; needed: number; unlocked: boolean } }
+/** Moves `quantity` of an inventory entry between one of your trainers and the city. */
+export interface CityInventoryBody { trainerId: string; entryId: string; quantity: number; direction: 'deposit' | 'withdraw' }
+export interface CityInventoryResult { city: City; trainer: Trainer }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
   /** Merged into the stored assignments; `null` unassigns a resident. */
   assignments?: Record<string, CityAssignment | null>;

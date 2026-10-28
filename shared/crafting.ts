@@ -3,7 +3,7 @@
 // and data/crafting-species.json and are passed in, so the Worker, the app and the scripts
 // share the same rules.
 import {
-  POKEMON_TYPES, type Attribute, type CitySkill, type CraftingSkill, type Evolution, type Item, type PokemonType,
+  POKEMON_TYPES, RANKS, type Attribute, type CitySkill, type CitySkills, type CraftingSkill, type Evolution, type Item, type PokemonType,
   type ProfileSkill, type Rank, type WorkLevel, type WorkProfile,
 } from './types.ts';
 
@@ -187,4 +187,68 @@ export function itemRecipe(item: ItemLike, exception: RecipeFields = {}): Recipe
     itemId: item.id, skill: defaultSkill(item), tier: defaultTier(item), catalyst: defaultCatalyst(item),
     assist: defaultAssist(item), craftable: true, ...exception,
   };
+}
+
+/** What crafting and research need to know about a city. `research` holds steps per item ID. */
+export interface CraftingCity {
+  rank: Rank;
+  skills: CitySkills;
+  catalysts: Partial<Record<PokemonType, number>>;
+  research: Record<string, number>;
+}
+
+const label = (value: string) => value.toLowerCase().split('_').map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
+const withArticle = (words: string) => `${/^[AEIOU]/.test(words) ? 'an' : 'a'} ${words}`;
+const rankAtLeast = (rank: Rank, minimum: Rank) => RANKS.indexOf(rank) >= RANKS.indexOf(minimum);
+
+/** Tier 1-2 recipes start unlocked; higher tiers once their research steps are done. */
+export function isUnlocked(recipe: Recipe, research: Record<string, number>) {
+  const needed = TIERS[recipe.tier].research;
+  return !needed || (research[recipe.itemId] ?? 0) >= needed.steps;
+}
+
+/** Dice for a craft roll: the recipe's skill, plus one die per 3 points of its assist skill. */
+export const craftPool = (recipe: Recipe, skills: CitySkills) =>
+  skills[recipe.skill] + (recipe.assist ? Math.floor(skills[recipe.assist.skill] / 3) : 0);
+
+/** Why the city cannot craft the recipe now; empty when it can. */
+export function craftBlockers(recipe: Recipe, city: CraftingCity): string[] {
+  if (!recipe.craftable) return [recipe.note ? `${recipe.note}: not craftable.` : 'This item cannot be crafted.'];
+  const tier = TIERS[recipe.tier];
+  const reasons: string[] = [];
+  if (!rankAtLeast(city.rank, tier.minRank)) reasons.push(`Needs ${withArticle(label(tier.minRank))} city.`);
+  if (!isUnlocked(recipe, city.research)) reasons.push('Needs research.');
+  if (city.skills[recipe.skill] < tier.minSkill) reasons.push(`Needs ${label(recipe.skill)} ${tier.minSkill}.`);
+  if (recipe.assist && city.skills[recipe.assist.skill] < recipe.assist.min) reasons.push(`Needs ${label(recipe.assist.skill)} ${recipe.assist.min}.`);
+  if (recipe.catalyst && !recipe.catalyst.some(type => (city.catalysts[type] ?? 0) >= tier.catalystStrength)) {
+    reasons.push(`Needs ${withArticle(recipe.catalyst.map(label).join(' or '))} Catalyst of strength ${tier.catalystStrength}.`);
+  }
+  return reasons;
+}
+
+/** Why the city cannot research the recipe now; empty when it can. Catalysts are not needed to research. */
+export function researchBlockers(recipe: Recipe, city: CraftingCity): string[] {
+  if (!recipe.craftable) return [recipe.note ? `${recipe.note}: not craftable.` : 'This item cannot be crafted.'];
+  const tier = TIERS[recipe.tier];
+  if (!tier.research) return ['This recipe needs no research.'];
+  if (isUnlocked(recipe, city.research)) return ['Already researched.'];
+  const reasons: string[] = [];
+  if (!rankAtLeast(city.rank, tier.minRank)) reasons.push(`Needs ${withArticle(label(tier.minRank))} city.`);
+  if (city.skills.research < tier.research.minResearch) reasons.push(`Needs Research ${tier.research.minResearch}.`);
+  return reasons;
+}
+
+/** Rolls d6s; `random` returns a number in [0, 1). */
+export const rollDice = (count: number, random: () => number = Math.random) =>
+  Array.from({ length: count }, () => 1 + Math.floor(random() * 6));
+
+/** Pokérole counts every 4, 5 or 6 as a success (same as src/components/DiceRoll.tsx). */
+export const countSuccesses = (faces: number[]) => faces.filter(face => face >= 4).length;
+
+/** Faces typed in from a physical roll must match the pool; returns the problem, or null. */
+export function checkFaces(faces: unknown, pool: number): string | null {
+  if (!Array.isArray(faces) || faces.length !== pool || faces.some(face => !Number.isInteger(face) || face < 1 || face > 6)) {
+    return `Enter ${pool} ${pool === 1 ? 'die' : 'dice'}, each from 1 to 6.`;
+  }
+  return null;
 }

@@ -30,7 +30,15 @@ const dex = [
   { id: 'mewtwo', legendary: true, evolutions: [evo('TO', 'mewtwo-mega', 'MEGA')] },
   { id: 'mewtwo-mega', evolutions: [evo('FROM', 'mewtwo', 'MEGA')] },
   { id: 'silvally', evolutions: [evo('FROM', 'missing-type-null')] },
+  { id: 'mew', legendary: true, types: ['PSYCHIC'], evolutions: [] },
 ].map(entry => ({ ...species, name: entry.id, types: ['NORMAL'], legendary: false, ...entry }));
+
+// Reference items for crafting: tier 1 and 3 Technology, a tier 5 Fire catalyst recipe and an uncraftable ball.
+const item = (id, name, pocket, trainerPrice, category = null) => ({ id, name, pocket, category, trainerPrice, image: '', description: '' });
+const items = [
+  item('pokeball', 'Pokeball', 'POKEBALLS', '200'), item('ultraball', 'Ultraball', 'POKEBALLS', '1200'),
+  item('fire-stone', 'Fire Stone', 'EVOLUTION_ITEM', '5000'), item('masterball', 'Masterball', 'POKEBALLS', null),
+];
 
 const migrationsDir = new URL('../migrations/', import.meta.url);
 function migrate(db, from = 1, until = Infinity) {
@@ -68,7 +76,7 @@ function harness(referenceOverrides = {}) {
       async fetch(url) {
         const name = String(url).split('/').pop();
         if (Object.hasOwn(referenceOverrides, name)) return Response.json(referenceOverrides[name]);
-        return Response.json(name === 'pokemon-templates.json' ? [species, ...dex] : name === 'rankup-attributes.json' ? {} : []);
+        return Response.json(name === 'pokemon-templates.json' ? [species, ...dex] : name === 'items.json' ? items : name === 'rankup-attributes.json' ? {} : []);
       },
     },
   };
@@ -277,6 +285,7 @@ test('resident bonus follows evolution stage, never-evolving species and legenda
     rotom: 2, 'rotom-wash': 2, tauros: 2,
     mewtwo: 5, 'mewtwo-mega': 5,
     silvally: 2,
+    mew: 5,
   });
 });
 
@@ -616,6 +625,114 @@ test('custom species and moves follow a shared Pokemon without sharing the campa
     assert.equal((await h.request(`campaigns/${campaign.id}`, 'DELETE')).status, 409);
     assert.equal((await h.request(`pokemon/${resident.id}`, 'DELETE', undefined, bob)).status, 200);
     assert.equal((await h.request(`campaigns/${campaign.id}`, 'DELETE')).status, 200);
+  } finally { h.close(); }
+});
+
+test('the leader crafts and researches with rolled or typed-in dice; gates explain what is missing', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Forge' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const add = async id => (await h.request('pokemon', 'POST', { pokemonTemplateId: id, cityId: city.id })).body.id;
+    const tauros = await add('tauros');
+    const mew = await add('mew');
+    const charmander = await add(species.id);
+    await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: 'skill:technology', [mew]: 'skill:research' } });
+    const craft = (itemId, faces, owner) => h.request(`cities/${city.id}/craft`, 'POST', { itemId, ...(faces && { faces }) }, owner);
+    const research = (itemId, faces) => h.request(`cities/${city.id}/research`, 'POST', { itemId, ...(faces && { faces }) });
+
+    let result = await craft('pokeball', [5]);
+    assert.equal(result.status, 409);
+    assert.match(result.body.payload, /Pokeball: Needs a Starter city\./);
+    await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER' });
+    assert.equal((await craft('pokeball', [5], bob)).status, 403, 'only the leader crafts');
+
+    // Tauros works Technology at half: 1 die. One success makes one tier 1 Pokeball.
+    result = await craft('pokeball', [5]);
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.roll, { itemId: 'pokeball', pool: 1, faces: [5], successes: 1, quantity: 1 });
+    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1]]);
+    assert.equal((await craft('pokeball', [2])).body.roll.quantity, 0);
+    for (const faces of [[1, 2], [7], [1.5], 'six']) assert.equal((await craft('pokeball', faces)).status, 400, JSON.stringify(faces));
+    assert.equal((await craft('missing', [5])).status, 400);
+    assert.match((await craft('masterball', [5])).body.payload, /GM reward only: not craftable/);
+
+    // Tier 3 needs a Standard city and research before it can be crafted.
+    assert.match((await research('ultraball', [6, 6, 6, 6, 6])).body.payload, /Needs a Standard city/);
+    await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STANDARD' });
+    assert.match((await craft('ultraball', [5])).body.payload, /Needs research\. Needs Technology 3\./);
+    assert.equal((await research('ultraball', [4, 5])).status, 400, 'Mew gives Research 5, so 5 dice');
+    result = await research('ultraball', [4, 5, 1, 1, 1]);
+    assert.deepEqual(result.body.roll, { itemId: 'ultraball', pool: 5, faces: [4, 5, 1, 1, 1], successes: 2, steps: 2, needed: 3, unlocked: false });
+    result = await research('ultraball', [6, 6, 6, 1, 1]);
+    assert.deepEqual([result.body.roll.steps, result.body.roll.unlocked], [3, true], 'steps stop at what the tier needs');
+    assert.deepEqual(result.body.city.research, { ultraball: 3 });
+    assert.match((await research('ultraball')).body.payload, /Already researched/);
+    assert.match((await research('pokeball')).body.payload, /needs no research/);
+    assert.match((await craft('ultraball', [5])).body.payload, /^Ultraball: Needs Technology 3\.$/);
+
+    // A Fire Stone (tier 5) needs a Fire-type in Catalyst of strength 2 among other things.
+    assert.match((await craft('fire-stone')).body.payload, /Needs an Expert city\..*Needs a Fire Catalyst of strength 2\./);
+    await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [charmander]: 'skill:catalyst' } });
+    assert.doesNotMatch((await craft('fire-stone')).body.payload, /Catalyst/);
+
+    // Without faces the server rolls the pool.
+    result = await craft('pokeball');
+    assert.equal(result.status, 200);
+    assert.equal(result.body.roll.faces.length, 1);
+    assert.ok(result.body.roll.faces.every(face => face >= 1 && face <= 6));
+  } finally { h.close(); }
+});
+
+test('members move items between their own trainers and the city storage', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Market' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const red = (await h.request('trainers', 'POST', { name: 'Red' })).body;
+    const charm = { name: 'Lucky Charm', source: 'Homebrew', category: null, pocket: 'TRAINER_ITEMS', description: '', oneUse: false, PMD: false, trainerPrice: null, pmdPrice: null, image: '', quantity: 1 };
+    const stocked = (await h.request('trainers', 'PATCH', { id: red.id, inventory: [{ itemId: 'pokeball', quantity: 3 }, charm] })).body;
+    const [balls, charmEntry] = stocked.inventory;
+    const move = (body, owner) => h.request(`cities/${city.id}/inventory`, 'POST', body, owner);
+
+    let result = await move({ trainerId: red.id, entryId: balls.id, quantity: 2, direction: 'deposit' });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 2]]);
+    assert.deepEqual(result.body.trainer.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1], ['Lucky Charm', 1]]);
+    const stored = result.body.city.inventory[0];
+
+    for (const body of [
+      { trainerId: red.id, entryId: balls.id, quantity: 0, direction: 'deposit' },
+      { trainerId: red.id, entryId: balls.id, quantity: 1, direction: 'sideways' },
+      { trainerId: 'missing', entryId: balls.id, quantity: 1, direction: 'deposit' },
+    ]) assert.equal((await move(body)).status, 400, JSON.stringify(body));
+    assert.equal((await move({ trainerId: red.id, entryId: balls.id, quantity: 5, direction: 'deposit' })).status, 409);
+    assert.equal((await move({ trainerId: red.id, entryId: 'missing', quantity: 1, direction: 'withdraw' })).status, 404);
+    assert.equal((await move({ trainerId: red.id, entryId: stored.id, quantity: 1, direction: 'withdraw' }, bob)).status, 400, 'members only use their own trainers');
+
+    // Withdrawing everything removes the city entry and stacks on the trainer's.
+    result = await move({ trainerId: red.id, entryId: stored.id, quantity: 2, direction: 'withdraw' });
+    assert.deepEqual(result.body.city.inventory, []);
+    assert.deepEqual(result.body.trainer.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 3], ['Lucky Charm', 1]]);
+
+    // Custom items move as copies; another member can take them.
+    result = await move({ trainerId: red.id, entryId: charmEntry.id, quantity: 1, direction: 'deposit' });
+    const storedCharm = result.body.city.inventory[0];
+    assert.equal(storedCharm.item.name, 'Lucky Charm');
+    assert.match(storedCharm.item.id, /^custom-/);
+    const blue = (await h.request('trainers', 'POST', { name: 'Blue' }, bob)).body;
+    result = await move({ trainerId: blue.id, entryId: storedCharm.id, quantity: 1, direction: 'withdraw' }, bob);
+    assert.deepEqual(result.body.trainer.inventory.map(entry => entry.item.name), ['Lucky Charm']);
+
+    // The last member cannot delete a city that still stores items.
+    const solo = (await h.request('cities', 'POST', { name: 'Vault' })).body;
+    const ball = (await h.request(`trainers/${red.id}`)).body.inventory[0];
+    const vaulted = (await h.request(`cities/${solo.id}/inventory`, 'POST', { trainerId: red.id, entryId: ball.id, quantity: 1, direction: 'deposit' })).body;
+    assert.equal((await h.request(`cities/${solo.id}`, 'DELETE')).status, 409);
+    await h.request(`cities/${solo.id}/inventory`, 'POST', { trainerId: red.id, entryId: vaulted.city.inventory[0].id, quantity: 1, direction: 'withdraw' });
+    assert.equal((await h.request(`cities/${solo.id}`, 'DELETE')).status, 200);
   } finally { h.close(); }
 });
 

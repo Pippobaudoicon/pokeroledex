@@ -187,7 +187,21 @@ GET/PATCH/DELETE (leave when shared), and `POST /api/cities/:id/members` with
 `assignments` (`{ "<pokemon id>": "skill:metallurgy" | "tag:Can heal" | null }`,
 merged into the stored assignments so members' changes don't overwrite each
 other; a skill the resident's species cannot work is refused); the response adds the derived `limits`, `skills`, `tagValues`,
-`catalysts` (type → strongest Catalyst bonus) and each resident's `bonuses` and `profiles`. Moving a Pokémon to a city or trainer uses the existing Pokémon PATCH
+`catalysts` (type → strongest Catalyst bonus) and each resident's `bonuses` and `profiles`, plus the
+city's `inventory` (hydrated like a trainer's) and `research` (steps per item ID).
+
+Crafting (rules in `docs/crafting-plan.md` and `shared/crafting.ts`):
+
+| Endpoint | Who | Body | Does |
+| --- | --- | --- | --- |
+| `POST /api/cities/:id/craft` | Leader | `{ itemId, faces? }` | Rolls the recipe's pool (its skill plus one die per 3 assist points) and adds `floor(successes / effort)` of the item to the city inventory |
+| `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
+| `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |
+
+`faces` are the dice of a physical roll and must match the pool, each 1 to 6;
+without them the server rolls. A recipe that cannot be crafted or researched yet
+answers 409 with the reasons (rank, research, skill, assist or catalyst). The
+last member cannot delete a city that still stores items. Moving a Pokémon to a city or trainer uses the existing Pokémon PATCH
 endpoint and validates destinations among the person's trainers and cities.
 `GET /api/pokemon` and `/api/pokemon/minimal` list only personal Pokémon;
 `GET /api/pokemon/all` includes city residents for city management.

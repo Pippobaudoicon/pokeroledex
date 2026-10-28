@@ -1,6 +1,6 @@
 # City crafting: plan and rules
 
-Status: revision 4. Build steps 2 (rules, exceptions and review drafts) and 3 (new city skills, work profiles, Catalyst, migration `0006`) are done.
+Status: revision 4. Build steps 2 (rules, exceptions and review drafts), 3 (new city skills, work profiles, Catalyst, migration `0006`) and 4 (craft and research API, city inventory) are done.
 
 ## Goal
 A "Crafting" tab in My city.
@@ -175,7 +175,7 @@ Unpriced items use a category default:
    - the skill definitions (crafting or support; full-bonus and half-bonus types; key attribute);
    - the tier table;
    - `workProfile` and `speciesOverrides` (species), and `itemRecipe` (items: default skill, tier, catalyst and assist, then the item exception).
-   - Still to add: `residentSkillBonus`, `recipeStatus` and `resolveRoll`.
+   - `workBonus`/`canWork` (residents), and `craftBlockers`, `researchBlockers`, `craftPool`, `rollDice`, `countSuccesses` and `checkFaces` (rolls).
 2. **Exceptions** (done): `data/crafting-items.json` and `data/crafting-species.json`.
    - Recipes are derived on the fly from `items.json` and these files, so there is no generated recipe file.
    - **`scripts/crafting-report.ts`** (`pnpm crafting:report`) writes the review drafts `docs/crafting-review/recipes.md` and `docs/crafting-review/species.md`.
@@ -187,7 +187,7 @@ Unpriced items use a category default:
    - `POST /cities/:id/craft { itemId, faces? }` (leader only)
    - `POST /cities/:id/research { itemId, faces? }` (leader only)
    - `POST /cities/:id/inventory { trainerId, entryId, quantity, direction }` (any member)
-   - The city response includes the hydrated inventory and each recipe's status with the reason it is locked.
+   - The city response includes the hydrated inventory and the research steps. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers` the server enforces (409 with the reasons).
 6. **UI**:
    - In `src/pages/MyCity/index.tsx`, the work board only offers each resident the skills in its work profile (Catalyst always), showing full or half.
    - A new **Crafting** tab has three parts: Craftable, Research and Storage.

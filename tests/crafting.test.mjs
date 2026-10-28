@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CRAFTING_SKILLS, TIERS, itemRecipe, speciesOverrides, workProfile } from '../shared/crafting.ts';
+import { CITY_SKILLS, CRAFTING_SKILLS, TIERS, countSuccesses, craftBlockers, craftPool, itemRecipe, speciesOverrides, workProfile } from '../shared/crafting.ts';
 import { cityLimits } from '../shared/cities.ts';
 import { RANKS } from '../shared/types.ts';
 
@@ -65,6 +65,24 @@ test('items get a skill, tier, catalyst and assist', () => {
   assert.deepEqual(recipeOf('TM - Basic').assist, { skill: 'research', min: 3 });
   assert.equal(recipeOf('Ice Heal').catalyst, null);
   assert.equal(recipeOf('Masterball').craftable, false);
+});
+
+test('assist skills add dice and gate the recipe; strong recipes need strong catalysts', () => {
+  const skills = Object.fromEntries(CITY_SKILLS.map(skill => [skill, 0]));
+  const tm = recipeOf('TM - Basic');
+  assert.deepEqual([tm.skill, tm.tier, tm.assist], ['technology', 7, { skill: 'research', min: 3 }]);
+  const city = { rank: 'MASTER', skills: { ...skills, technology: 8, research: 2 }, catalysts: {}, research: { [tm.itemId]: 12 } };
+  assert.deepEqual(craftBlockers(tm, city), ['Needs Research 3.']);
+  city.skills.research = 7;
+  assert.deepEqual(craftBlockers(tm, city), []);
+  assert.equal(craftPool(tm, city.skills), 10, '8 Technology + 2 dice from Research 7');
+
+  const charizardite = recipeOf('Charizardite X');
+  const strong = { rank: 'MASTER', skills: { ...skills, archaeology: 8, research: 5 }, catalysts: { FLYING: 2 }, research: { [charizardite.itemId]: 12 } };
+  assert.deepEqual(craftBlockers(charizardite, strong), ['Needs a Fire or Flying Catalyst of strength 3.']);
+  strong.catalysts.FLYING = 3;
+  assert.deepEqual(craftBlockers(charizardite, strong), []);
+  assert.equal(countSuccesses([1, 3, 4, 6]), 2);
 });
 
 test('tier N needs rank N, and its minimums fit that rank\'s skill cap', () => {
