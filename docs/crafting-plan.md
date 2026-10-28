@@ -1,6 +1,6 @@
 # City crafting: plan and rules
 
-Status: revision 4. Build steps 2 (rules, exceptions and review drafts), 3 (new city skills, work profiles, Catalyst, migration `0006`) and 4 (craft and research API, city inventory) are done.
+Status: revision 4. Build steps 2 to 5 are done: rules, exceptions and review drafts; new city skills, work profiles, Catalyst and migration `0006`; craft and research API with the city inventory; and the Crafting tab. Item tiers and species exceptions remain open to tuning.
 
 ## Goal
 A "Crafting" tab in My city.

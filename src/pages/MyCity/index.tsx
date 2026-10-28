@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Anvil, Building2, ChevronDown, Cpu, FlaskConical, HeartPulse, Landmark, Microscope, Plus, Scissors, Search, Sparkles, Tag, type LucideIcon } from "lucide-react";
+import { Building2, ChevronDown, Plus, Tag } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CITY_SKILLS, CRAFTING_SKILLS, POKEMON_TYPES, RANKS, SUPPORT_SKILLS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type ProfileSkill, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
@@ -18,18 +18,9 @@ import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
+import { CityCrafting } from "./Crafting";
+import { SkillIcon, errorText, field, panel, skillLabel } from "./common";
 
-const field = "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9";
-const panel = "rounded-2xl bg-surface p-4 shadow-card";
-const skillLabel = (skill: CitySkill) => formatEnumName(skill);
-const skillIcons: Record<CitySkill, LucideIcon> = {
-  apothecary: FlaskConical, craftsmanship: Scissors, technology: Cpu, metallurgy: Anvil, archaeology: Landmark,
-  research: Microscope, nursing: HeartPulse, foraging: Search, catalyst: Sparkles,
-};
-const SkillIcon = ({ skill }: { skill: CitySkill }) => {
-  const Icon = skillIcons[skill];
-  return <Icon aria-hidden className="size-5 shrink-0" />;
-};
 /** What cityValues needs per resident: the city's bonus and profile, and the species' types. */
 const residentWork = (city: City, residents: Pokemon[]): Record<string, ResidentWork> =>
   Object.fromEntries(residents.map(resident => [resident.id, { bonus: city.bonuses[resident.id] ?? 0, profile: city.profiles[resident.id] ?? {}, types: resident.pokemonTemplate.types }]));
@@ -64,12 +55,6 @@ function useCityChange() {
     onError: (error: ApiFetchError) => toast({ title: "City changes could not be saved", description: errorText(error) }),
   });
 }
-
-const errorText = (error: ApiFetchError) => {
-  const detail = error.stack;
-  return detail && typeof detail === "object" && "payload" in detail && typeof detail.payload === "string"
-    ? detail.payload : "Check your connection and try again.";
-};
 
 /** Moves one resident to a skill, an action or back to unassigned, updating the page before the server answers. */
 function useCityWork(city: City, residents: Pokemon[]) {
@@ -484,7 +469,7 @@ const CityTypeOverview = ({ residents }: { residents: Pokemon[] }) => {
 
 export const MyCityPage = () => {
   const { id } = useParams();
-  const [tab, setTab] = React.useState<"overview" | "roster" | "settings">("overview");
+  const [tab, setTab] = React.useState<"overview" | "roster" | "settings" | "crafting">("overview");
   const cities = useQuery({ queryKey: ["cities"], queryFn: ({ signal }) => apiFetch<City[]>({ url: "/cities", method: "get", signal }) });
   const pokemon = useQuery({ queryKey: ["pokemon", "city-roster"], queryFn: ({ signal }) => apiFetch<Pokemon[]>({ url: "/pokemon/all", method: "get", signal }) });
   const trainers = useQuery({ queryKey: ["trainers"], queryFn: ({ signal }) => apiFetch<Trainer[]>({ url: "/trainers", method: "get", signal }) });
@@ -508,7 +493,7 @@ export const MyCityPage = () => {
             <AddPokemon key={city.id} city={city} cities={cities.data} pokemon={pokemon.data} />
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="City views">
-            {(["overview", "roster", "settings"] as const).map(view => <button key={view} type="button" aria-pressed={tab === view} className={button({ variant: tab === view ? "filled" : "gray" })} onClick={() => setTab(view)}>{view === "overview" ? "Overview" : view === "roster" ? "Pokémon roster" : "Skills & actions"}</button>)}
+            {(["overview", "roster", "settings", "crafting"] as const).map(view => <button key={view} type="button" aria-pressed={tab === view} className={button({ variant: tab === view ? "filled" : "gray" })} onClick={() => setTab(view)}>{view === "overview" ? "Overview" : view === "roster" ? "Pokémon roster" : view === "settings" ? "Skills & actions" : "Crafting"}</button>)}
           </div>
           {tab === "overview" ? <>
             <section className={panel}>
@@ -528,7 +513,7 @@ export const MyCityPage = () => {
               <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}: {city.tagValues[tag] ?? 0}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
-          </> : tab === "settings" ? <>
+          </> : tab === "crafting" ? <CityCrafting key={city.id} city={city} trainers={trainers.data} /> : tab === "settings" ? <>
             <CityWorkBoard city={city} residents={residents} />
             <CityMembers key={city.id} city={city} />
             <CitySettings key={`${city.id}:${city.name}:${city.rank}:${city.tags.join("\n")}`} city={city} residentCount={residents.length} />

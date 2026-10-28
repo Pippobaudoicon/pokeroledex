@@ -160,6 +160,22 @@ species cannot work are dropped, so those residents show up unassigned. Removing
 or moving a resident out of the city unassigns it. City settings below the board
 edit the name, rank and custom actions; save them explicitly.
 
+### Crafting
+
+The **Crafting** tab turns the city's skills into items (rules in
+`docs/crafting-plan.md`). Recipes come from the reference items only.
+
+- **Craft** lists what the city can craft now, each with its skill, tier (tier N
+  needs city rank N, Starter to Champion), how many successes make one item, and
+  any assist skill or Catalyst type it needs. **Show locked recipes** adds the
+  others with what each still needs. The leader rolls the dice in the app, or
+  types in the dice of a physical roll with the keyboard button. The roll shows
+  in the dice dialog, and the items go to the city storage.
+- **Research** unlocks tier 3 and higher recipes: each roll uses the Research
+  skill's dice and every success is one step towards the tier's steps.
+- **Storage** is the city inventory. Any member can store items from one of
+  their trainers or take items out to one.
+
 ### Sharing a city
 
 **Skills & actions → Members** invites friends by the email they log in with.

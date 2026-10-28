@@ -44,16 +44,16 @@ interface Die {
   delay: number;
 }
 
-const rollDice = (count: number): Die[] =>
-  Array.from({ length: count }, (_, i) => {
-    const face = randomInt(6) + 1;
+const rollDice = (count: number, faces?: number[]): Die[] =>
+  Array.from({ length: faces?.length ?? count }, (_, i) => {
+    const face = faces?.[i] ?? randomInt(6) + 1;
     const [x, y] = faceRotation[face];
     const turns = () => (2 + randomInt(3)) * 360 * (randomInt(2) ? 1 : -1);
     return { face, rotateX: x + turns(), rotateY: y + turns(), tilt: randomInt(31) - 15, delay: i * 70 };
   });
 
 const ROLL_MS = 1300;
-const kindLabel = { accuracy: "Accuracy", damage: "Damage", seal: "Seal" };
+const kindLabel = { accuracy: "Accuracy", damage: "Damage", seal: "Seal", craft: "Craft", research: "Research" };
 
 const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
   <div
@@ -85,8 +85,12 @@ const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
 
 export interface DiceRollRequest {
   title: string;
-  kind: "accuracy" | "damage" | "seal";
+  kind: "accuracy" | "damage" | "seal" | "craft" | "research";
   dice: number;
+  /** Faces already rolled (by the server or at the table); the dialog only shows them, without Roll again. */
+  faces?: number[];
+  /** Replaces the success count once the dice land. */
+  result?: string;
 }
 
 /**
@@ -104,7 +108,7 @@ export const DiceRoll = ({
   next?: string;
   onNext?: () => void;
 }) => {
-  const [dice, setDice] = React.useState(() => rollDice(request.dice));
+  const [dice, setDice] = React.useState(() => rollDice(request.dice, request.faces));
   const [rollNumber, setRollNumber] = React.useState(0);
   const [landed, setLanded] = React.useState(false);
   React.useEffect(() => {
@@ -139,9 +143,9 @@ export const DiceRoll = ({
               <p className="h-10 text-center text-title-2 font-semibold">
                 {landed && (
                   <span className="dice-total inline-block">
-                    {request.kind === "damage"
+                    {request.result ?? (request.kind === "damage"
                       ? `${Math.max(successes, 1)} damage`
-                      : `${successes} ${successes === 1 ? "success" : "successes"}`}
+                      : `${successes} ${successes === 1 ? "success" : "successes"}`)}
                   </span>
                 )}
               </p>
@@ -151,7 +155,7 @@ export const DiceRoll = ({
                     {next}
                   </button>
                 )}
-                <button
+                {!request.faces && <button
                   type="button"
                   className={button({ variant: "gray" })}
                   disabled={!landed}
@@ -162,7 +166,7 @@ export const DiceRoll = ({
                   }}
                 >
                   Roll again
-                </button>
+                </button>}
                 <button type="button" className={button({ variant: "gray" })} onClick={onClose}>
                   Close
                 </button>
