@@ -38,7 +38,7 @@ Without access to this Cloudflare account, run `pnpm dev:offline` instead: no lo
 
 Workers Builds publishes branch previews with `wrangler preview`. The `previews` block in `wrangler.jsonc` connects them to the separate `pokeroledex-preview` database, initialized with the same schema as production. Preview records start empty. The rulebook's read-only R2 files and AI Search instance are shared.
 
-Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behind Access → Previews only** and choose the email login policy. Set `previews.vars.ACCESS_AUD` to that Access application's **Application Audience (AUD) tag** from Zero Trust → Access → Applications → Additional settings. The Worker verifies signed login tokens against this preview audience and `previews.vars.ACCESS_TEAM_DOMAIN`.
+Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behind Access → Previews only**. Its policy lets in members of the `new-era-horde` GitHub organization (Include → *GitHub Organization*, logging in with GitHub). The organization restricts third-party access, so the Access login's GitHub OAuth app must be granted to it under GitHub → Settings → Applications → Authorized OAuth Apps → the app → Organization access. Set `previews.vars.ACCESS_AUD` to that Access application's **Application Audience (AUD) tag** from Zero Trust → Access → Applications → Additional settings. The Worker verifies signed login tokens against this preview audience and `previews.vars.ACCESS_TEAM_DOMAIN`.
 
 ### Production login
 
@@ -47,6 +47,14 @@ Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behi
 1. In the Cloudflare dashboard open **Zero Trust** (pick a team name and the Free plan the first time).
 2. **Access → Applications → Add an application → Self-hosted**: domain `pokeroledex.tommasolopiparo.com`, a policy that allows *Everyone* (or a list of emails), and the **One-time PIN** login method.
 3. Put the team domain (`<team>.cloudflareaccess.com`) and the application's **Application Audience (AUD) tag** into `vars` in `wrangler.jsonc`, then `pnpm deploy`.
+
+### Staying logged in
+
+Deploys never end a login. Access keeps two: the site's own `CF_Authorization` cookie, valid for the application's session duration and tied to one hostname (so each new preview URL needs it again), and a team-wide login that renews it without a new email code. When the site's cookie lapses, the app reloads the page once and Access renews it (`sameOriginFetch` in `src/api/client.ts`). To ask for a code less often:
+
+1. **Zero Trust → Access controls → Applications →** the production and preview applications **→ Session duration**: raise it from the 24 hour default (e.g. 1 month). Leave **Access settings → Set your global session duration** at *Same as application session timeout*, so the team-wide login follows each application's duration and other applications in the account keep theirs. (The *Session duration* under *Cloudflare One Client authentication* is for the WARP client, not browser logins.)
+2. **Access controls → Policies**: both applications use their own `pokeroledex - everyone` policy (Allow, Include *Everyone*, 1 month). A policy's session duration overrides the application's, so a shared policy with a shorter one would log people out sooner.
+3. For previews, open the PR's branch alias URL (`<branch>-pokeroledex.<subdomain>.workers.dev`), which stays the same across builds of the branch, instead of the per-version URL.
 
 `pnpm dev` has no Access in front of it and uses a single local user. Records made before logins existed belong to `local-user`; give them to someone with `pnpm exec wrangler d1 execute pokeroledex --remote --command "UPDATE records SET owner = 'you@example.com' WHERE owner = 'local-user'"`.
 

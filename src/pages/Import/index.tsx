@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { sameOriginFetch } from "@/api/client";
 import { Box } from "@/components/Box";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { Text } from "@/components/Text";
@@ -69,7 +70,7 @@ export const ImportPage = () => {
     async (value: string) => {
       setState({ status: "running" });
       try {
-        const response = await fetch("/api/import", {
+        const response = await sameOriginFetch("/api/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: value }),
