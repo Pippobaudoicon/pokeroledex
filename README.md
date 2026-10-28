@@ -48,6 +48,14 @@ Enable **Workers & Pages → pokeroledex → Access → Protect this Worker behi
 2. **Access → Applications → Add an application → Self-hosted**: domain `pokeroledex.tommasolopiparo.com`, a policy that allows *Everyone* (or a list of emails), and the **One-time PIN** login method.
 3. Put the team domain (`<team>.cloudflareaccess.com`) and the application's **Application Audience (AUD) tag** into `vars` in `wrangler.jsonc`, then `pnpm deploy`.
 
+### Staying logged in
+
+Deploys never end a login. Access keeps two: the site's own `CF_Authorization` cookie, valid for the application's session duration and tied to one hostname (so each new preview URL needs it again), and a team-wide login that renews it without a new email code. When the site's cookie lapses, the app reloads the page once and Access renews it (`sameOriginFetch` in `src/api/client.ts`). To ask for a code less often:
+
+1. **Zero Trust → Access controls → Applications →** the production and preview applications **→ Session duration**: raise it from the 24 hour default (e.g. 1 month). Leave **Access settings → Set your global session duration** at *Same as application session timeout*, so the team-wide login follows each application's duration and other applications in the account keep theirs. (The *Session duration* under *Cloudflare One Client authentication* is for the WARP client, not browser logins.)
+2. **Access controls → Policies**: both applications use their own `pokeroledex - everyone` policy (Allow, Include *Everyone*, 1 month). A policy's session duration overrides the application's, so a shared policy with a shorter one would log people out sooner.
+3. For previews, open the PR's branch alias URL (`<branch>-pokeroledex.<subdomain>.workers.dev`), which stays the same across builds of the branch, instead of the per-version URL.
+
 `pnpm dev` has no Access in front of it and uses a single local user. Records made before logins existed belong to `local-user`; give them to someone with `pnpm exec wrangler d1 execute pokeroledex --remote --command "UPDATE records SET owner = 'you@example.com' WHERE owner = 'local-user'"`.
 
 ## Pokemon nicknames

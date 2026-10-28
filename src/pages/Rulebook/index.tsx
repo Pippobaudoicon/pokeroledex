@@ -2,6 +2,7 @@ import * as React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, List, Loader2, Search, Send, ZoomIn, ZoomOut } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import { sameOriginFetch } from "@/api/client";
 import { button } from "@/components/kit/button";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
@@ -408,7 +409,7 @@ const RulebookAsk = ({ openPage }: { openPage: (page: number) => void }) => {
   const [question, setQuestion] = React.useState("");
   const ask = useMutation({
     mutationFn: async (text: string) => {
-      const response = await fetch("/api/rulebook/ask", {
+      const response = await sameOriginFetch("/api/rulebook/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: text }),
@@ -529,7 +530,7 @@ export const RulebookPage = () => {
   } = useQuery({
     queryKey: ["rulebook-text"],
     queryFn: async () => {
-      const response = await fetch("/rulebook/pages.json");
+      const response = await sameOriginFetch("/rulebook/pages.json");
       if (!response.ok) throw new Error(response.statusText);
       return ((await response.json()) as string[]).map((text) => text.normalize("NFD"));
     },
