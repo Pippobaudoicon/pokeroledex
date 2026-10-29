@@ -72,6 +72,8 @@ export interface CityInventoryBody { trainerId: string; entryId: string; quantit
 export interface CityInventoryResult { city: City; trainer: Trainer }
 /** The leader removes `quantity` of a city storage entry for good. */
 export interface CityDiscardBody { entryId: string; quantity: number }
+/** The leader adds `quantity` of a reference item straight to city storage. */
+export interface CityStockBody { itemId: string; quantity: number }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
   /** Merged into the stored assignments; `null` unassigns a resident. */
   assignments?: Record<string, CityAssignment | null>;

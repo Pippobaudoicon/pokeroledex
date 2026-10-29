@@ -648,7 +648,19 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       }
       return reply({ city: hydrate(name, city), roll: { itemId: item.id, pool, faces, successes, steps, needed, unlocked: steps >= needed } });
     }
-    // The leader can remove stored items for good, e.g. to adjust the city's stock as GM.
+    // The leader can add or remove stored items directly, e.g. to adjust the city's stock as GM.
+    if (name === 'cities' && action && id === 'stock' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can add items to storage.');
+      const found = referenceRecipe(body.itemId);
+      if (!found) fail(400, 'Choose a reference item.');
+      if (!Number.isInteger(body.quantity) || body.quantity < 1 || body.quantity > 999) fail(400, 'Choose a quantity from 1 to 999.');
+      city.inventory ??= [];
+      addToInventory(city.inventory, { itemId: found.item.id }, body.quantity);
+      put(name, city);
+      return reply(hydrate(name, city));
+    }
     if (name === 'cities' && action && id === 'discard' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');

@@ -3,7 +3,7 @@ import { Dices, Hammer, Keyboard, Lock, Minus, Plus, Trash2 } from "lucide-react
 import * as React from "react";
 import {
   CRAFTING_SKILLS, type City, type CityCraftResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrderBody,
-  type CityResearchResult, type CraftingSkill, type HydratedInventoryEntry, type Item, type Trainer,
+  type CityResearchResult, type CityStockBody, type CraftingSkill, type HydratedInventoryEntry, type Item, type Trainer,
 } from "../../../shared/types";
 import {
   TIERS, craftBlockers, isUnlocked, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, researchBlockers, type CraftingCity, type Recipe,
@@ -14,6 +14,7 @@ import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
 import { ItemCard } from "@/components/ItemCard";
 import { ItemImage } from "@/components/ItemImage";
 import { button } from "@/components/kit/button";
+import { Picker } from "@/components/kit/Picker";
 import { TypePill } from "@/components/kit/Pills";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sheet } from "@/components/kit/Sheet";
@@ -160,7 +161,46 @@ const InventoryList = ({ entries, empty, control }: { entries: HydratedInventory
       {control(entry)}
     </li>)}</ul>;
 
-const Storage = ({ city, trainers, isLeader }: { city: City; trainers: Trainer[]; isLeader: boolean }) => {
+/** The leader adds reference items straight to city storage. */
+const AddToStorage = ({ city, items }: { city: City; items: Item[] }) => {
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const [open, setOpen] = React.useState(false);
+  const [itemId, setItemId] = React.useState("");
+  const [quantity, setQuantity] = React.useState(1);
+  const selected = items.find(item => item.id === itemId);
+  const valid = !!selected && Number.isInteger(quantity) && quantity >= 1 && quantity <= 999;
+  const stock = useMutation({
+    mutationFn: (body: CityStockBody) => apiFetch<City>({ url: cityUrl(city, "stock"), method: "post", body }),
+    onSuccess: (result, body) => {
+      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result));
+      toast({ title: `Added ${body.quantity} × ${selected?.name ?? "item"} to ${city.name}` });
+      setOpen(false);
+    },
+    onError: (error: ApiFetchError) => toast({ title: "The items could not be added", description: errorText(error) }),
+  });
+  const options = React.useMemo(() => [...items].sort((a, b) => a.name.localeCompare(b.name))
+    .map(item => ({ value: item.id, label: item.name, detail: formatEnumName(item.pocket ?? "") })), [items]);
+  return <>
+    <button type="button" className={button({ variant: "plain", size: "sm" })} onClick={() => { setItemId(""); setQuantity(1); setOpen(true); }}>
+      <Plus aria-hidden className="size-4" />Add item
+    </button>
+    <Sheet open={open} onOpenChange={setOpen} title={`Add to ${city.name} storage`} initialExpanded>
+      <form className="flex flex-col gap-4 p-4" onSubmit={event => { event.preventDefault(); if (valid) stock.mutate({ itemId, quantity }); }}>
+        <Picker label="Item" placeholder="Choose an item" items={options} value={itemId} onChange={setItemId} />
+        <label className="flex flex-col gap-1.5 text-subhead font-medium">Quantity
+          <input type="number" min={1} max={999} value={quantity} onChange={event => setQuantity(Number(event.target.value))} className={cn(field, "w-24")} />
+        </label>
+        {selected && <ItemCard item={selected} />}
+        <button className={button({ variant: "filled" })} disabled={!valid || stock.isPending}>
+          Add {selected ? `${quantity} × ${selected.name}` : "item"}
+        </button>
+      </form>
+    </Sheet>
+  </>;
+};
+
+const Storage = ({ city, trainers, items, isLeader }: { city: City; trainers: Trainer[]; items: Item[]; isLeader: boolean }) => {
   const client = useQueryClient();
   const { toast } = useToast();
   const [trainerId, setTrainerId] = React.useState(trainers[0]?.id ?? "");
@@ -193,7 +233,7 @@ const Storage = ({ city, trainers, isLeader }: { city: City; trainers: Trainer[]
   return <div className="space-y-4">
     <p className="text-footnote text-label-2">
       Every member can store items here and take them out for their own trainers. Crafted items arrive here too.
-      {isLeader && " As the leader you can also remove items for good."}
+      {isLeader && " As the leader you can also add items directly and remove items for good."}
     </p>
     {!trainers.length ? <p className="text-label-2">Create a trainer in Trainers to give or take items.</p> :
       <label className="flex max-w-sm flex-col gap-2">Your trainer
@@ -203,7 +243,10 @@ const Storage = ({ city, trainers, isLeader }: { city: City; trainers: Trainer[]
       </label>}
     <div className="grid items-start gap-4 lg:grid-cols-2">
       <section className="min-w-0 rounded-xl bg-fill p-3">
-        <h3 className="font-semibold">{city.name} storage</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="flex-1 font-semibold">{city.name} storage</h3>
+          {isLeader && <AddToStorage city={city} items={items} />}
+        </div>
         <InventoryList entries={city.inventory} empty="Nothing stored yet. Craft items or store some from a trainer."
           control={entry => (trainer || isLeader) && <QuantityActions max={entry.quantity} name={entry.item.name} disabled={pending} actions={[
             ...(trainer ? [{ label: "Take", onMove: (quantity: number) => transfer(entry, quantity, "withdraw") }] : []),
@@ -362,7 +405,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     <div {...segmentPanelProps("crafting", view)} className="space-y-3 outline-none" tabIndex={-1}>
       {items.isError ? <p role="alert">The item list could not be loaded. <button type="button" className={button({ variant: "tinted", size: "sm" })} onClick={() => items.refetch()}>Try again</button></p> :
         !items.data ? <p role="status">Loading recipes...</p> :
-        view === "storage" ? <Storage city={city} trainers={trainers} isLeader={isLeader} /> : <>
+        view === "storage" ? <Storage city={city} trainers={trainers} items={items.data} isLeader={isLeader} /> : <>
           {view === "craft" && <OrderPanel city={city} lines={orderLines} usage={usage} isLeader={isLeader} leader={leader} disabled={pending}
             onSet={(itemId, quantity) => setOrder.mutate({ itemId, quantity })} onOpen={open} onCraft={() => craft.mutate()} blockersOf={blockersOf} />}
           <div className="flex flex-wrap items-center gap-2">

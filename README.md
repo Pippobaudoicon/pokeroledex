@@ -178,8 +178,9 @@ The **Crafting** tab turns the city's skills into items (rules in
   skill's dice and every success is one step towards the tier's steps. The
   leader rolls in the app, or types in the dice of a physical roll.
 - **Storage** is the city inventory. Any member can store items from one of
-  their trainers or take items out to one. The leader can also remove items for
-  good, e.g. to adjust the city's stock as GM.
+  their trainers or take items out to one. The leader can also add any reference
+  item directly (**Add item**) and remove items for good, e.g. to adjust the
+  city's stock as GM.
 
 ### Sharing a city
 
@@ -219,6 +220,7 @@ Crafting (rules in `docs/crafting-plan.md` and `shared/crafting.ts`):
 | `POST /api/cities/:id/craft` | Leader | `{}` | Moves the whole order into the city inventory and empties it, if every recipe is still craftable and fits |
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
 | `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |
+| `POST /api/cities/:id/stock` | Leader | `{ itemId, quantity }` | Adds 1 to 999 of a reference item straight to the city inventory (no recipe needed) |
 | `POST /api/cities/:id/discard` | Leader | `{ entryId, quantity }` | Removes items from the city inventory for good |
 
 `faces` are the dice of a physical research roll and must match the pool, each 1 to 6;

@@ -11,7 +11,7 @@ A "Crafting" tab in My city.
 Scope: only the reference items (`data/reference/items.json`, 394 items) under the item filters (pockets and categories). Campaign items are ignored for now.
 
 ## Who does what
-- **Leader (GM)** = `city.members[0]`. Only the leader crafts the order, researches, and removes items from storage for good, with no attempt limit.
+- **Leader (GM)** = `city.members[0]`. Only the leader crafts the order, researches, and adds items to or removes items from storage directly, with no attempt limit.
 - **Any member** can add items to and take items out of the crafting order, and deposit items into and withdraw items from the city inventory.
 - Crafting and research cost nothing. Skills, catalysts and rank are the only gates.
 
@@ -190,6 +190,7 @@ Unpriced items use a category default:
    - `POST /cities/:id/craft` (leader only; crafts the whole order)
    - `POST /cities/:id/research { itemId, faces? }` (leader only)
    - `POST /cities/:id/inventory { trainerId, entryId, quantity, direction }` (any member)
+   - `POST /cities/:id/stock { itemId, quantity }` (leader only; any reference item)
    - `POST /cities/:id/discard { entryId, quantity }` (leader only)
    - The city response includes the hydrated inventory, the research steps and the order. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers`/`orderRoom` the server enforces (409 with the reasons).
 6. **UI**:

@@ -707,7 +707,7 @@ test('members fill the crafting order within the city skills and the leader craf
   } finally { h.close(); }
 });
 
-test('only the leader removes items from city storage for good', async () => {
+test('only the leader adds items to and removes items from city storage directly', async () => {
   const h = harness();
   const bob = 'bob@example.com';
   try {
@@ -729,6 +729,19 @@ test('only the leader removes items from city storage for good', async () => {
     result = await discard({ entryId: stored.id, quantity: 1 });
     assert.deepEqual(result.body.inventory, []);
     assert.deepEqual((await h.request(`trainers/${red.id}`)).body.inventory, [], 'removed items do not go back to a trainer');
+
+    // The leader stocks reference items directly; they stack with what is stored.
+    const stock = (body, owner) => h.request(`cities/${city.id}/stock`, 'POST', body, owner);
+    assert.equal((await stock({ itemId: 'pokeball', quantity: 1 }, bob)).status, 403);
+    assert.equal((await stock({ itemId: 'missing', quantity: 1 })).status, 400);
+    for (const quantity of [0, 1.5, 1000, 'one']) assert.equal((await stock({ itemId: 'pokeball', quantity })).status, 400, JSON.stringify(quantity));
+    await stock({ itemId: 'pokeball', quantity: 2 });
+    result = await stock({ itemId: 'pokeball', quantity: 3 });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 5]]);
+    result = await stock({ itemId: 'masterball', quantity: 1 });
+    assert.deepEqual(result.body.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 5], ['Masterball', 1]], 'GM rewards need no recipe');
+    assert.deepEqual((await h.request(`cities/${city.id}`, 'GET', undefined, bob)).body.inventory.length, 2, 'members see stocked items');
   } finally { h.close(); }
 });
 
