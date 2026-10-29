@@ -10,10 +10,12 @@ import {
 } from "../../../shared/crafting";
 import { ITEM_EXCEPTIONS } from "../../../shared/crafting-data";
 import { apiFetch, type ApiFetchError } from "@/api/client";
+import { ItemPocket } from "@/api/schemas";
 import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
 import { ItemCard } from "@/components/ItemCard";
 import { ItemImage } from "@/components/ItemImage";
 import { button } from "@/components/kit/button";
+import { Chip } from "@/components/kit/Controls";
 import { Picker } from "@/components/kit/Picker";
 import { TypePill } from "@/components/kit/Pills";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
@@ -322,6 +324,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const [query, setQuery] = React.useState("");
   const [skill, setSkill] = React.useState<CraftingSkill | "all">("all");
   const [showLocked, setShowLocked] = React.useState(false);
+  const [pockets, setPockets] = React.useState<ItemPocket[]>([]);
   const [shown, setShown] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
   const [detail, setDetail] = React.useState<Entry | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
@@ -330,7 +333,8 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const state: CraftingCity = { rank: city.rank, skills: city.skills, catalysts: city.catalysts, research: city.research };
   const entries = React.useMemo(() => (items.data ?? []).map(item => ({ item, recipe: itemRecipe(item, ITEM_EXCEPTIONS[item.name]) })), [items.data]);
   const byId = React.useMemo(() => new Map(entries.map(entry => [entry.item.id, entry])), [entries]);
-  const matches = (entry: Entry) => (skill === "all" || entry.recipe.skill === skill) && (!query || fold(entry.item.name).includes(fold(query)));
+  const matches = (entry: Entry) => (skill === "all" || entry.recipe.skill === skill) && (!query || fold(entry.item.name).includes(fold(query))) &&
+    (!pockets.length || (!!entry.item.pocket && pockets.includes(entry.item.pocket)));
   const byTier = (a: Entry, b: Entry) => a.recipe.tier - b.recipe.tier || a.item.name.localeCompare(b.item.name);
   const blockersOf = (entry: Entry) => craftBlockers(entry.recipe, state);
   const open = (entry: Entry) => { setDetail(entry); setDetailOpen(true); };
@@ -417,6 +421,12 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
             <label className="inline-flex min-h-11 items-center gap-2 text-subhead lg:min-h-9">
               <input type="checkbox" checked={showLocked} onChange={event => setShowLocked(event.target.checked)} />Show locked recipes
             </label>
+          </div>
+          <div role="group" aria-label="Filter by pocket" className="no-scrollbar flex gap-1.5 overflow-x-auto">
+            {Object.values(ItemPocket).map(pocket => <Chip key={pocket} pressed={pockets.includes(pocket)}
+              onClick={() => setPockets(pockets.includes(pocket) ? pockets.filter(entry => entry !== pocket) : [...pockets, pocket])}>
+              {formatEnumName(pocket)}
+            </Chip>)}
           </div>
           {view === "craft" ? <>
             <p className="text-footnote text-label-2">{craftableCount} of {entries.filter(entry => entry.recipe.craftable).length} recipes can be crafted now.</p>
