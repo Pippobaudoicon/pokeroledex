@@ -36,21 +36,21 @@ export const SkillHelp = ({ skill, limit }: { skill: CitySkill; limit: number })
         <section className="space-y-2">
           <h3 className="text-headline font-semibold">How to increase it</h3>
           {affinity ? <>
-            <p>Drag an eligible resident onto {skillLabel(skill)}, or select the resident and then tap the skill name. Each resident can work on only one skill or action at a time.</p>
-            <p>Assign more eligible residents, or use residents with a higher bonus. Full workers add their whole bonus; half workers add half, rounded down, with a minimum of 1.</p>
+            <p>Drag an eligible Pokémon onto {skillLabel(skill)}, or select the Pokémon and then tap the skill name. Each Pokémon can work on only one skill or action at a time.</p>
+            <p>Assign more eligible Pokémon, or use Pokémon with a higher bonus. Full workers add their whole bonus; half workers add half, rounded down, with a minimum of 1.</p>
             <p>The total is capped at <strong>{limit}</strong> for this city's rank. Raise the city rank to raise the cap; values cannot be edited by hand.</p>
           </> : <>
-            <p>Assign any resident to Catalyst. Add residents with types not already represented to increase the type count. A dual-type resident provides both types.</p>
-            <p>For each type, only the strongest resident's bonus is used; duplicate types do not add together. Use a higher-bonus resident to increase that type's strength.</p>
+            <p>Assign any Pokémon to Catalyst. Add Pokémon with types not already represented to increase the type count. A dual-type Pokémon provides both types.</p>
+            <p>For each type, only the strongest Pokémon's bonus is used; duplicate types do not add together. Use a higher-bonus Pokémon to increase that type's strength.</p>
             <p>Recipes require strength 1 at tiers 1–2, strength 2 at tiers 3–5, and strength 3 at tiers 6–8. Catalyst counts types rather than using the normal skill cap.</p>
           </>}
-          <p>Resident bonuses: first evolution stage +1, second +2, third +3, species that never evolve +2, legendary +5. Mega Evolutions and alternate forms use their base form's stage.</p>
+          <p>Pokémon bonuses: first evolution stage +1, second +2, third +3, species that never evolve +2, legendary +5. Mega Evolutions and alternate forms use their base form's stage.</p>
         </section>
         {affinity && <section className="space-y-2">
           <h3 className="text-headline font-semibold">Which Pokémon can work here?</h3>
           <p><strong>Full-bonus types:</strong> {affinity.full.map(formatEnumName).join(", ")}.</p>
           <p><strong>Half-bonus types:</strong> {affinity.half.map(formatEnumName).join(", ")}.</p>
-          <p>These are starting affinities. A species' maximum {formatEnumName(affinity.attribute)} of {APTITUDE.raise}+ raises half to full; {APTITUDE.open}+ opens an otherwise closed skill at half. These are species limits, not the resident's trained stats. Species-specific exceptions can override this.</p>
+          <p>These are starting affinities. A species' maximum {formatEnumName(affinity.attribute)} of {APTITUDE.raise}+ raises half to full; {APTITUDE.open}+ opens an otherwise closed skill at half. These are species limits, not the Pokémon's trained stats. Species-specific exceptions can override this.</p>
           <p>Check <strong>City work</strong> on the species' Pokédex page for its actual work profile.</p>
         </section>}
       </div>
