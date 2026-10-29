@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dices, Hammer, Keyboard, Lock, Minus, Plus, Trash2 } from "lucide-react";
+import { Dices, Hammer, Keyboard, Lock, Minus, Plus, Trash2, Unlock } from "lucide-react";
 import * as React from "react";
 import {
   CRAFTING_SKILLS, type City, type CityCraftResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrderBody,
-  type CityResearchResult, type CityStockBody, type CraftingSkill, type HydratedInventoryEntry, type Item, type Trainer,
+  type CityResearchResult, type CityStepsBody, type CityStockBody, type CraftingSkill, type HydratedInventoryEntry, type Item, type Trainer,
 } from "../../../shared/types";
 import {
   TIERS, craftBlockers, isUnlocked, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, researchBlockers, type CraftingCity, type Recipe,
@@ -86,6 +86,23 @@ const RollActions = ({ pool, label, disabled, onRoll }: { pool: number; label: s
 
 const Blockers = ({ reasons }: { reasons: string[] }) => !reasons.length ? null :
   <p className="mt-1 flex items-start gap-1 text-footnote text-label-2"><Lock aria-hidden className="mt-0.5 size-3.5 shrink-0" />{reasons.join(" ")}</p>;
+
+/** The leader's GM override: step research up or down, or unlock it outright, whatever the city could research. */
+const StepControls = ({ name, steps, needed, disabled, onSet }: { name: string; steps: number; needed: number; disabled: boolean; onSet: (steps: number) => void }) =>
+  <div className="flex items-center gap-1" role="group" aria-label={`${name} research steps`}>
+    <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label={`One less research step for ${name}`} title="Remove a step"
+      disabled={disabled || steps <= 0} onClick={() => onSet(steps - 1)}>
+      <Minus aria-hidden className="size-4" />
+    </button>
+    <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label={`One more research step for ${name}`} title="Add a step"
+      disabled={disabled} onClick={() => onSet(steps + 1)}>
+      <Plus aria-hidden className="size-4" />
+    </button>
+    <button type="button" className={button({ variant: "tinted", size: "sm" })} disabled={disabled} onClick={() => onSet(needed)}
+      aria-label={`Unlock ${name}`} title="Complete the research">
+      <Unlock aria-hidden className="size-4" />Unlock
+    </button>
+  </div>;
 
 /** The item's image and name open its details. */
 const ItemTitle = ({ item, size = "size-10", onOpen, children }: { item: Item; size?: string; onOpen: () => void; children?: React.ReactNode }) => <>
@@ -374,7 +391,16 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     },
     onError: (error: ApiFetchError) => toast({ title: "The roll could not be made", description: errorText(error) }),
   });
-  const pending = setOrder.isPending || craft.isPending || research.isPending;
+  const setSteps = useMutation({
+    mutationFn: (body: CityStepsBody) => apiFetch<City>({ url: cityUrl(city, "steps"), method: "post", body }),
+    onSuccess: (result, body) => {
+      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result));
+      const entry = byId.get(body.itemId);
+      if (entry && isUnlocked(entry.recipe, result.research)) toast({ title: `${entry.item.name} unlocked!` });
+    },
+    onError: (error: ApiFetchError) => toast({ title: "The research steps could not be changed", description: errorText(error) }),
+  });
+  const pending = setOrder.isPending || craft.isPending || research.isPending || setSteps.isPending;
   const stepper = (entry: Entry) => <OrderStepper name={entry.item.name} quantity={inOrder(entry.item.id)} disabled={pending}
     room={orderRoom(entry.recipe, city.skills, usage)} onSet={quantity => setOrder.mutate({ itemId: entry.item.id, quantity })} />;
 
@@ -436,11 +462,16 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
                 <Blockers reasons={row.blockers} />
               </RecipeRow>)}</ul>}
           </> : <>
-            <p className="text-footnote text-label-2">Research rolls {dice(city.skills.research)} (the Research skill); each success is one step. Tier 1 and 2 recipes need none. {researchedCount} of {researchable.length} recipes are researched.</p>
+            <p className="text-footnote text-label-2">Research rolls {dice(city.skills.research)} (the Research skill); each success is one step. Tier 1 and 2 recipes need none. {researchedCount} of {researchable.length} recipes are researched.
+              {isLeader && " As the leader you can also add or remove steps, or unlock a recipe outright, even if the city could not research it yet."}</p>
             {!researchRows.length ? <p className="text-label-2">{showLocked ? "Nothing left to research that matches." : "Nothing the city can research yet matches. Turn on Show locked recipes to see what each one needs."}</p> :
               <ul className="divide-y divide-hairline">{researchRows.map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
-                actions={isLeader && !row.blockers.length && <RollActions pool={city.skills.research} label="Research" disabled={pending}
-                  onRoll={faces => research.mutate({ itemId: row.item.id, faces })} />}>
+                actions={isLeader && <div className="flex flex-wrap items-center gap-2">
+                  {!row.blockers.length && <RollActions pool={city.skills.research} label="Research" disabled={pending}
+                    onRoll={faces => research.mutate({ itemId: row.item.id, faces })} />}
+                  <StepControls name={row.item.name} steps={row.steps} needed={row.needed} disabled={pending}
+                    onSet={steps => setSteps.mutate({ itemId: row.item.id, steps })} />
+                </div>}>
                 <span className="mt-1.5 flex items-center gap-2">
                   <span role="progressbar" aria-label={`${row.item.name} research`} aria-valuemin={0} aria-valuemax={row.needed} aria-valuenow={row.steps}
                     className="h-1.5 w-32 overflow-hidden rounded-full bg-fill"><span className="block h-full bg-tint" style={{ width: `${(row.steps / row.needed) * 100}%` }} /></span>

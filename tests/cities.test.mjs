@@ -707,6 +707,33 @@ test('members fill the crafting order within the city skills and the leader craf
   } finally { h.close(); }
 });
 
+test('the leader sets research steps directly, even where the city could not research', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Library' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const steps = (itemId, value, owner) => h.request(`cities/${city.id}/steps`, 'POST', { itemId, steps: value }, owner);
+
+    // An Unranked city with no Research cannot roll research on the tier 5 Fire Stone, but the leader can add steps.
+    assert.match((await h.request(`cities/${city.id}/research`, 'POST', { itemId: 'fire-stone' })).body.payload, /Needs an Expert city/);
+    assert.equal((await steps('fire-stone', 2, bob)).status, 403);
+    let result = await steps('fire-stone', 2);
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.research, { 'fire-stone': 2 });
+    result = await steps('fire-stone', 7);
+    assert.deepEqual(result.body.research, { 'fire-stone': 7 }, 'tier 5 needs 7 steps: unlocked');
+    assert.match((await h.request(`cities/${city.id}/research`, 'POST', { itemId: 'fire-stone' })).body.payload, /Already researched/);
+    result = await steps('fire-stone', 0);
+    assert.deepEqual(result.body.research, {}, 'zero clears the entry');
+
+    for (const value of [-1, 8, 1.5, 'two']) assert.equal((await steps('fire-stone', value)).status, 400, JSON.stringify(value));
+    assert.equal((await steps('missing', 1)).status, 400);
+    assert.match((await steps('pokeball', 1)).body.payload, /needs no research/);
+    assert.match((await steps('masterball', 1)).body.payload, /not craftable/);
+  } finally { h.close(); }
+});
+
 test('only the leader adds items to and removes items from city storage directly', async () => {
   const h = harness();
   const bob = 'bob@example.com';

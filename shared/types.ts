@@ -74,6 +74,8 @@ export interface CityInventoryResult { city: City; trainer: Trainer }
 export interface CityDiscardBody { entryId: string; quantity: number }
 /** The leader adds `quantity` of a reference item straight to city storage. */
 export interface CityStockBody { itemId: string; quantity: number }
+/** The leader sets a recipe's research steps directly (0 up to what its tier needs), skipping the research gates. */
+export interface CityStepsBody { itemId: string; steps: number }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
   /** Merged into the stored assignments; `null` unassigns a resident. */
   assignments?: Record<string, CityAssignment | null>;

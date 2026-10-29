@@ -176,7 +176,9 @@ The **Crafting** tab turns the city's skills into items (rules in
   no dice, and the items go to the city storage.
 - **Research** unlocks tier 3 and higher recipes: each roll uses the Research
   skill's dice and every success is one step towards the tier's steps. The
-  leader rolls in the app, or types in the dice of a physical roll.
+  leader rolls in the app, or types in the dice of a physical roll. As GM, the
+  leader can also add or remove steps, or unlock a recipe outright, even a
+  locked one the city could not research yet.
 - **Storage** is the city inventory. Any member can store items from one of
   their trainers or take items out to one. The leader can also add any reference
   item directly (**Add item**) and remove items for good, e.g. to adjust the
@@ -219,6 +221,7 @@ Crafting (rules in `docs/crafting-plan.md` and `shared/crafting.ts`):
 | `POST /api/cities/:id/order` | Any member | `{ itemId, quantity }` | Sets how many of a reference item are in the crafting order (0 takes it out). Raising it needs a craftable recipe and room in its skill: each item uses its tier's effort of the skill's value |
 | `POST /api/cities/:id/craft` | Leader | `{}` | Moves the whole order into the city inventory and empties it, if every recipe is still craftable and fits |
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
+| `POST /api/cities/:id/steps` | Leader | `{ itemId, steps }` | Sets a recipe's research steps (0 to what its tier needs) without the rank or Research gates |
 | `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |
 | `POST /api/cities/:id/stock` | Leader | `{ itemId, quantity }` | Adds 1 to 999 of a reference item straight to the city inventory (no recipe needed) |
 | `POST /api/cities/:id/discard` | Leader | `{ entryId, quantity }` | Removes items from the city inventory for good |

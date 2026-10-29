@@ -171,6 +171,7 @@ Unpriced items use a category default:
 - The server rolls, or the leader types in the faces of a physical roll (the server checks that the number of dice equals the pool size).
 - A recipe is unlocked for good when its steps reach the number in the tier table.
 - Starting research needs the rank and minimum Research value from the tier table. It does **not** need catalysts, so the city can unlock recipes ahead of time.
+- As GM, the leader can set any researchable recipe's steps directly (0 up to the tier's steps), skipping the rank and Research minimums.
 
 ## Architecture
 1. **`shared/crafting.ts`** (done) holds:
@@ -189,6 +190,7 @@ Unpriced items use a category default:
    - `POST /cities/:id/order { itemId, quantity }` (any member)
    - `POST /cities/:id/craft` (leader only; crafts the whole order)
    - `POST /cities/:id/research { itemId, faces? }` (leader only)
+   - `POST /cities/:id/steps { itemId, steps }` (leader only; GM override that skips the research gates)
    - `POST /cities/:id/inventory { trainerId, entryId, quantity, direction }` (any member)
    - `POST /cities/:id/stock { itemId, quantity }` (leader only; any reference item)
    - `POST /cities/:id/discard { entryId, quantity }` (leader only)

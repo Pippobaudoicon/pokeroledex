@@ -648,6 +648,23 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       }
       return reply({ city: hydrate(name, city), roll: { itemId: item.id, pool, faces, successes, steps, needed, unlocked: steps >= needed } });
     }
+    // GM override: the leader sets a recipe's research steps directly, whatever the city's rank or Research.
+    if (name === 'cities' && action && id === 'steps' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can set research steps.');
+      const found = referenceRecipe(body.itemId);
+      if (!found) fail(400, 'Choose a reference item.');
+      const { item, recipe } = found;
+      if (!recipe.craftable) fail(409, `${item.name}: ${recipe.note ? `${recipe.note}: not craftable.` : 'This item cannot be crafted.'}`);
+      const needed = TIERS[recipe.tier].research?.steps;
+      if (!needed) fail(409, `${item.name}: This recipe needs no research.`);
+      if (!Number.isInteger(body.steps) || body.steps < 0 || body.steps > needed) fail(400, `Choose from 0 to ${needed} steps.`);
+      const { [item.id]: _previous, ...rest } = city.research ?? {};
+      city.research = body.steps ? { ...rest, [item.id]: body.steps } : rest;
+      put(name, city);
+      return reply(hydrate(name, city));
+    }
     // The leader can add or remove stored items directly, e.g. to adjust the city's stock as GM.
     if (name === 'cities' && action && id === 'stock' && method === 'POST') {
       const city = find('cities', action);
