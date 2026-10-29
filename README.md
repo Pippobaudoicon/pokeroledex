@@ -166,15 +166,20 @@ The **Crafting** tab turns the city's skills into items (rules in
 `docs/crafting-plan.md`). Recipes come from the reference items only.
 
 - **Craft** lists what the city can craft now, each with its skill, tier (tier N
-  needs city rank N, Starter to Champion), how many successes make one item, and
-  any assist skill or Catalyst type it needs. **Show locked recipes** adds the
-  others with what each still needs. The leader rolls the dice in the app, or
-  types in the dice of a physical roll with the keyboard button. The roll shows
-  in the dice dialog, and the items go to the city storage.
+  needs city rank N, Starter to Champion), how much of its skill each item uses
+  (the tier's effort: 1 to 4), and any assist skill or Catalyst type it needs.
+  **Show locked recipes** adds the others with what each still needs. Select an
+  item to read its description. Any member adds items to the **crafting order**
+  and takes them out again: each crafting skill's value is how much of the order
+  its recipes can fill (Apothecary 3 holds three tier 1 Apothecary items, or one
+  tier 4 item and one tier 1). The leader crafts the whole order at once, with
+  no dice, and the items go to the city storage.
 - **Research** unlocks tier 3 and higher recipes: each roll uses the Research
-  skill's dice and every success is one step towards the tier's steps.
+  skill's dice and every success is one step towards the tier's steps. The
+  leader rolls in the app, or types in the dice of a physical roll.
 - **Storage** is the city inventory. Any member can store items from one of
-  their trainers or take items out to one.
+  their trainers or take items out to one. The leader can also remove items for
+  good, e.g. to adjust the city's stock as GM.
 
 ### Sharing a city
 
@@ -204,19 +209,22 @@ GET/PATCH/DELETE (leave when shared), and `POST /api/cities/:id/members` with
 merged into the stored assignments so members' changes don't overwrite each
 other; a skill the resident's species cannot work is refused); the response adds the derived `limits`, `skills`, `tagValues`,
 `catalysts` (type → strongest Catalyst bonus) and each resident's `bonuses` and `profiles`, plus the
-city's `inventory` (hydrated like a trainer's) and `research` (steps per item ID).
+city's `inventory` (hydrated like a trainer's), `research` (steps per item ID) and `order` (the crafting order, `{ itemId, quantity }[]`).
 
 Crafting (rules in `docs/crafting-plan.md` and `shared/crafting.ts`):
 
 | Endpoint | Who | Body | Does |
 | --- | --- | --- | --- |
-| `POST /api/cities/:id/craft` | Leader | `{ itemId, faces? }` | Rolls the recipe's pool (its skill plus one die per 3 assist points) and adds `floor(successes / effort)` of the item to the city inventory |
+| `POST /api/cities/:id/order` | Any member | `{ itemId, quantity }` | Sets how many of a reference item are in the crafting order (0 takes it out). Raising it needs a craftable recipe and room in its skill: each item uses its tier's effort of the skill's value |
+| `POST /api/cities/:id/craft` | Leader | `{}` | Moves the whole order into the city inventory and empties it, if every recipe is still craftable and fits |
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
 | `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |
+| `POST /api/cities/:id/discard` | Leader | `{ entryId, quantity }` | Removes items from the city inventory for good |
 
-`faces` are the dice of a physical roll and must match the pool, each 1 to 6;
-without them the server rolls. A recipe that cannot be crafted or researched yet
-answers 409 with the reasons (rank, research, skill, assist or catalyst). The
+`faces` are the dice of a physical research roll and must match the pool, each 1 to 6;
+without them the server rolls. A recipe that cannot be ordered, crafted or researched yet
+answers 409 with the reasons (rank, research, skill, assist, catalyst or room in the order). Lowering
+an order line is always allowed, so an order that no longer fits (a resident moved off the skill) can be trimmed. The
 last member cannot delete a city that still stores items. Moving a Pokémon to a city or trainer uses the existing Pokémon PATCH
 endpoint and validates destinations among the person's trainers and cities.
 `GET /api/pokemon` and `/api/pokemon/minimal` list only personal Pokémon;

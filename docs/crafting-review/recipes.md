@@ -19,7 +19,7 @@ Rows marked ✎ come from an exception.
 
 ## Tiers
 
-| Tier | Min skill | Min city rank | Successes per item | Research steps | Min Research | Catalyst strength |
+| Tier | Min skill | Min city rank | Effort (skill used per item) | Research steps | Min Research | Catalyst strength |
 |---|---:|---|---:|---:|---:|---:|
 | 1 | 1 | Starter | 1 | - | - | 1 |
 | 2 | 2 | Rookie | 1 | - | - | 1 |

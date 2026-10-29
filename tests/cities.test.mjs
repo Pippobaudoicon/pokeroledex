@@ -628,40 +628,60 @@ test('custom species and moves follow a shared Pokemon without sharing the campa
   } finally { h.close(); }
 });
 
-test('the leader crafts and researches with rolled or typed-in dice; gates explain what is missing', async () => {
+test('members fill the crafting order within the city skills and the leader crafts it; research rolls dice', async () => {
   const h = harness();
   const bob = 'bob@example.com';
   try {
     const city = (await h.request('cities', 'POST', { name: 'Forge' })).body;
+    assert.deepEqual(city.order, []);
     await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
     const add = async id => (await h.request('pokemon', 'POST', { pokemonTemplateId: id, cityId: city.id })).body.id;
     const tauros = await add('tauros');
     const mew = await add('mew');
     const charmander = await add(species.id);
     await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: 'skill:technology', [mew]: 'skill:research' } });
-    const craft = (itemId, faces, owner) => h.request(`cities/${city.id}/craft`, 'POST', { itemId, ...(faces && { faces }) }, owner);
+    const order = (itemId, quantity, owner) => h.request(`cities/${city.id}/order`, 'POST', { itemId, quantity }, owner);
+    const craft = owner => h.request(`cities/${city.id}/craft`, 'POST', {}, owner);
     const research = (itemId, faces) => h.request(`cities/${city.id}/research`, 'POST', { itemId, ...(faces && { faces }) });
 
-    let result = await craft('pokeball', [5]);
+    let result = await order('pokeball', 1);
     assert.equal(result.status, 409);
     assert.match(result.body.payload, /Pokeball: Needs a Starter city\./);
     await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER' });
-    assert.equal((await craft('pokeball', [5], bob)).status, 403, 'only the leader crafts');
 
-    // Tauros works Technology at half: 1 die. One success makes one tier 1 Pokeball.
-    result = await craft('pokeball', [5]);
+    // Tauros works Technology at half: Technology 1 holds one tier 1 Pokeball. Any member fills the order.
+    result = await order('pokeball', 1, bob);
     assert.equal(result.status, 200);
-    assert.deepEqual(result.body.roll, { itemId: 'pokeball', pool: 1, faces: [5], successes: 1, quantity: 1 });
-    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1]]);
-    assert.equal((await craft('pokeball', [2])).body.roll.quantity, 0);
-    for (const faces of [[1, 2], [7], [1.5], 'six']) assert.equal((await craft('pokeball', faces)).status, 400, JSON.stringify(faces));
-    assert.equal((await craft('missing', [5])).status, 400);
-    assert.match((await craft('masterball', [5])).body.payload, /GM reward only: not craftable/);
+    assert.deepEqual(result.body.order, [{ itemId: 'pokeball', quantity: 1 }]);
+    result = await order('pokeball', 2, bob);
+    assert.equal(result.status, 409);
+    assert.match(result.body.payload, /^Pokeball: the order can hold 1 with Technology 1 \(each uses 1\)\.$/);
+    for (const quantity of [-1, 1.5, 1000, 'two']) assert.equal((await order('pokeball', quantity)).status, 400, JSON.stringify(quantity));
+    assert.equal((await order('missing', 1)).status, 400);
+    assert.match((await order('masterball', 1)).body.payload, /GM reward only: not craftable/);
 
-    // Tier 3 needs a Standard city and research before it can be crafted.
+    assert.equal((await craft(bob)).status, 403, 'only the leader crafts');
+    result = await craft();
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.crafted, [{ itemId: 'pokeball', quantity: 1 }]);
+    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1]]);
+    assert.deepEqual(result.body.city.order, [], 'crafting empties the order');
+    assert.match((await craft()).body.payload, /order is empty/);
+
+    // An order that no longer fits cannot be crafted, but members can still trim it.
+    await order('pokeball', 1);
+    await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: null } });
+    assert.match((await craft()).body.payload, /^Pokeball: Needs Technology 1\.$/);
+    assert.equal((await order('pokeball', 2)).status, 409);
+    result = await order('pokeball', 0, bob);
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.order, []);
+    await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: 'skill:technology' } });
+
+    // Tier 3 needs a Standard city and research before it can be ordered.
     assert.match((await research('ultraball', [6, 6, 6, 6, 6])).body.payload, /Needs a Standard city/);
     await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STANDARD' });
-    assert.match((await craft('ultraball', [5])).body.payload, /Needs research\. Needs Technology 3\./);
+    assert.match((await order('ultraball', 1)).body.payload, /Needs research\. Needs Technology 3\./);
     assert.equal((await research('ultraball', [4, 5])).status, 400, 'Mew gives Research 5, so 5 dice');
     result = await research('ultraball', [4, 5, 1, 1, 1]);
     assert.deepEqual(result.body.roll, { itemId: 'ultraball', pool: 5, faces: [4, 5, 1, 1, 1], successes: 2, steps: 2, needed: 3, unlocked: false });
@@ -670,18 +690,45 @@ test('the leader crafts and researches with rolled or typed-in dice; gates expla
     assert.deepEqual(result.body.city.research, { ultraball: 3 });
     assert.match((await research('ultraball')).body.payload, /Already researched/);
     assert.match((await research('pokeball')).body.payload, /needs no research/);
-    assert.match((await craft('ultraball', [5])).body.payload, /^Ultraball: Needs Technology 3\.$/);
+    assert.match((await order('ultraball', 1)).body.payload, /^Ultraball: Needs Technology 3\.$/);
+    assert.equal((await h.request(`cities/${city.id}/research`, 'POST', { itemId: 'ultraball' }, bob)).status, 403);
 
     // A Fire Stone (tier 5) needs a Fire-type in Catalyst of strength 2 among other things.
-    assert.match((await craft('fire-stone')).body.payload, /Needs an Expert city\..*Needs a Fire Catalyst of strength 2\./);
+    assert.match((await order('fire-stone', 1)).body.payload, /Needs an Expert city\..*Needs a Fire Catalyst of strength 2\./);
     await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [charmander]: 'skill:catalyst' } });
-    assert.doesNotMatch((await craft('fire-stone')).body.payload, /Catalyst/);
+    assert.doesNotMatch((await order('fire-stone', 1)).body.payload, /Catalyst/);
 
-    // Without faces the server rolls the pool.
-    result = await craft('pokeball');
+    // Without faces the server rolls the Research pool.
+    await h.request(`cities/${city.id}`, 'PATCH', { rank: 'EXPERT' });
+    result = await research('fire-stone');
     assert.equal(result.status, 200);
-    assert.equal(result.body.roll.faces.length, 1);
+    assert.equal(result.body.roll.faces.length, 5);
     assert.ok(result.body.roll.faces.every(face => face >= 1 && face <= 6));
+  } finally { h.close(); }
+});
+
+test('only the leader removes items from city storage for good', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Depot' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const red = (await h.request('trainers', 'POST', { name: 'Red' })).body;
+    const [balls] = (await h.request('trainers', 'PATCH', { id: red.id, inventory: [{ itemId: 'pokeball', quantity: 3 }] })).body.inventory;
+    const stored = (await h.request(`cities/${city.id}/inventory`, 'POST', { trainerId: red.id, entryId: balls.id, quantity: 3, direction: 'deposit' })).body.city.inventory[0];
+    const discard = (body, owner) => h.request(`cities/${city.id}/discard`, 'POST', body, owner);
+
+    assert.equal((await discard({ entryId: stored.id, quantity: 1 }, bob)).status, 403);
+    for (const quantity of [0, 1.5, 'one']) assert.equal((await discard({ entryId: stored.id, quantity })).status, 400, JSON.stringify(quantity));
+    assert.equal((await discard({ entryId: 'missing', quantity: 1 })).status, 404);
+    assert.equal((await discard({ entryId: stored.id, quantity: 4 })).status, 409);
+
+    let result = await discard({ entryId: stored.id, quantity: 2 });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1]]);
+    result = await discard({ entryId: stored.id, quantity: 1 });
+    assert.deepEqual(result.body.inventory, []);
+    assert.deepEqual((await h.request(`trainers/${red.id}`)).body.inventory, [], 'removed items do not go back to a trainer');
   } finally { h.close(); }
 });
 

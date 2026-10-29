@@ -49,7 +49,7 @@ const recipeLines = [
   '',
   '## Tiers',
   '',
-  '| Tier | Min skill | Min city rank | Successes per item | Research steps | Min Research | Catalyst strength |',
+  '| Tier | Min skill | Min city rank | Effort (skill used per item) | Research steps | Min Research | Catalyst strength |',
   '|---|---:|---|---:|---:|---:|---:|',
   ...tierNumbers.map(tier => {
     const t = TIERS[tier];

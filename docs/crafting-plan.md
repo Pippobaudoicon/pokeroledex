@@ -11,14 +11,14 @@ A "Crafting" tab in My city.
 Scope: only the reference items (`data/reference/items.json`, 394 items) under the item filters (pockets and categories). Campaign items are ignored for now.
 
 ## Who does what
-- **Leader (GM)** = `city.members[0]`. Only the leader crafts and researches, with no attempt limit.
-- **Any member** can deposit items into, and withdraw items from, the city inventory.
+- **Leader (GM)** = `city.members[0]`. Only the leader crafts the order, researches, and removes items from storage for good, with no attempt limit.
+- **Any member** can add items to and take items out of the crafting order, and deposit items into and withdraw items from the city inventory.
 - Crafting and research cost nothing. Skills, catalysts and rank are the only gates.
 
 ## City skills (replace the current 8 work skills)
 Residents work on a skill. The skill's value is the sum of its workers' bonuses, capped by city rank (`shared/cities.ts`, unchanged). Custom actions (tags) stay as they are: free-form, and not part of the crafting rules.
 
-### Crafting skills (each gives the dice pool for its recipes)
+### Crafting skills (each gives the order capacity for its recipes)
 | Skill | Makes (~items) | Full-bonus types | Half-bonus types | Key attribute |
 |---|---|---|---|---|
 | **Apothecary** | Medicine pocket (healing, status, vitamins), berries, seeds, roots, herbs, powders, food and drinks, repels (~108) | Grass, Poison, Bug, Water | Ice, Ground | Insight |
@@ -105,7 +105,7 @@ Simulated against the 1,196 reference species:
 `{ itemId, skill, tier, catalyst?: PokemonType[] (any of), assist?: { skill, min } }`.
 
 - The tier gives `minSkill`, `minRank`, `effort` and research cost (table below).
-- `assist` is the optional cross-skill interaction. The other skill's value must be at least `min`, and every 3 points of it add +1 die. Default assists:
+- `assist` is the optional cross-skill interaction: the other skill's value must be at least `min`. Default assists:
 
 | Recipe | Assist skill | Minimum |
 |---|---|---|
@@ -123,7 +123,7 @@ A recipe is **craftable** when all of these hold:
 
 There are 8 tiers, matching the Pokérole ranks: tier N needs city rank N (tier 1 Starter … tier 8 Champion). An Unranked city cannot craft anything.
 
-| Tier | Rank | minSkill | Successes per item | Research steps | Min Research to start | Catalyst strength |
+| Tier | Rank | minSkill | Effort (skill used per item) | Research steps | Min Research to start | Catalyst strength |
 |---|---|---|---|---|---|---|
 | 1 | Starter | 1 | 1 | not needed | not needed | 1 |
 | 2 | Rookie | 2 | 1 | not needed | not needed | 1 |
@@ -160,13 +160,15 @@ Unpriced items use a category default:
 
 `data/crafting-items.json` holds per-item changes to skill, tier, catalyst and assist, plus the "not craftable" list (Masterball, Soul Dew, Adamant/Lustrous/Griseous Orb, legendary Mega stones and Z-crystals).
 
-### Craft roll
-- **Pool:** the city skill value plus assist dice, in d6. A die showing 4 or more is a success (same as `DiceRoll`).
-- The server rolls, or the leader types in the faces of a physical roll (the server checks that the number of dice equals the pool size).
-- **Quantity:** `floor(successes / effort)`. Example: Apothecary 4 and Technology 6 means 4 dice for Potions and 6 dice for Pokéballs.
+### Crafting order
+- Members fill one shared **crafting order** per city (`city.order`, `{ itemId, quantity }[]`). Only craftable recipes can be added.
+- **Capacity:** each item uses its tier's effort of its crafting skill, and each skill's order lines together may use at most the skill's value. Example: Apothecary 4 holds four tier 1 Potions, or one tier 4 item and two tier 1 items.
+- Lowering a line is always allowed, so an order that no longer fits (a resident moved off the skill) can be trimmed.
+- The leader **crafts** the order: if every recipe is still craftable and every skill fits, all items go to the city inventory, with no dice, and the order empties.
 
 ### Research roll
-- **Pool:** the Research value. Each success adds one step to the chosen recipe.
+- **Pool:** the Research value, in d6. A die showing 4 or more is a success (same as `DiceRoll`), and each success adds one step to the chosen recipe.
+- The server rolls, or the leader types in the faces of a physical roll (the server checks that the number of dice equals the pool size).
 - A recipe is unlocked for good when its steps reach the number in the tier table.
 - Starting research needs the rank and minimum Research value from the tier table. It does **not** need catalysts, so the city can unlock recipes ahead of time.
 
@@ -175,7 +177,7 @@ Unpriced items use a category default:
    - the skill definitions (crafting or support; full-bonus and half-bonus types; key attribute);
    - the tier table;
    - `workProfile` and `speciesOverrides` (species), and `itemRecipe` (items: default skill, tier, catalyst and assist, then the item exception).
-   - `workBonus`/`canWork` (residents), and `craftBlockers`, `researchBlockers`, `craftPool`, `rollDice`, `countSuccesses` and `checkFaces` (rolls).
+   - `workBonus`/`canWork` (residents), `craftBlockers`, `researchBlockers`, `orderCost`, `orderUsage`, `orderRoom` and `overCapacity` (the order), and `rollDice`, `countSuccesses` and `checkFaces` (research rolls).
 2. **Exceptions** (done): `data/crafting-items.json` and `data/crafting-species.json`.
    - Recipes are derived on the fly from `items.json` and these files, so there is no generated recipe file.
    - **`scripts/crafting-report.ts`** (`pnpm crafting:report`) writes the review drafts `docs/crafting-review/recipes.md` and `docs/crafting-review/species.md`.
@@ -184,16 +186,18 @@ Unpriced items use a category default:
    - `City` gains `inventory`, `research` and `catalysts` (the types present in Catalyst, each with its best strength).
 4. **`shared/cities.ts`**: `cityValues` applies each resident's work profile (full or half bonus) and collects the catalyst types and strengths.
 5. **Worker API**:
-   - `POST /cities/:id/craft { itemId, faces? }` (leader only)
+   - `POST /cities/:id/order { itemId, quantity }` (any member)
+   - `POST /cities/:id/craft` (leader only; crafts the whole order)
    - `POST /cities/:id/research { itemId, faces? }` (leader only)
    - `POST /cities/:id/inventory { trainerId, entryId, quantity, direction }` (any member)
-   - The city response includes the hydrated inventory and the research steps. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers` the server enforces (409 with the reasons).
+   - `POST /cities/:id/discard { entryId, quantity }` (leader only)
+   - The city response includes the hydrated inventory, the research steps and the order. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers`/`orderRoom` the server enforces (409 with the reasons).
 6. **UI**:
    - In `src/pages/MyCity/index.tsx`, the work board only offers each resident the skills in its work profile (Catalyst always), showing full or half.
-   - A new **Crafting** tab has three parts: Craftable, Research and Storage.
+   - A new **Crafting** tab has three parts: Craft (the crafting order and the recipes; selecting an item opens its description), Research and Storage.
    - The Pokémon detail page shows the species' work profile.
 7. **Tests:**
-   - `tests/crafting.test.mjs` covers work profiles, catalysts, tiers, the roll maths and research.
+   - `tests/crafting.test.mjs` covers work profiles, catalysts, tiers, order capacity and the research roll maths.
    - Update `tests/cities.test.mjs` for the new skills.
 
 ## Build order

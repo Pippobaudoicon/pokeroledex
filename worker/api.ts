@@ -4,7 +4,7 @@
 // records, works on them in memory and writes back only the records it changed.
 import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
-import { canWork, checkFaces, countSuccesses, craftBlockers, craftPool, itemRecipe, researchBlockers, rollDice, TIERS } from '../shared/crafting.ts';
+import { canWork, checkFaces, countSuccesses, craftBlockers, itemRecipe, orderCost, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
 import type { City, GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
@@ -307,6 +307,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, ...rest } = record;
         return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
           ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory), research: record.research ?? {},
+          order: ((record.order ?? []) as Json[]).filter(line => reference.items.some(item => item.id === line.itemId)),
           members: members.get(record.id) ?? [] };
       }
       return referenceRecord(name, record);
@@ -558,40 +559,108 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       members.set(city.id, current.filter(email => email !== member));
       return reply(hydrate(name, city));
     }
-    // Crafting (docs/crafting-plan.md): the leader rolls crafts and research; dice may come from a physical roll.
-    if (name === 'cities' && action && (id === 'craft' || id === 'research') && method === 'POST') {
+    // Crafting (docs/crafting-plan.md). Any member fills the crafting order within the city's skills;
+    // the leader crafts it into storage and rolls research, whose dice may come from a physical roll.
+    function referenceRecipe(itemId: unknown): { item: Row; recipe: Recipe } | null {
+      const item = typeof itemId === 'string' ? reference.items.find(entry => entry.id === itemId) : undefined;
+      return item ? { item, recipe: itemRecipe(item, ITEM_EXCEPTIONS[item.name]) } : null;
+    }
+    function orderLines(city: Row) {
+      return ((city.order ?? []) as Json[]).flatMap(line => {
+        const found = referenceRecipe(line.itemId);
+        return found ? [{ ...found, quantity: line.quantity as number }] : [];
+      });
+    }
+    const craftingState = (current: City) => ({ rank: current.rank, skills: current.skills, catalysts: current.catalysts, research: current.research });
+    const isLeader = (city: Row) => (members.get(city.id) ?? [])[0] === owner;
+
+    if (name === 'cities' && action && id === 'order' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
-      if ((members.get(city.id) ?? [])[0] !== owner) fail(403, 'Only the city leader can craft and research.');
-      const item = typeof body.itemId === 'string' ? reference.items.find(entry => entry.id === body.itemId) : undefined;
-      if (!item) fail(400, 'Choose a reference item.');
-      const recipe = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
+      const found = referenceRecipe(body.itemId);
+      if (!found) fail(400, 'Choose a reference item.');
+      if (!Number.isInteger(body.quantity) || body.quantity < 0 || body.quantity > 999) fail(400, 'Choose a quantity from 0 to 999.');
+      const { item, recipe } = found;
+      const lines = orderLines(city);
+      const before = lines.find(line => line.item.id === item.id)?.quantity ?? 0;
+      // Lowering a line is always allowed, so an order that no longer fits can be trimmed.
+      if (body.quantity > before) {
+        const current = hydrate(name, city) as City;
+        const blockers = craftBlockers(recipe, craftingState(current));
+        if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
+        const others = lines.filter(line => line.item.id !== item.id);
+        const used = orderUsage(others)[recipe.skill];
+        const capacity = current.skills[recipe.skill];
+        if (used + orderCost(recipe) * body.quantity > capacity) {
+          const fits = Math.max(0, Math.floor((capacity - used) / orderCost(recipe)));
+          fail(409, `${item.name}: the order can hold ${fits} with ${recipe.skill[0].toUpperCase()}${recipe.skill.slice(1)} ${capacity} (each uses ${orderCost(recipe)}).`);
+        }
+      }
+      const order = ((city.order ?? []) as Json[]).filter(line => referenceRecipe(line.itemId));
+      const existing = order.find(line => line.itemId === item.id);
+      if (existing) existing.quantity = body.quantity;
+      else order.push({ itemId: item.id, quantity: body.quantity });
+      city.order = order.filter(line => line.quantity > 0);
+      put(name, city);
+      return reply(hydrate(name, city));
+    }
+    if (name === 'cities' && action && id === 'craft' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can craft the order.');
+      const lines = orderLines(city);
+      if (!lines.length) fail(409, 'The crafting order is empty.');
       const current = hydrate(name, city) as City;
-      const state = { rank: current.rank, skills: current.skills, catalysts: current.catalysts, research: current.research };
-      const blockers = id === 'craft' ? craftBlockers(recipe, state) : researchBlockers(recipe, state);
+      const state = craftingState(current);
+      for (const { item, recipe } of lines) {
+        const blockers = craftBlockers(recipe, state);
+        if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
+      }
+      const usage = orderUsage(lines);
+      const over = overCapacity(current.skills, usage);
+      if (over.length) fail(409, `The order needs more than the city has: ${over.map(skill => `${skill[0].toUpperCase()}${skill.slice(1)} ${usage[skill]} of ${current.skills[skill]}`).join(', ')}.`);
+      city.inventory ??= [];
+      for (const { item, quantity } of lines) addToInventory(city.inventory, { itemId: item.id }, quantity);
+      city.order = [];
+      put(name, city);
+      return reply({ city: hydrate(name, city), crafted: lines.map(({ item, quantity }) => ({ itemId: item.id, quantity })) });
+    }
+    if (name === 'cities' && action && id === 'research' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can research.');
+      const found = referenceRecipe(body.itemId);
+      if (!found) fail(400, 'Choose a reference item.');
+      const { item, recipe } = found;
+      const current = hydrate(name, city) as City;
+      const blockers = researchBlockers(recipe, craftingState(current));
       if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
-      const pool = id === 'craft' ? craftPool(recipe, current.skills) : current.skills.research;
+      const pool = current.skills.research;
       const problem = body.faces === undefined ? null : checkFaces(body.faces, pool);
       if (problem) fail(400, problem);
       const faces: number[] = body.faces ?? rollDice(pool, () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32);
       const successes = countSuccesses(faces);
-      const roll = { itemId: item.id, pool, faces, successes };
-      if (id === 'craft') {
-        const quantity = Math.floor(successes / TIERS[recipe.tier].effort);
-        if (quantity) {
-          city.inventory ??= [];
-          addToInventory(city.inventory, { itemId: item.id }, quantity);
-          put(name, city);
-        }
-        return reply({ city: hydrate(name, city), roll: { ...roll, quantity } });
-      }
       const needed = TIERS[recipe.tier].research!.steps;
       const steps = Math.min(needed, (city.research?.[item.id] ?? 0) + successes);
       if (successes) {
         city.research = { ...city.research, [item.id]: steps };
         put(name, city);
       }
-      return reply({ city: hydrate(name, city), roll: { ...roll, steps, needed, unlocked: steps >= needed } });
+      return reply({ city: hydrate(name, city), roll: { itemId: item.id, pool, faces, successes, steps, needed, unlocked: steps >= needed } });
+    }
+    // The leader can remove stored items for good, e.g. to adjust the city's stock as GM.
+    if (name === 'cities' && action && id === 'discard' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can remove items from storage.');
+      if (!Number.isInteger(body.quantity) || body.quantity < 1) fail(400, 'Choose how many to remove.');
+      const entry = (city.inventory ?? []).find((candidate: Row) => candidate.id === body.entryId);
+      if (!entry) fail(404, 'That item is not in the city storage.');
+      if (entry.quantity < body.quantity) fail(409, `Only ${entry.quantity} available.`);
+      entry.quantity -= body.quantity;
+      if (!entry.quantity) city.inventory = city.inventory.filter((candidate: Row) => candidate !== entry);
+      put(name, city);
+      return reply(hydrate(name, city));
     }
     // Any member can move items between one of their trainers and the city.
     if (name === 'cities' && action && id === 'inventory' && method === 'POST') {
@@ -644,7 +713,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'cities') {
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
-        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, inventory: [], research: {}, ...fields };
+        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, inventory: [], research: {}, order: [], ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
       }

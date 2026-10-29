@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CITY_SKILLS, CRAFTING_SKILLS, TIERS, countSuccesses, craftBlockers, craftPool, itemRecipe, speciesOverrides, workProfile } from '../shared/crafting.ts';
+import { CITY_SKILLS, CRAFTING_SKILLS, TIERS, countSuccesses, craftBlockers, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, speciesOverrides, workProfile } from '../shared/crafting.ts';
 import { cityLimits } from '../shared/cities.ts';
 import { RANKS } from '../shared/types.ts';
 
@@ -67,7 +67,7 @@ test('items get a skill, tier, catalyst and assist', () => {
   assert.equal(recipeOf('Masterball').craftable, false);
 });
 
-test('assist skills add dice and gate the recipe; strong recipes need strong catalysts', () => {
+test('assist skills gate the recipe; strong recipes need strong catalysts', () => {
   const skills = Object.fromEntries(CITY_SKILLS.map(skill => [skill, 0]));
   const tm = recipeOf('TM - Basic');
   assert.deepEqual([tm.skill, tm.tier, tm.assist], ['technology', 7, { skill: 'research', min: 3 }]);
@@ -75,7 +75,6 @@ test('assist skills add dice and gate the recipe; strong recipes need strong cat
   assert.deepEqual(craftBlockers(tm, city), ['Needs Research 3.']);
   city.skills.research = 7;
   assert.deepEqual(craftBlockers(tm, city), []);
-  assert.equal(craftPool(tm, city.skills), 10, '8 Technology + 2 dice from Research 7');
 
   const charizardite = recipeOf('Charizardite X');
   const strong = { rank: 'MASTER', skills: { ...skills, archaeology: 8, research: 5 }, catalysts: { FLYING: 2 }, research: { [charizardite.itemId]: 12 } };
@@ -83,6 +82,20 @@ test('assist skills add dice and gate the recipe; strong recipes need strong cat
   strong.catalysts.FLYING = 3;
   assert.deepEqual(craftBlockers(charizardite, strong), []);
   assert.equal(countSuccesses([1, 3, 4, 6]), 2);
+});
+
+test('a crafting order fills each skill\'s value, each item using its tier\'s effort', () => {
+  const skills = { ...Object.fromEntries(CITY_SKILLS.map(skill => [skill, 0])), apothecary: 3, technology: 5 };
+  const potion = { skill: 'apothecary', tier: 1 };
+  const ball = { skill: 'technology', tier: 4 };
+  assert.deepEqual([orderCost(potion), orderCost(ball), orderCost({ tier: 8 })], [1, 2, 4]);
+  const usage = orderUsage([{ recipe: potion, quantity: 2 }, { recipe: ball, quantity: 2 }]);
+  assert.deepEqual(usage, { apothecary: 2, craftsmanship: 0, technology: 4, metallurgy: 0, archaeology: 0 });
+  assert.equal(orderRoom(potion, skills, usage), 1, 'Apothecary 3 holds one more potion');
+  assert.equal(orderRoom(ball, skills, usage), 0, 'one Technology point left, a tier 4 item needs 2');
+  assert.deepEqual(overCapacity(skills, usage), []);
+  assert.deepEqual(overCapacity({ ...skills, technology: 3 }, usage), ['technology'], 'a resident moved off the skill');
+  assert.equal(orderRoom(ball, { ...skills, technology: 3 }, usage), 0, 'room never goes negative');
 });
 
 test('tier N needs rank N, and its minimums fit that rank\'s skill cap', () => {

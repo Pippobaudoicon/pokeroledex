@@ -53,17 +53,25 @@ export interface City {
   inventory: HydratedInventoryEntry[];
   /** Research steps done per item ID; a recipe unlocks when it reaches its tier's steps. */
   research: Record<string, number>;
+  /** The crafting order members are filling; the leader crafts it into the inventory. */
+  order: CityOrderLine[];
   /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
 }
-/** A craft or research roll: the dice, typed in from a physical roll or rolled by the server. */
+/** A reference item in the crafting order. Each one uses its tier's effort of its skill's value. */
+export interface CityOrderLine { itemId: string; quantity: number }
+/** Sets how many of a reference item are in the crafting order; 0 takes it out. */
+export interface CityOrderBody { itemId: string; quantity: number }
+export interface CityCraftResult { city: City; crafted: CityOrderLine[] }
+/** A research roll: the dice, typed in from a physical roll or rolled by the server. */
 export interface CityRollBody { itemId: string; faces?: number[] }
 export interface CityRoll { itemId: string; pool: number; faces: number[]; successes: number }
-export interface CityCraftResult { city: City; roll: CityRoll & { quantity: number } }
 export interface CityResearchResult { city: City; roll: CityRoll & { steps: number; needed: number; unlocked: boolean } }
 /** Moves `quantity` of an inventory entry between one of your trainers and the city. */
 export interface CityInventoryBody { trainerId: string; entryId: string; quantity: number; direction: 'deposit' | 'withdraw' }
 export interface CityInventoryResult { city: City; trainer: Trainer }
+/** The leader removes `quantity` of a city storage entry for good. */
+export interface CityDiscardBody { entryId: string; quantity: number }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
   /** Merged into the stored assignments; `null` unassigns a resident. */
   assignments?: Record<string, CityAssignment | null>;

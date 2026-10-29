@@ -53,7 +53,7 @@ const rollDice = (count: number, faces?: number[]): Die[] =>
   });
 
 const ROLL_MS = 1300;
-const kindLabel = { accuracy: "Accuracy", damage: "Damage", seal: "Seal", craft: "Craft", research: "Research" };
+const kindLabel = { accuracy: "Accuracy", damage: "Damage", seal: "Seal", research: "Research" };
 
 const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
   <div
@@ -85,7 +85,7 @@ const DieView = ({ die, landed }: { die: Die; landed: boolean }) => (
 
 export interface DiceRollRequest {
   title: string;
-  kind: "accuracy" | "damage" | "seal" | "craft" | "research";
+  kind: "accuracy" | "damage" | "seal" | "research";
   dice: number;
   /** Faces already rolled (by the server or at the table); the dialog only shows them, without Roll again. */
   faces?: number[];

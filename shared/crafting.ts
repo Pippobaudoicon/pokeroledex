@@ -91,7 +91,7 @@ export interface Recipe {
   tier: Tier;
   /** Any one of these types must be present in the city's Catalyst skill. */
   catalyst: PokemonType[] | null;
-  /** Another skill that must reach `min`; every 3 points of it add a die. */
+  /** Another skill that must reach `min` before the recipe can be ordered. */
   assist: { skill: CitySkill; min: number } | null;
   craftable: boolean;
   note?: string;
@@ -207,9 +207,23 @@ export function isUnlocked(recipe: Recipe, research: Record<string, number>) {
   return !needed || (research[recipe.itemId] ?? 0) >= needed.steps;
 }
 
-/** Dice for a craft roll: the recipe's skill, plus one die per 3 points of its assist skill. */
-export const craftPool = (recipe: Recipe, skills: CitySkills) =>
-  skills[recipe.skill] + (recipe.assist ? Math.floor(skills[recipe.assist.skill] / 3) : 0);
+/** Capacity one item takes in a crafting order: its tier's effort, out of its skill's value. */
+export const orderCost = (recipe: Pick<Recipe, 'tier'>) => TIERS[recipe.tier].effort;
+
+/** Capacity the order uses per crafting skill. */
+export function orderUsage(lines: { recipe: Pick<Recipe, 'skill' | 'tier'>; quantity: number }[]): Record<CraftingSkill, number> {
+  const usage = { apothecary: 0, craftsmanship: 0, technology: 0, metallurgy: 0, archaeology: 0 };
+  for (const { recipe, quantity } of lines) usage[recipe.skill] += orderCost(recipe) * quantity;
+  return usage;
+}
+
+/** How many more of the recipe fit in the order, given what it already uses. */
+export const orderRoom = (recipe: Pick<Recipe, 'skill' | 'tier'>, skills: CitySkills, usage: Record<CraftingSkill, number>) =>
+  Math.max(0, Math.floor((skills[recipe.skill] - usage[recipe.skill]) / orderCost(recipe)));
+
+/** Skills whose order lines need more than the city has, e.g. after a resident moved off the skill. */
+export const overCapacity = (skills: CitySkills, usage: Record<CraftingSkill, number>) =>
+  (Object.keys(usage) as CraftingSkill[]).filter(skill => usage[skill] > skills[skill]);
 
 /** Why the city cannot craft the recipe now; empty when it can. */
 export function craftBlockers(recipe: Recipe, city: CraftingCity): string[] {
@@ -245,7 +259,7 @@ export const rollDice = (count: number, random: () => number = Math.random) =>
 /** Pokérole counts every 4, 5 or 6 as a success (same as src/components/DiceRoll.tsx). */
 export const countSuccesses = (faces: number[]) => faces.filter(face => face >= 4).length;
 
-/** Faces typed in from a physical roll must match the pool; returns the problem, or null. */
+/** Research dice typed in from a physical roll must match the pool; returns the problem, or null. */
 export function checkFaces(faces: unknown, pool: number): string | null {
   if (!Array.isArray(faces) || faces.length !== pool || faces.some(face => !Number.isInteger(face) || face < 1 || face > 6)) {
     return `Enter ${pool} ${pool === 1 ? 'die' : 'dice'}, each from 1 to 6.`;
