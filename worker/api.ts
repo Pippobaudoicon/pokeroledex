@@ -1,7 +1,8 @@
 // JSON API. Reference data is read-only; user records live in D1 under the owner's
 // email (migrations/, worker/access.ts). Shared cities and their residents live under
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
-// records, works on them in memory and writes back only the records it changed.
+// records, works on them in memory and writes back only the records it changed; a city
+// changed by someone else meanwhile makes the request run again (migrations/0007).
 import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
 import { canWork, checkFaces, countSuccesses, craftBlockers, itemRecipe, orderCost, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
@@ -127,27 +128,42 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return reply({ id: record.id, email });
     }
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
-    const db: Collections = Object.fromEntries(collectionNames.map(name => [name, []]));
-    // The stored owner of each loaded record, so changes are written back to the right place.
-    const partitions = new Map<Row, string>();
-    const { results } = await env.DB.prepare(`SELECT owner, collection, data FROM records
-      WHERE owner = ? OR owner IN (SELECT 'city:' || city_id FROM city_members WHERE email = ?) ORDER BY seq`)
-      .bind(owner, owner).all<{ owner: string; collection: string; data: string }>();
-    for (const row of results) {
-      const record = JSON.parse(row.data);
-      db[row.collection].push(record);
-      partitions.set(record, row.owner);
+    // A city another member changed since it was loaded rolls the batch back (migrations/0007);
+    // the request then runs again on fresh records, so its checks see the other change.
+    for (let attempt = 1; ; attempt++) {
+      const db: Collections = Object.fromEntries(collectionNames.map(name => [name, []]));
+      // The stored owner of each loaded record, so changes are written back to the right place.
+      const partitions = new Map<Row, string>();
+      const loaded = new Map<Row, string>();
+      const { results } = await env.DB.prepare(`SELECT owner, collection, data FROM records
+        WHERE owner = ? OR owner IN (SELECT 'city:' || city_id FROM city_members WHERE email = ?) ORDER BY seq`)
+        .bind(owner, owner).all<{ owner: string; collection: string; data: string }>();
+      for (const row of results) {
+        const record = JSON.parse(row.data);
+        db[row.collection].push(record);
+        partitions.set(record, row.owner);
+        if (row.collection === 'cities') loaded.set(record, row.data);
+      }
+      const members = new Map<string, string[]>();
+      const { results: memberRows } = await env.DB.prepare(`SELECT city_id, email FROM city_members
+        WHERE city_id IN (SELECT city_id FROM city_members WHERE email = ?) ORDER BY rowid`).bind(owner).all<{ city_id: string; email: string }>();
+      for (const row of memberRows) members.set(row.city_id, [...members.get(row.city_id) ?? [], row.email]);
+      const foreign = await loadForeign(db, reference as unknown as Collections);
+      const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
+      const checks = new Map<Row, D1PreparedStatement>();
+      const writes: D1PreparedStatement[] = [];
+      const response = route({ db, partitions, loaded, checks, members, foreign, templatesInUse }, reference, writes, method, name, action, id, member, body);
+      if (!writes.length) return response;
+      try {
+        await env.DB.batch([...checks.values(), ...writes]);
+        return response;
+      } catch (error) {
+        if (!String((error as Error)?.message).includes('STALE_RECORD')) throw error;
+        if (attempt === 5) fail(409, 'Someone else changed this city at the same time. Reload and try again.');
+        // A random pause keeps requests that collided from colliding again.
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 50 * attempt));
+      }
     }
-    const members = new Map<string, string[]>();
-    const { results: memberRows } = await env.DB.prepare(`SELECT city_id, email FROM city_members
-      WHERE city_id IN (SELECT city_id FROM city_members WHERE email = ?) ORDER BY rowid`).bind(owner).all<{ city_id: string; email: string }>();
-    for (const row of memberRows) members.set(row.city_id, [...members.get(row.city_id) ?? [], row.email]);
-    const foreign = await loadForeign(db, reference as unknown as Collections);
-    const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
-    const writes: D1PreparedStatement[] = [];
-    const response = route({ db, partitions, members, foreign, templatesInUse }, reference, writes, method, name, action, id, member, body);
-    if (writes.length) await env.DB.batch(writes);
-    return response;
   } catch (error) {
     const status = error instanceof HttpError || error instanceof IssueError ? error.status : 500;
     return reply({ status, payload: (error as Error).message }, status);
@@ -204,10 +220,11 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       .bind(partition, name, record.id, JSON.stringify(record));
   }
 
-  function route(state: { db: Collections; partitions: Map<Row, string>; members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string> },
+  function route(state: { db: Collections; partitions: Map<Row, string>; loaded: Map<Row, string>; checks: Map<Row, D1PreparedStatement>;
+    members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string> },
     reference: Reference, writes: D1PreparedStatement[],
     method: string, name: string, action: string | undefined, id: string | undefined, member: string | undefined, body: Json): Response {
-    const { db, partitions, members, foreign, templatesInUse } = state;
+    const { db, partitions, loaded, checks, members, foreign, templatesInUse } = state;
     const referenceRows = reference as unknown as Collections;
 
     // Cities and their residents are stored under the city; everything else under the person.
@@ -217,7 +234,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return owner;
     }
 
+    /** Writes to a city only apply if nobody changed it since this request loaded it. */
+    function check(record: Row) {
+      const data = loaded.get(record);
+      if (data === undefined || checks.has(record)) return;
+      checks.set(record, env.DB.prepare('INSERT INTO record_checks (owner, collection, id, data) VALUES (?, ?, ?, ?)')
+        .bind(partitions.get(record), 'cities', record.id, data));
+    }
+
     function put(name: string, record: Row) {
+      check(record);
       const target = partitionFor(name, record);
       const current = partitions.get(record);
       if (current && current !== target) {
@@ -231,6 +257,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
 
     function drop(name: string, record: Row) {
+      check(record);
       writes.push(env.DB.prepare('DELETE FROM records WHERE owner = ? AND collection = ? AND id = ?').bind(partitions.get(record) ?? owner, name, record.id));
     }
 

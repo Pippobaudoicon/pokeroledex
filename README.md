@@ -203,7 +203,12 @@ only be pointed at entries its editor can already see. A custom species cannot
 be deleted while a sheet in another account or a shared city still uses it.
 
 Cities and their residents are stored in D1 under the owner `city:<city id>`, and
-`city_members` (migration `0003_city_members.sql`) lists who can load them. Moving
+`city_members` (migration `0003_city_members.sql`) lists who can load them. Each
+request loads the city, changes it and writes it back; migration
+`0007_record_checks.sql` rolls the write back if another request changed the city
+in between, and the Worker runs the request again on the fresh city (up to 5
+times, then 409). So members moving items or crafting at the same moment never
+lose or duplicate items. Moving
 a Pokémon into or out of a city moves its record between that city and the
 person's own records. `/api/cities` supports GET/POST, `/api/cities/:id` supports
 GET/PATCH/DELETE (leave when shared), and `POST /api/cities/:id/members` with
