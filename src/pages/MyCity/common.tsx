@@ -12,9 +12,21 @@ const skillIcons: Record<CitySkill, LucideIcon> = {
   research: Microscope, nursing: HeartPulse, foraging: Search, catalyst: Sparkles,
 };
 
+const skillColors: Record<CitySkill, string> = {
+  apothecary: "text-emerald-700 [[data-theme=dark]_&]:text-emerald-400",
+  craftsmanship: "text-orange-700 [[data-theme=dark]_&]:text-orange-400",
+  technology: "text-blue-700 [[data-theme=dark]_&]:text-blue-400",
+  metallurgy: "text-slate-600 [[data-theme=dark]_&]:text-slate-300",
+  archaeology: "text-amber-700 [[data-theme=dark]_&]:text-amber-400",
+  research: "text-violet-700 [[data-theme=dark]_&]:text-violet-400",
+  nursing: "text-rose-700 [[data-theme=dark]_&]:text-rose-400",
+  foraging: "text-teal-700 [[data-theme=dark]_&]:text-teal-400",
+  catalyst: "text-fuchsia-700 [[data-theme=dark]_&]:text-fuchsia-400",
+};
+
 export const SkillIcon = ({ skill, className }: { skill: CitySkill; className?: string }) => {
   const Icon = skillIcons[skill];
-  return <Icon aria-hidden className={cn("size-5 shrink-0", className)} />;
+  return <Icon aria-hidden className={cn("size-5 shrink-0", skillColors[skill], className)} />;
 };
 
 export const errorText = (error: ApiFetchError) => {

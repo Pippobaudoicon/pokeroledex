@@ -121,6 +121,12 @@ works with a mouse or touch and scrolls near the screen edges. You can also tap
 or press Enter on a resident, then on its destination. Escape cancels. Each
 resident works on one skill or action at a time.
 
+Tap a colored skill icon to open its explanation: what it does, how residents
+increase it, its rank cap, and which species can work it. Catalyst explains
+type coverage and strength instead. Help is available even before adding
+residents. Icons open help only; select a resident and tap the skill name to
+assign it, or drag it onto the skill as before.
+
 City skills are grouped for crafting (see `docs/crafting-plan.md`):
 
 | Kind | Skills |

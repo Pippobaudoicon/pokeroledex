@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
 import { CityCrafting } from "./Crafting";
+import { SkillHelp } from "./SkillHelp";
 import { SkillIcon, errorText, field, panel, skillLabel } from "./common";
 
 /** What cityValues needs per resident: the city's bonus and profile, and the species' types. */
@@ -301,7 +302,7 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
 
   React.useEffect(() => {
     if (!selected) return;
-    const cancel = (event: KeyboardEvent) => { if (event.key === "Escape") setSelected(null); };
+    const cancel = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented) setSelected(null); };
     window.addEventListener("keydown", cancel);
     return () => window.removeEventListener("keydown", cancel);
   }, [selected]);
@@ -381,11 +382,15 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
     return <div key={target} data-city-target={target}
       className={cn("flex min-w-0 flex-col gap-2 rounded-xl bg-fill p-3 transition-[box-shadow,opacity]",
         blocked ? "opacity-40" : [drag?.over === target && "ring-2 ring-tint", selected && "ring-1 ring-tint/40"])}>
-      <button type="button" disabled={!selected || blocked} onClick={() => selected && move(selected, target)}
-        aria-label={blocked ? `${activeName} cannot work ${targetLabel(target)}` : selected ? `Move ${activeName} to ${targetLabel(target)}` : targetLabel(target)}
-        className="flex min-h-9 items-center gap-2 rounded-lg text-left font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-default">
-        {header}
-      </button>
+      <div className="flex items-center gap-2">
+        {target.startsWith("skill:") ? <SkillHelp skill={target.slice(6) as CitySkill} limit={city.limits.skill} />
+          : target.startsWith("tag:") && <Tag aria-hidden className="size-5 shrink-0 text-tint" />}
+        <button type="button" disabled={!selected || blocked} onClick={() => selected && move(selected, target)}
+          aria-label={blocked ? `${activeName} cannot work ${targetLabel(target)}` : selected ? `Move ${activeName} to ${targetLabel(target)}` : targetLabel(target)}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left font-semibold outline-none focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-default">
+          {header}
+        </button>
+      </div>
       <div className="flex min-h-14 flex-wrap gap-2">
         {members.map(chip)}
         {!members.length && <span className="self-center text-footnote text-label-2">{target === "unassigned" ? "Every resident is working." : "Drop a Pokémon here"}</span>}
@@ -411,22 +416,21 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   return <section className={`${panel} space-y-4`}>
     <div>
       <h2 className="text-title-3 font-semibold">Skills & actions</h2>
+      <p className="mt-1 text-footnote text-label-2">Tap a colored skill icon to learn what it does and how to increase it.</p>
       <p className="mt-1 text-footnote text-label-2">Drag a resident onto a skill or action, or tap it and then tap where it works. A resident's species decides which skills it can work, at full or half bonus (see its Pokédex page; a pale badge marks half). The full bonus is: first stage +1, second +2, third +3, species that never evolve +2, legendaries +5. Catalyst takes any resident and adds no value: it provides its types to recipes that need them. {formatEnumName(city.rank)} cities cap every skill at {city.limits.skill}.</p>
     </div>
-    {!residents.length ? <p>No residents yet. Add a Pokémon to put it to work.</p> : <>
-      {zone("unassigned", <><span>Unassigned</span><span className="ml-auto text-footnote font-normal text-label-2">{placed("unassigned").length} of {residents.length}</span></>)}
-      {groups.filter(([, targets]) => targets.length).map(([title, targets]) => <div key={title} className="space-y-2">
-        <h3 className="text-subhead font-semibold text-label-2">{title}</h3>
-        <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {targets.map(target => zone(target, <>
-            {target.startsWith("skill:") ? <SkillIcon skill={target.slice(6) as CitySkill} /> : <Tag aria-hidden className="size-5 shrink-0" />}
-            <span className="min-w-0 truncate">{targetLabel(target)}</span>
-            {value(target)}
-          </>))}
-        </div>
-      </div>)}
-      {!city.tags.length && <p className="text-footnote text-label-2">Add custom actions in City settings below to assign residents to them too.</p>}
-    </>}
+    {!residents.length ? <p>No residents yet. Add a Pokémon to put it to work.</p>
+      : zone("unassigned", <><span>Unassigned</span><span className="ml-auto text-footnote font-normal text-label-2">{placed("unassigned").length} of {residents.length}</span></>)}
+    {groups.filter(([, targets]) => targets.length).map(([title, targets]) => <div key={title} className="space-y-2">
+      <h3 className="text-subhead font-semibold text-label-2">{title}</h3>
+      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {targets.map(target => zone(target, <>
+          <span className="min-w-0 truncate">{targetLabel(target)}</span>
+          {value(target)}
+        </>))}
+      </div>
+    </div>)}
+    {!city.tags.length && <p className="text-footnote text-label-2">Add custom actions in City settings below to assign residents to them too.</p>}
     {dragged && <div aria-hidden className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2" style={{ left: drag.x, top: drag.y }}>
       <Sprite image={dragged.pokemonTemplate.image} set="box" className="h-14 w-17 drop-shadow-lg" />
     </div>}
