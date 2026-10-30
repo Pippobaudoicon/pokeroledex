@@ -21,7 +21,7 @@ import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
 import { cn, formatEnumName } from "@/lib/utils";
-import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, SeedInput, ToggleField } from "./fields";
+import { ChoiceGroup, CollapsibleGroup, Field, fieldClass, GeneratorEmpty, ToggleField } from "./fields";
 
 interface EncounterEntry {
   pokemon: T.Pokemon;
@@ -56,8 +56,6 @@ const EncounterContext = React.createContext<{
   setHistory: React.Dispatch<React.SetStateAction<T.PokemonTemplateSummary[]>>;
   settings: T.GenerateEncounterBody;
   setSettings: React.Dispatch<React.SetStateAction<T.GenerateEncounterBody>>;
-  useRandomSeed: boolean;
-  setUseRandomSeed: (value: boolean) => void;
   isGenerating: boolean;
   setIsGenerating: (value: boolean) => void;
   status: string;
@@ -68,7 +66,6 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
   const [entries, setEntries] = React.useState<EncounterEntry[]>([]);
   const [history, setHistory] = React.useState<T.PokemonTemplateSummary[]>([]);
   const [settings, setSettings] = React.useState(defaultSettings);
-  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [status, setStatus] = React.useState("Choose filters and generate an encounter.");
   return (
@@ -80,8 +77,6 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
         setHistory,
         settings,
         setSettings,
-        useRandomSeed,
-        setUseRandomSeed,
         isGenerating,
         setIsGenerating,
         status,
@@ -101,8 +96,6 @@ export const EncounterGenerator = () => {
     setHistory,
     settings,
     setSettings,
-    useRandomSeed,
-    setUseRandomSeed,
     isGenerating,
     setIsGenerating,
     setStatus,
@@ -111,8 +104,17 @@ export const EncounterGenerator = () => {
   const { toast } = useToast();
   const locked = entries.filter((entry) => entry.locked);
   const count = settings.numberToGenerate ?? 1;
+  const filterSummary =
+    [
+      (settings.types ?? []).map(formatEnumName).join(", "),
+      settings.generations?.length ? `Gen ${settings.generations.join(", ")}` : "",
+      (settings.habitats ?? []).map(habitatName).join(", "),
+      (settings.ranks ?? []).map(formatEnumName).join(", "),
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Any species";
   const generate = async () => {
-    const seed = useRandomSeed ? Date.now() : settings.seed;
+    const seed = Date.now();
     setSettings({ ...settings, seed });
     if (locked.length >= count) {
       setStatus(`${locked.length} locked Pokémon retained. Unlock one or increase the count to generate more.`);
@@ -159,7 +161,10 @@ export const EncounterGenerator = () => {
       }}
     >
       <fieldset disabled={isGenerating} className="flex min-w-0 flex-col gap-6">
-        <Group title="Encounter settings">
+        <CollapsibleGroup
+          title="Encounter settings"
+          summary={`${count} Pokémon${settings.name?.trim() ? ` · ${settings.name.trim()}` : ""}`}
+        >
           <div className="flex flex-col gap-4 p-3">
             <Field label="Number to generate" hint="Generate between 1 and 12 Pokémon.">
               <input
@@ -180,8 +185,8 @@ export const EncounterGenerator = () => {
               />
             </Field>
           </div>
-        </Group>
-        <Group title="Species filters" footer="Leave a group empty to include any matching Pokémon.">
+        </CollapsibleGroup>
+        <CollapsibleGroup title="Species filters" summary={filterSummary} footer="Leave a group empty to include any matching Pokémon.">
           <ChoiceGroup
             label="Types"
             options={Object.values(PokemonType)
@@ -207,8 +212,8 @@ export const EncounterGenerator = () => {
             selected={settings.ranks ?? []}
             onChange={(ranks) => setSettings({ ...settings, ranks })}
           />
-        </Group>
-        <Group title="Encounter rules">
+        </CollapsibleGroup>
+        <CollapsibleGroup title="Encounter rules">
           <div className="flex flex-col gap-4 p-3">
             <Field label="Legendaries">
               <select
@@ -264,36 +269,30 @@ export const EncounterGenerator = () => {
               ))}
             </div>
           </div>
-        </Group>
-        <SeedInput
-          value={settings.seed ?? 0}
-          onChange={(value) => setSettings({ ...settings, seed: Number(value) })}
-          useRandomSeed={useRandomSeed}
-          setUseRandomSeed={setUseRandomSeed}
-        />
-        <div className="flex flex-col gap-2">
+        </CollapsibleGroup>
+        {/* Must be a direct fieldset child so it stays pinned across the whole form. */}
+        <div className="sticky bottom-[calc(56px+env(safe-area-inset-bottom))] z-10 -mx-2 -mt-2 -mb-4 bg-canvas/90 px-2 py-2 backdrop-blur-xl lg:bottom-0">
           <button
             type="submit"
-            disabled={isGenerating || !Number.isInteger(count) || count < 1 || count > 12 || !Number.isFinite(settings.seed)}
-            className={button({ variant: "filled" })}
+            disabled={isGenerating || !Number.isInteger(count) || count < 1 || count > 12}
+            className={cn(button({ variant: "filled" }), "w-full")}
           >
             {isGenerating ? "Generating…" : "Generate encounter"}
           </button>
-          <button
-            type="button"
-            disabled={isGenerating}
-            className={button({ variant: "gray" })}
-            onClick={() => {
-              setSettings(defaultSettings());
-              setUseRandomSeed(true);
-              setEntries([]);
-              setHistory([]);
-              setStatus("Filters reset. Choose filters and generate an encounter.");
-            }}
-          >
-            Reset filters
-          </button>
         </div>
+        <button
+          type="button"
+          disabled={isGenerating}
+          className={button({ variant: "gray" })}
+          onClick={() => {
+            setSettings(defaultSettings());
+            setEntries([]);
+            setHistory([]);
+            setStatus("Filters reset. Choose filters and generate an encounter.");
+          }}
+        >
+          Reset filters
+        </button>
       </fieldset>
     </form>
   );

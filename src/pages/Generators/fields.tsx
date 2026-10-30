@@ -1,7 +1,6 @@
 import * as React from "react";
 import { ChevronDown, Dices } from "lucide-react";
 import { Chip, Switch } from "@/components/kit/Controls";
-import { Group } from "@/components/kit/List";
 
 export const fieldClass =
   "h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-50 lg:h-9 lg:rounded-lg";
@@ -70,31 +69,31 @@ export const ChoiceGroup = <V extends string>({
   </details>
 );
 
-export const SeedInput = ({
-  value,
-  onChange,
-  useRandomSeed,
-  setUseRandomSeed,
+export const CollapsibleGroup = ({
+  title,
+  summary,
+  footer,
+  children,
 }: {
-  value: number;
-  onChange: (value: string) => void;
-  useRandomSeed: boolean;
-  setUseRandomSeed: (useRandomSeed: boolean) => void;
+  title: string;
+  /** Shown next to the title while collapsed. */
+  summary?: string;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
 }) => (
-  <Group title="Randomness">
-    <div className="flex flex-col gap-3 p-3">
-      <ToggleField label="Random seed" checked={useRandomSeed} onChange={setUseRandomSeed} />
-      <Field label="Seed" hint="Use the same seed and settings to repeat a result.">
-        <input
-          type="number"
-          value={Number.isFinite(value) ? value : ""}
-          onChange={(event) => onChange(event.target.value)}
-          disabled={useRandomSeed}
-          className={fieldClass}
-        />
-      </Field>
-    </div>
-  </Group>
+  <details open className="group/section">
+    <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 px-4 pb-1.5 lg:px-3 [&::-webkit-details-marker]:hidden">
+      <h2 className="shrink-0 text-footnote font-semibold uppercase tracking-wide text-label-2">{title}</h2>
+      {summary && (
+        <span title={summary} className="min-w-0 flex-1 truncate text-footnote text-label-3 group-open/section:hidden">
+          {summary}
+        </span>
+      )}
+      <ChevronDown aria-hidden className="ml-auto size-4 shrink-0 text-label-3 transition-transform group-open/section:rotate-180" />
+    </summary>
+    <div className="overflow-hidden rounded-xl bg-surface shadow-card">{children}</div>
+    {footer && <p className="px-4 pt-1.5 text-footnote text-label-2 lg:px-3">{footer}</p>}
+  </details>
 );
 
 export const GeneratorEmpty = ({ title, description }: { title: string; description: string }) => (

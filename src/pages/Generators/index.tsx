@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatEnumName } from "@/lib/utils";
 import { GeneratorContentProvider, useGeneratorContent } from "./context";
 import { EncounterGenerator, GeneratedEncounterList } from "./Encounters";
-import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, SeedInput, ToggleField } from "./fields";
+import { ChoiceGroup, Field, fieldClass, GeneratorEmpty, ToggleField } from "./fields";
 
 type PokemonSettings = Required<Omit<T.GeneratePokemonBody, keyof T.SelectionBody | "pokemonTemplateId">> &
   Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
@@ -118,7 +118,6 @@ const PokemonGenerator = () => {
   const { setContent } = useGeneratorContent();
   const { state: campaignFilter } = useCampaignFilter();
   const { data: templates, isFetching } = useDex();
-  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
   const [settings, setSettings] = React.useState<PokemonSettings>({
     seed: Date.now(),
     rankUpMethod: RankUpMethod.RANDOM,
@@ -135,7 +134,7 @@ const PokemonGenerator = () => {
     onError: () => toast({ title: "Pokémon couldn’t be generated", description: "Please try again." }),
   });
   const generate = () => {
-    const next = { ...settings, seed: useRandomSeed ? Date.now() : settings.seed };
+    const next = { ...settings, seed: Date.now() };
     setSettings(next);
     mutate({ body: { ...next, campaignIds: campaignFilter.campaignIds, includeCore: campaignFilter.includeCore } });
   };
@@ -221,12 +220,6 @@ const PokemonGenerator = () => {
             onChange={(habitats) => setSettings({ ...settings, habitats })}
           />
         </Group>
-        <SeedInput
-          value={settings.seed}
-          onChange={(value) => setSettings({ ...settings, seed: Number(value) })}
-          useRandomSeed={useRandomSeed}
-          setUseRandomSeed={setUseRandomSeed}
-        />
         <button
           id="generator-generate-button"
           type="submit"
@@ -234,8 +227,7 @@ const PokemonGenerator = () => {
             isPending ||
             !Number.isInteger(settings.numberToGenerate) ||
             settings.numberToGenerate < 1 ||
-            settings.numberToGenerate > 100 ||
-            !Number.isFinite(settings.seed)
+            settings.numberToGenerate > 100
           }
           className={button({ variant: "filled" })}
         >
@@ -249,7 +241,6 @@ const PokemonGenerator = () => {
 const ItemGenerator = () => {
   const { setContent } = useGeneratorContent();
   const { state: campaignFilter } = useCampaignFilter();
-  const [useRandomSeed, setUseRandomSeed] = React.useState(true);
   const [settings, setSettings] = React.useState<ItemSettings>({ seed: Date.now(), numberToGenerate: 1, categories: [], pockets: [] });
   const { toast } = useToast();
   const { mutate, isPending } = useItemsControllerGenerate({
@@ -257,7 +248,7 @@ const ItemGenerator = () => {
     onError: () => toast({ title: "Items couldn’t be generated", description: "Please try again." }),
   });
   const generate = () => {
-    const next = { ...settings, seed: useRandomSeed ? Date.now() : settings.seed };
+    const next = { ...settings, seed: Date.now() };
     setSettings(next);
     mutate({ body: { ...next, campaignIds: campaignFilter.campaignIds, includeCore: campaignFilter.includeCore } });
   };
@@ -297,20 +288,13 @@ const ItemGenerator = () => {
             onChange={(categories) => setSettings({ ...settings, categories })}
           />
         </Group>
-        <SeedInput
-          value={settings.seed}
-          onChange={(value) => setSettings({ ...settings, seed: Number(value) })}
-          useRandomSeed={useRandomSeed}
-          setUseRandomSeed={setUseRandomSeed}
-        />
         <button
           type="submit"
           disabled={
             isPending ||
             !Number.isInteger(settings.numberToGenerate) ||
             settings.numberToGenerate < 1 ||
-            settings.numberToGenerate > 100 ||
-            !Number.isFinite(settings.seed)
+            settings.numberToGenerate > 100
           }
           className={button({ variant: "filled" })}
         >

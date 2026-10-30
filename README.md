@@ -355,7 +355,7 @@ The Pokémon and item generators are local approximations: the original server's
 
 **Generators → Encounters** (`/generators/encounters`) integrates the functions of [pokerol-encounter](https://github.com/malagonius/pokerol-encounter) into the existing interface. Generate 1–12 Pokémon using name, type, generation, habitat, rank, legendary/mythical, fossil, starter-family and form filters. Encounters use the active campaign selection and local reference data; no PokeAPI or GitHub requests are needed during generation.
 
-Cards support locking across rolls, removal, two-d20 shiny rolls, HP tracking, full sheets and all rank-eligible moves with calculated dice pools. History holds the last encounter's unique templates and excludes them from the next roll; remove individual entries or clear history to allow them again. Copy exports the current encounter. Results, HP, shiny status and history last until you leave the generator screen or reload. A fixed seed reproduces species and stats with the same filters, campaign selection and history exclusions; shiny rolls remain independent.
+Cards support locking across rolls, removal, two-d20 shiny rolls, HP tracking, full sheets and all rank-eligible moves with calculated dice pools. History holds the last encounter's unique templates and excludes them from the next roll; remove individual entries or clear history to allow them again. Copy exports the current encounter. Results, HP, shiny status and history last until you leave the generator screen or reload. All three generators use a fresh seed for each generation; manual seed selection is not available. Shiny rolls remain independent.
 
 ## What was recovered
 
