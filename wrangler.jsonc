@@ -33,5 +33,11 @@
   "ai_search": [{ "binding": "RULEBOOK_SEARCH", "instance_name": "pokeroledex-corebook", "remote": true }],
   "d1_databases": [
     { "binding": "DB", "database_name": "pokeroledex", "database_id": "a7adefee-6890-46f2-bc0c-bcdada772e0e", "migrations_dir": "migrations" }
-  ]
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  }
 }
