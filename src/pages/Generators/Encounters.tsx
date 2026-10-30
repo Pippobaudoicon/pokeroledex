@@ -319,58 +319,70 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
   return (
     <article
       aria-label={species.name}
-      className={cn("min-w-0 overflow-hidden rounded-2xl bg-surface shadow-card", shiny && shinyRing)}
+      className={cn("@container h-full min-w-0 overflow-hidden rounded-2xl bg-surface shadow-card", shiny && shinyRing)}
     >
-      <div className="flex flex-col gap-3 p-4">
-        <div className="flex items-center gap-3">
-          <Sprite image={species.image} set="book" className="size-24" />
-          <div className="min-w-0 flex-1">
-            <p className="text-footnote text-label-2 tabular-nums">#{species.dexID || String(species.number).padStart(4, "0")}</p>
-            <h3 className="mt-1 text-headline font-semibold break-words">{species.name}</h3>
-            <RankBadge rank={pokemon.rank} className="mt-1" />
-            <div className="mt-2 flex flex-wrap gap-1">
-              {species.types.map((type) => (
-                <TypePill key={type} type={type} size="sm" />
-              ))}
-            </div>
+      <div className="flex h-full flex-col gap-2 p-2 @[220px]:p-3">
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-footnote text-label-2 tabular-nums">#{species.dexID || String(species.number).padStart(4, "0")}</p>
+          <button
+            type="button"
+            disabled={isGenerating}
+            aria-label={`Remove ${species.name}`}
+            title={`Remove ${species.name}`}
+            onClick={() => setEntries((entries) => entries.filter((other) => other.pokemon.id !== pokemon.id))}
+            className={button({ variant: "destructive", size: "icon" })}
+          >
+            <X aria-hidden className="size-4" />
+          </button>
+        </div>
+        <div className="flex items-start gap-1 @[220px]:items-center @[220px]:gap-2">
+          <Sprite image={species.image} set="book" className="size-10 shrink-0 @[220px]:size-16" />
+          <div className="w-full min-w-0 flex-1">
+            <h3 className="text-subhead font-semibold break-words">{species.name}</h3>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-1">
+          <RankBadge rank={pokemon.rank} />
+          {species.types.map((type) => (
+            <TypePill key={type} type={type} size="sm" />
+          ))}
+        </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-footnote text-label-2">
-          <span>Generation {generationFor(species.number) ?? "—"}</span>
+          <span>Gen {generationFor(species.number) ?? "—"}</span>
           {isMythical(species.number) ? <span>Mythical</span> : species.legendary && <span>Legendary</span>}
           {shiny && <ShinyMark />}
         </div>
-        <p className="text-footnote text-label-2">
+        <p className="line-clamp-2 text-footnote text-label-2" title={species.habitats.map(habitatName).join(", ") || "No habitat listed"}>
           {species.habitats.map(habitatName).join(", ") || "No habitat listed"}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" aria-haspopup="dialog" onClick={onDetails} className={button({ variant: "tinted", size: "sm" })}>
+        <div className="mt-auto grid grid-cols-2 gap-1 [&>button]:min-w-0 [&>button]:w-full">
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-label={`Details & moves for ${species.name}`}
+            title="Details & moves"
+            onClick={onDetails}
+            className={button({ variant: "tinted", size: "icon" })}
+          >
             <ChevronDown aria-hidden className="size-4" />
-            Details & moves
           </button>
           <button
             type="button"
             disabled={isGenerating}
             aria-pressed={entry.locked}
+            aria-label={`${entry.locked ? "Unlock" : "Lock"} ${species.name}`}
+            title={entry.locked ? "Unlock" : "Lock"}
             onClick={() => update({ locked: !entry.locked })}
-            className={button({ variant: entry.locked ? "tinted" : "gray", size: "sm" })}
+            className={button({ variant: entry.locked ? "tinted" : "gray", size: "icon" })}
           >
             {entry.locked ? <Lock aria-hidden className="size-4" /> : <Unlock aria-hidden className="size-4" />}
-            {entry.locked ? "Unlock" : "Lock"}
-          </button>
-          <button
-            type="button"
-            disabled={isGenerating}
-            aria-label={`Remove ${species.name}`}
-            onClick={() => setEntries((entries) => entries.filter((other) => other.pokemon.id !== pokemon.id))}
-            className={cn(button({ variant: "destructive", size: "icon" }), "ml-auto")}
-          >
-            <X aria-hidden className="size-4" />
           </button>
         </div>
         <button
           type="button"
           disabled={shiny || rolling || isGenerating}
+          aria-label={shiny ? `${species.name} is shiny` : `Roll shiny for ${species.name}: ${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}`}
+          title="Roll shiny"
           onClick={() => {
             update({ shinyRoll: rollShiny() });
             setRolling(true);
@@ -380,14 +392,15 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
           <Sparkles aria-hidden className="size-4" />
           {shiny
             ? "Shiny!"
-            : `${rolling ? "Rolled" : "Roll shiny"} · ${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}${rolling ? ` = ${entry.shinyRoll[0] + entry.shinyRoll[1]}` : ""}`}
+            : `${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}${rolling ? ` = ${entry.shinyRoll[0] + entry.shinyRoll[1]}` : ""}`}
         </button>
-        <div className="flex items-center justify-between gap-3 border-t border-hairline pt-3">
+        <div className="flex flex-wrap items-center justify-between gap-1 border-t border-hairline pt-2">
           <span className="text-subhead font-medium">
             HP <span className="font-normal text-label-2">/ {maxHp}</span>
           </span>
           <Stepper
             label={`HP for ${species.name}`}
+            className="max-w-full [&>output]:min-w-6"
             value={pokemon.currentHp}
             min={isGenerating ? pokemon.currentHp : 0}
             max={isGenerating ? pokemon.currentHp : maxHp}
@@ -542,7 +555,7 @@ export const GeneratedEncounterList = () => {
     }
   };
   return (
-    <section ref={resultsRef} aria-label="Generated encounter" className="min-w-0 scroll-mt-16">
+    <section ref={resultsRef} aria-label="Generated encounter" className="@container min-w-0 scroll-mt-16">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-headline font-semibold">Generated encounter</h2>
         <div className="flex flex-wrap gap-2">
@@ -562,7 +575,7 @@ export const GeneratedEncounterList = () => {
           description="Choose your filters and generate an encounter. Broaden the filters if nothing matches."
         />
       ) : (
-        <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-2">
+        <div className="grid auto-rows-fr grid-cols-2 items-stretch gap-2 @[480px]:grid-cols-3 @[640px]:grid-cols-4 @[640px]:gap-3">
           {entries.map((entry) => (
             <EncounterCard key={entry.pokemon.id} entry={entry} onDetails={() => setSelectedId(entry.pokemon.id)} />
           ))}
