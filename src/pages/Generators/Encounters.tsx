@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronDown, Copy, Lock, Sparkles, Unlock, X } from "lucide-react";
+import { ChevronDown, Copy, Lock, Sparkles, Tag, Unlock, X } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { generationFor, isMythical } from "../../../shared/encounters";
 import { apiFetch } from "@/api/client";
@@ -571,15 +571,21 @@ export const GeneratedEncounterList = ({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-headline font-semibold">Generated encounter</h2>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            aria-pressed={showTyping}
+            onClick={() => onShowTypingChange(!showTyping)}
+            className={button({ variant: showTyping ? "tinted" : "gray", size: "sm" })}
+          >
+            <Tag aria-hidden className="size-3.5" />
+            Typing
+          </button>
           <EncounterHistory />
           <button type="button" disabled={entries.length === 0} onClick={copy} className={button({ variant: "gray", size: "sm" })}>
             <Copy aria-hidden className="size-3.5" />
             Copy
           </button>
         </div>
-      </div>
-      <div className="mb-3 max-w-sm">
-        <ToggleField label="Show Pokémon typing" checked={showTyping} onChange={onShowTypingChange} />
       </div>
       <p role="status" className="mb-4 text-footnote text-label-2">
         {status}
