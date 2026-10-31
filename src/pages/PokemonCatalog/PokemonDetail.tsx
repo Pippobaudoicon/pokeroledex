@@ -377,7 +377,7 @@ export const PokemonDetail = ({ id, layout, onClose }: { id: string; layout: Lay
       {header}
       <Hero template={template} layout={layout} onClose={onClose} />
       <div className="flex flex-col gap-4 px-4 pt-3 pb-8 @lg:px-6">
-        <AddButton template={template} className="w-full lg:w-auto lg:self-start" />
+        <AddButton key={template.id} template={template} className="w-full lg:w-auto lg:self-start" />
         <div
           className={cn(
             "z-20 -mx-4 bg-canvas/85 px-4 py-2 backdrop-blur-xl @lg:-mx-6 @lg:px-6",

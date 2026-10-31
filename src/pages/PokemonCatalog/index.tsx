@@ -258,7 +258,7 @@ export const PokedexPage = () => {
       )}
       {!desktop && (
         <Sheet open={id !== undefined} onOpenChange={(open) => !open && close()} title={dex?.find((pokemon) => pokemon.id === id)?.name ?? "Pokémon"} hideTitle>
-          {id && <PokemonDetail key={id} id={id} layout="sheet" />}
+          {id && <PokemonDetail id={id} layout="sheet" />}
         </Sheet>
       )}
 
