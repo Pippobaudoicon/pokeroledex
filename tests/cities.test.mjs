@@ -51,6 +51,7 @@ function migrate(db, from = 1, until = Infinity) {
 function harness(referenceOverrides = {}) {
   const db = new DatabaseSync(':memory:');
   migrate(db);
+  let batchTail = Promise.resolve();
   const prepare = (sql) => {
     let values = [];
     return {
@@ -63,13 +64,18 @@ function harness(referenceOverrides = {}) {
     DB: {
       prepare,
       async batch(statements) {
-        db.exec('BEGIN');
+        const previousBatch = batchTail;
+        let releaseBatch;
+        batchTail = new Promise(resolve => { releaseBatch = resolve; });
+        await previousBatch;
         try {
+          db.exec('BEGIN');
           const results = [];
           for (const statement of statements) results.push(await statement.run());
           db.exec('COMMIT');
           return results;
         } catch (error) { db.exec('ROLLBACK'); throw error; }
+        finally { releaseBatch(); }
       },
     },
     ASSETS: {
@@ -704,6 +710,31 @@ test('members fill the crafting order within the city skills and the leader craf
     assert.equal(result.status, 200);
     assert.equal(result.body.roll.faces.length, 5);
     assert.ok(result.body.roll.faces.every(face => face >= 1 && face <= 6));
+  } finally { h.close(); }
+});
+
+test('simultaneous crafts only consume a city order once', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Forge' })).body;
+    const tauros = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'tauros', cityId: city.id })).body.id;
+    await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER', assignments: { [tauros]: 'skill:technology' } });
+    await h.request(`cities/${city.id}/order`, 'POST', { itemId: 'pokeball', quantity: 1 });
+
+    const path = `cities/${city.id}/craft`;
+    const results = await Promise.all([
+      h.request(path, 'POST', {}),
+      h.request(path, 'POST', {}),
+    ]);
+
+    assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+    const winner = results.find(result => result.status === 200);
+    const conflict = results.find(result => result.status === 409);
+    assert.deepEqual(winner.body.crafted, [{ itemId: 'pokeball', quantity: 1 }]);
+    assert.match(conflict.body.payload, /order is empty/);
+    const stored = await h.request(`cities/${city.id}`);
+    assert.deepEqual(stored.body.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1]]);
+    assert.deepEqual(stored.body.order, []);
   } finally { h.close(); }
 });
 

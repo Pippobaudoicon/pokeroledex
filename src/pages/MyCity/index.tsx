@@ -474,7 +474,7 @@ const CityTypeOverview = ({ residents }: { residents: Pokemon[] }) => {
 export const MyCityPage = () => {
   const { id } = useParams();
   const [tab, setTab] = React.useState<"overview" | "roster" | "settings" | "crafting">("overview");
-  const cities = useQuery({ queryKey: ["cities"], queryFn: ({ signal }) => apiFetch<City[]>({ url: "/cities", method: "get", signal }) });
+  const cities = useQuery({ queryKey: ["cities"], queryFn: ({ signal }) => apiFetch<City[]>({ url: "/cities", method: "get", signal }), refetchInterval: 5_000 });
   const pokemon = useQuery({ queryKey: ["pokemon", "city-roster"], queryFn: ({ signal }) => apiFetch<Pokemon[]>({ url: "/pokemon/all", method: "get", signal }) });
   const trainers = useQuery({ queryKey: ["trainers"], queryFn: ({ signal }) => apiFetch<Trainer[]>({ url: "/trainers", method: "get", signal }) });
   const city = id ? cities.data?.find(city => city.id === id) : cities.data?.[0];

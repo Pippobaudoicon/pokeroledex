@@ -378,7 +378,10 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
         description: result.crafted.map(line => `${line.quantity} × ${byId.get(line.itemId)?.item.name ?? "Item"}`).join(", "),
       });
     },
-    onError: (error: ApiFetchError) => toast({ title: "The order could not be crafted", description: errorText(error) }),
+    onError: (error: ApiFetchError) => {
+      client.invalidateQueries({ queryKey: ["cities"] });
+      toast({ title: "The order could not be crafted", description: errorText(error) });
+    },
   });
   const research = useMutation({
     mutationFn: ({ itemId, faces }: { itemId: string; faces?: number[] }) =>
