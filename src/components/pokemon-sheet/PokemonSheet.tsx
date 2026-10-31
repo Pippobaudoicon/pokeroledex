@@ -61,7 +61,7 @@ const GenderButton = ({ pokemon }: { pokemon: T.Pokemon }) => {
   );
 };
 
-const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
+const Identity = ({ pokemon, showTyping }: { pokemon: T.Pokemon; showTyping: boolean }) => {
   const template = pokemon.pokemonTemplate;
   const { editingMode, updatePokemon } = usePokemon();
   const nicknameId = React.useId();
@@ -92,11 +92,13 @@ const Identity = ({ pokemon }: { pokemon: T.Pokemon }) => {
               />
             </div>
           )}
-          <Hint hint={<MatchupTable types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
-            {template.types.map((type) => (
-              <TypePill key={type} type={type} size="sm" />
-            ))}
-          </Hint>
+          {showTyping && (
+            <Hint hint={<MatchupTable types={template.types} />} className="mt-1.5 flex w-fit flex-wrap items-center gap-1.5">
+              {template.types.map((type) => (
+                <TypePill key={type} type={type} size="sm" />
+              ))}
+            </Hint>
+          )}
         </div>
       </div>
     </div>
@@ -309,10 +311,12 @@ type Section = "battle" | "stats" | "info";
  */
 export const PokemonSheet = ({
   showButtons = "edit",
+  showTyping = true,
   back,
   embedded = false,
 }: {
   showButtons?: SheetButtons;
+  showTyping?: boolean;
   back?: { to: string; label: string };
   /** Inside another page (generators): the top bar does not stick. */
   embedded?: boolean;
@@ -376,7 +380,7 @@ export const PokemonSheet = ({
       <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-4 pt-2 pb-10 @lg:px-6">
         <RankUpBanner />
         <div className="grid gap-3 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] @3xl:items-stretch">
-          <Identity pokemon={pokemon} />
+          <Identity pokemon={pokemon} showTyping={showTyping} />
           <div className="grid grid-cols-2 gap-3 @3xl:contents">
             <Vital
               property="currentHp"

@@ -119,6 +119,22 @@ test('encounter filtering uses the replacement habitats and still matches any se
   assert.equal(matchesEncounterFilters(species, { habitats: ['CITIES', 'FORESTS'] }), true);
 });
 
+test('encounter filtering includes variants unless explicitly excluded', () => {
+  const variant = {
+    ...template,
+    id: 'regional',
+    dexID: '19A',
+    number: 19,
+    name: 'Rattata (Alolan Form)',
+    types: ['DARK'],
+    recommendedRank: 'STARTER',
+    legendary: false,
+  };
+  assert.equal(matchesEncounterFilters(variant, {}), true);
+  assert.equal(matchesEncounterFilters(variant, { excludeForms: false }), true);
+  assert.equal(matchesEncounterFilters(variant, { excludeForms: true }), false);
+});
+
 test('stored habitat data covers every reference entry with a unique, consistent catalog', () => {
   const read = name => JSON.parse(readFileSync(new URL(`../data/reference/${name}.json`, import.meta.url), 'utf8'));
   const templates = read('pokemon-templates');

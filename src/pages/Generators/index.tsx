@@ -1,7 +1,9 @@
-import { Package } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Package, Plus } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
+import { apiFetch } from "@/api/client";
 import { useItemsControllerGenerate, usePokemonControllerGenerate } from "@/api/components";
 import { ItemCategory, ItemPocket, LegendaryFilter, Rank, RankUpMethod } from "@/api/schemas";
 import { HabitatPicker } from "@/components/HabitatPicker";
@@ -17,6 +19,7 @@ import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { useDex } from "@/hooks/use-dex";
 import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
+import { useMe } from "@/layout/AppShell";
 import { formatEnumName } from "@/lib/utils";
 import { GeneratorContentProvider, useGeneratorContent } from "./context";
 import { EncounterGenerator, GeneratedEncounterList } from "./Encounters";
@@ -26,7 +29,7 @@ type PokemonSettings = Required<Omit<T.GeneratePokemonBody, keyof T.SelectionBod
   Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
 type ItemSettings = Required<Omit<T.GenerateItemsBody, keyof T.SelectionBody>>;
 
-const GeneratedPokemonList = () => {
+const GeneratedPokemonList = ({ showTyping }: { showTyping: boolean }) => {
   const { content, setContent } = useGeneratorContent();
   const [lockedPokemon, setLockedPokemon] = React.useState<T.Pokemon[]>([]);
   const generated = (content ?? []).filter((entry): entry is T.Pokemon => "pokemonTemplate" in entry);
@@ -64,7 +67,7 @@ const GeneratedPokemonList = () => {
               }
             >
               <div className="overflow-hidden rounded-2xl bg-surface shadow-card">
-                <PokemonSheet showButtons="addAndLock" embedded />
+                <PokemonSheet showButtons="addAndLock" showTyping={showTyping} embedded />
               </div>
             </StaticPokemonProvider>
           ))}
@@ -76,6 +79,28 @@ const GeneratedPokemonList = () => {
 
 const GeneratedItemList = () => {
   const { content } = useGeneratorContent();
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const me = useMe();
+  const cities = useQuery({
+    queryKey: ["cities"],
+    queryFn: ({ signal }) => apiFetch<T.City[]>({ url: "/cities", method: "get", signal }),
+  });
+  const [selectedCities, setSelectedCities] = React.useState<Record<string, string>>({});
+  const stock = useMutation({
+    mutationFn: ({ cityId, item, count }: { cityId: string; item: T.Item; count: number }) =>
+      apiFetch<T.City>({
+        url: `/cities/${encodeURIComponent(cityId)}/stock`,
+        method: "post",
+        body: { itemId: item.id, quantity: count } satisfies T.CityStockBody,
+      }),
+    onSuccess: (city, { item, count }) => {
+      client.setQueryData<T.City[]>(["cities"], (current) => current?.map((entry) => (entry.id === city.id ? city : entry)));
+      toast({ title: `Added ${count} × ${item.name} to ${city.name}` });
+    },
+    onError: () => toast({ title: "The item could not be added to the city", description: "Please try again." }),
+  });
+  const leaderCities = cities.data?.filter((city) => city.members[0] === me.data?.email) ?? [];
   const items = (content ?? []).filter((entry): entry is T.Item => !("pokemonTemplate" in entry));
   const entries: { count: number; item: T.Item }[] = [];
   for (const item of items) {
@@ -106,6 +131,33 @@ const GeneratedItemList = () => {
                 {count} × {item.name}
               </p>
               <ItemCard item={item} />
+              {cities.isLoading || me.isLoading ? (
+                <p role="status" className="mt-2 text-footnote text-label-2">Loading your cities…</p>
+              ) : cities.isError || me.isError ? (
+                <p role="alert" className="mt-2 text-footnote text-label-2">Your cities could not be loaded.</p>
+              ) : leaderCities.length ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <label className="sr-only" htmlFor={`generated-item-city-${item.id}`}>City for {item.name}</label>
+                  <select
+                    id={`generated-item-city-${item.id}`}
+                    value={selectedCities[item.id] ?? leaderCities[0].id}
+                    onChange={(event) => setSelectedCities((current) => ({ ...current, [item.id]: event.target.value }))}
+                    className={fieldClass}
+                  >
+                    {leaderCities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    className={button({ variant: "tinted", size: "sm" })}
+                    disabled={stock.isPending}
+                    onClick={() => stock.mutate({ cityId: selectedCities[item.id] ?? leaderCities[0].id, item, count })}
+                  >
+                    <Plus aria-hidden className="size-4" />Add to city
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-footnote text-label-2">You do not lead a city.</p>
+              )}
             </div>
           ))}
         </div>
@@ -114,7 +166,13 @@ const GeneratedItemList = () => {
   );
 };
 
-const PokemonGenerator = () => {
+const PokemonGenerator = ({
+  showTyping,
+  onShowTypingChange,
+}: {
+  showTyping: boolean;
+  onShowTypingChange: (showTyping: boolean) => void;
+}) => {
   const { setContent } = useGeneratorContent();
   const { state: campaignFilter } = useCampaignFilter();
   const { data: templates, isFetching } = useDex();
@@ -211,6 +269,7 @@ const PokemonGenerator = () => {
               checked={settings.rankOrBelow}
               onChange={(rankOrBelow) => setSettings({ ...settings, rankOrBelow })}
             />
+            <ToggleField label="Show Pokémon typing" checked={showTyping} onChange={onShowTypingChange} />
           </div>
         </Group>
         <Group title="Habitats">
@@ -310,6 +369,7 @@ const GeneratorPage = () => {
   const active = generator ?? "encounters";
   const navigate = useNavigate();
   const { setContent } = useGeneratorContent();
+  const [showTyping, setShowTyping] = React.useState(true);
   return (
     <div className="mx-auto max-w-7xl pb-8">
       <PageHeader title="Generators">
@@ -345,7 +405,7 @@ const GeneratorPage = () => {
             {active === "encounters" ? (
               <EncounterGenerator />
             ) : active === "pokemon" ? (
-              <PokemonGenerator />
+              <PokemonGenerator showTyping={showTyping} onShowTypingChange={setShowTyping} />
             ) : active === "items" ? (
               <ItemGenerator />
             ) : (
@@ -356,7 +416,7 @@ const GeneratorPage = () => {
             {active === "encounters" ? (
               <GeneratedEncounterList />
             ) : active === "pokemon" ? (
-              <GeneratedPokemonList />
+              <GeneratedPokemonList showTyping={showTyping} />
             ) : active === "items" ? (
               <GeneratedItemList />
             ) : null}

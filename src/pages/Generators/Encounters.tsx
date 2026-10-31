@@ -40,7 +40,7 @@ const defaultSettings = (): T.GenerateEncounterBody => ({
   ranks: [],
   includeLegendary: LegendaryFilter.NONE,
   includeMythical: false,
-  excludeForms: true,
+  excludeForms: false,
   rankOrBelow: true,
   allowDuplicates: true,
   excludeStarters: true,

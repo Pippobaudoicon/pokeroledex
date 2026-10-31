@@ -72,7 +72,7 @@ export interface CityInventoryBody { trainerId: string; entryId: string; quantit
 export interface CityInventoryResult { city: City; trainer: Trainer }
 /** The leader removes `quantity` of a city storage entry for good. */
 export interface CityDiscardBody { entryId: string; quantity: number }
-/** The leader adds `quantity` of a reference item straight to city storage. */
+/** The leader adds `quantity` of an item from their collection straight to city storage. */
 export interface CityStockBody { itemId: string; quantity: number }
 /** The leader sets a recipe's research steps directly (0 up to what its tier needs), skipping the research gates. */
 export interface CityStepsBody { itemId: string; steps: number }

@@ -772,6 +772,36 @@ test('only the leader adds items to and removes items from city storage directly
   } finally { h.close(); }
 });
 
+test('generated items can be added to a city by its leader only', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Reward Depot' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const campaign = (await h.request('campaigns', 'POST', { name: 'Rewards' })).body;
+    const created = await h.request('items', 'POST', {
+      ...item('custom-reward', 'Lucky Charm', 'TRAINER_ITEMS', null), campaignId: campaign.id,
+    });
+    const generated = await h.request('items/generate', 'POST', {
+      seed: 1, numberToGenerate: 1, campaignIds: [campaign.id], includeCore: false,
+    });
+    assert.equal(generated.status, 200);
+    const generatedItem = generated.body[0];
+    assert.equal(generatedItem.id, created.body.id);
+    const stock = (owner) => h.request(`cities/${city.id}/stock`, 'POST', { itemId: generatedItem.id, quantity: 1 }, owner);
+
+    assert.equal((await stock(bob)).status, 403);
+    const result = await stock('alice');
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.inventory.map(entry => [entry.item.id, entry.quantity]), [[generatedItem.id, 1]]);
+    const shared = await h.request(`cities/${city.id}`, 'GET', undefined, bob);
+    assert.equal(shared.body.inventory[0].item.name, generatedItem.name);
+    assert.equal(shared.body.inventory[0].item.campaignId, undefined);
+    assert.equal(shared.body.inventory[0].item.userId, undefined);
+    assert.equal((await h.request(`items/${generatedItem.id}`, 'GET', undefined, bob)).status, 404);
+  } finally { h.close(); }
+});
+
 test('members move items between their own trainers and the city storage', async () => {
   const h = harness();
   const bob = 'bob@example.com';

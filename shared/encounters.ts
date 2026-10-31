@@ -43,7 +43,7 @@ export function matchesEncounterFilters(template: PokemonTemplate, body: Generat
   // Numeric dex IDs identify canonical entries, even when their names contain a form label.
   const canonicalOgerpon = template.number === 1017 && template.dexID === '1017F3';
   const variant = !canonicalOgerpon && (/^\d+[a-z]/i.test(template.dexID) || (!/^\d+$/.test(template.dexID) && template.name.includes('(')));
-  if (body.excludeForms !== false && variant) return false;
+  if (body.excludeForms === true && variant) return false;
   if (body.excludeStarters && isStarter(template.number)) return false;
   if (body.fossils === 'ONLY' && !isFossil(template.number)) return false;
   if (body.fossils === 'NONE' && isFossil(template.number)) return false;

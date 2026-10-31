@@ -308,7 +308,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
     function inventory(entries: Row[] | undefined) {
       return (entries ?? []).map((entry: Row) => ({ ...entry,
-        item: entry.itemId ? find('items', entry.itemId) : { ...entry, id: `custom-${entry.id}` },
+        item: entry.itemSnapshot ?? (entry.itemId ? find('items', entry.itemId) : { ...entry, id: `custom-${entry.id}` }),
       })).filter((entry: Row) => entry.item);
     }
 
@@ -697,11 +697,19 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       if (!isLeader(city)) fail(403, 'Only the city leader can add items to storage.');
-      const found = referenceRecipe(body.itemId);
-      if (!found) fail(400, 'Choose a reference item.');
+      const item = find('items', body.itemId);
+      if (!item) fail(400, 'Choose an item from your collection.');
       if (!Number.isInteger(body.quantity) || body.quantity < 1 || body.quantity > 999) fail(400, 'Choose a quantity from 1 to 999.');
       city.inventory ??= [];
-      addToInventory(city.inventory, { itemId: found.item.id }, body.quantity);
+      const isReferenceItem = referenceRows.items.some(entry => entry.id === item.id);
+      addToInventory(city.inventory, {
+        itemId: item.id,
+        ...(!isReferenceItem && { itemSnapshot: {
+          id: item.id, name: item.name, source: item.source, category: item.category, pocket: item.pocket,
+          description: item.description, oneUse: item.oneUse, PMD: item.PMD, trainerPrice: item.trainerPrice,
+          pmdPrice: item.pmdPrice, image: item.image, hash: item.hash,
+        } }),
+      }, body.quantity);
       put(name, city);
       return reply(hydrate(name, city));
     }
