@@ -824,12 +824,113 @@ test('generated items can be added to a city by its leader only', async () => {
     assert.equal((await stock(bob)).status, 403);
     const result = await stock('alice');
     assert.equal(result.status, 200);
-    assert.deepEqual(result.body.inventory.map(entry => [entry.item.id, entry.quantity]), [[generatedItem.id, 1]]);
+    assert.equal(result.body.inventory[0].quantity, 1);
+    assert.equal(result.body.inventory[0].item.id, `custom-${result.body.inventory[0].id}`);
     const shared = await h.request(`cities/${city.id}`, 'GET', undefined, bob);
     assert.equal(shared.body.inventory[0].item.name, generatedItem.name);
     assert.equal(shared.body.inventory[0].item.campaignId, undefined);
     assert.equal(shared.body.inventory[0].item.userId, undefined);
     assert.equal((await h.request(`items/${generatedItem.id}`, 'GET', undefined, bob)).status, 404);
+
+    const trainer = (await h.request('trainers', 'POST', { name: 'Blue' }, bob)).body;
+    const withdrawn = await h.request(`cities/${city.id}/inventory`, 'POST', {
+      trainerId: trainer.id, entryId: result.body.inventory[0].id, quantity: 1, direction: 'withdraw',
+    }, bob);
+    assert.equal(withdrawn.status, 200);
+    const entry = withdrawn.body.trainer.inventory[0];
+    assert.equal(entry.item.id, `custom-${entry.id}`);
+    // The trainer sheet saves custom-* items inline instead of sending an itemId.
+    const { id: _itemId, ...fields } = entry.item;
+    const saved = await h.request('trainers', 'PATCH', { id: trainer.id, inventory: [{ ...fields, id: entry.id, quantity: 2 }] }, bob);
+    assert.equal(saved.status, 200);
+    const reloaded = await h.request(`trainers/${trainer.id}`, 'GET', undefined, bob);
+    assert.deepEqual(reloaded.body.inventory.map(entry => [entry.item.name, entry.quantity]), [['Lucky Charm', 2]]);
+    const returned = await h.request(`cities/${city.id}/inventory`, 'POST', {
+      trainerId: trainer.id, entryId: entry.id, quantity: 2, direction: 'deposit',
+    }, bob);
+    assert.equal(returned.status, 200);
+    assert.deepEqual(returned.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Lucky Charm', 2]]);
+  } finally { h.close(); }
+});
+
+test('custom items with colliding account IDs stay separate when stocked, withdrawn and deposited', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Shared Depot' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const aliceCampaign = (await h.request('campaigns', 'POST', { name: 'Alice rewards' })).body;
+    const bobCampaign = (await h.request('campaigns', 'POST', { name: 'Bob rewards' }, bob)).body;
+    for (const [owner, campaignId, name] of [['alice', aliceCampaign.id, 'Healing Charm'], [bob, bobCampaign.id, 'Poison Vial']]) {
+      assert.equal((await h.request('items', 'POST', {
+        ...item('imported-reward', name, 'TRAINER_ITEMS', null), campaignId,
+      }, owner)).status, 201);
+    }
+    const stocked = await h.request(`cities/${city.id}/stock`, 'POST', { itemId: 'imported-reward', quantity: 1 });
+    const trainer = (await h.request('trainers', 'POST', { name: 'Blue' }, bob)).body;
+    const initial = (await h.request('trainers', 'PATCH', {
+      id: trainer.id, inventory: [{ itemId: 'imported-reward', quantity: 1 }],
+    }, bob)).body;
+    const withdrawn = await h.request(`cities/${city.id}/inventory`, 'POST', {
+      trainerId: trainer.id, entryId: stocked.body.inventory[0].id, quantity: 1, direction: 'withdraw',
+    }, bob);
+    assert.equal(withdrawn.status, 200);
+    assert.deepEqual(withdrawn.body.trainer.inventory.map(entry => [entry.item.name, entry.quantity]), [['Poison Vial', 1], ['Healing Charm', 1]]);
+    assert.equal(withdrawn.body.city.inventory.length, 0);
+
+    await h.request(`cities/${city.id}/stock`, 'POST', { itemId: 'imported-reward', quantity: 1 });
+    const deposited = await h.request(`cities/${city.id}/inventory`, 'POST', {
+      trainerId: trainer.id, entryId: initial.inventory[0].id, quantity: 1, direction: 'deposit',
+    }, bob);
+    assert.equal(deposited.status, 200);
+    assert.deepEqual(deposited.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Healing Charm', 1], ['Poison Vial', 1]]);
+    for (const entry of deposited.body.city.inventory) {
+      assert.equal(entry.item.id, `custom-${entry.id}`);
+      assert.equal(entry.item.campaignId, undefined);
+      assert.equal(entry.item.userId, undefined);
+    }
+  } finally { h.close(); }
+});
+
+test('legacy reward snapshots survive reads, trainer edits and transfers without sharing private fields', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Legacy Depot' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const trainer = (await h.request('trainers', 'POST', { name: 'Blue' }, bob)).body;
+    const snapshot = {
+      ...item('private-reward', 'Legacy Charm', 'TRAINER_ITEMS', null),
+      source: 'Homebrew', oneUse: true, PMD: false, pmdPrice: '50',
+      campaignId: 'private-campaign', userId: 'alice',
+    };
+    for (const [collection, recordId] of [['cities', city.id], ['trainers', trainer.id]]) {
+      h.db.prepare("UPDATE records SET data = json_set(data, '$.inventory', json(?)) WHERE collection = ? AND id = ?")
+        .run(JSON.stringify([{ id: `legacy-${collection}`, itemId: snapshot.id, itemSnapshot: snapshot, quantity: 2 }]), collection, recordId);
+    }
+    const shared = (await h.request(`cities/${city.id}`, 'GET', undefined, bob)).body;
+    const before = (await h.request(`trainers/${trainer.id}`, 'GET', undefined, bob)).body;
+    for (const entry of [shared.inventory[0], before.inventory[0]]) {
+      assert.equal(entry.item.id, `custom-${entry.id}`);
+      assert.equal(entry.itemId, undefined);
+      assert.equal(entry.itemSnapshot, undefined);
+      assert.equal(entry.item.campaignId, undefined);
+      assert.equal(entry.item.userId, undefined);
+      assert.equal(entry.item.oneUse, true);
+      assert.equal(entry.item.pmdPrice, '50');
+    }
+    const { id: _itemId, ...fields } = before.inventory[0].item;
+    assert.equal((await h.request('trainers', 'PATCH', {
+      id: trainer.id, inventory: [{ ...fields, id: before.inventory[0].id, quantity: 3 }],
+    }, bob)).status, 200);
+    const moved = await h.request(`cities/${city.id}/inventory`, 'POST', {
+      trainerId: trainer.id, entryId: shared.inventory[0].id, quantity: 2, direction: 'withdraw',
+    }, bob);
+    assert.equal(moved.status, 200);
+    assert.deepEqual(moved.body.trainer.inventory.map(entry => [entry.item.name, entry.quantity]), [['Legacy Charm', 3], ['Legacy Charm', 2]]);
+    const stored = JSON.parse(h.db.prepare("SELECT data FROM records WHERE collection = 'trainers' AND id = ?").get(trainer.id).data);
+    assert.ok(stored.inventory.every(entry => !entry.itemId && !entry.itemSnapshot));
+    assert.deepEqual((await h.request(`trainers/${trainer.id}`, 'GET', undefined, bob)).body.inventory, moved.body.trainer.inventory);
   } finally { h.close(); }
 });
 
@@ -960,4 +1061,65 @@ test('the city crafting skills migration moves assignments to the closest new sk
     assert.equal(data[2].assignments, undefined);
     assert.deepEqual(data[3].assignments, { a: 'skill:mining' });
   } finally { db.close(); }
+});
+
+test('the city inventory copies migration turns campaign item IDs into inline copies from a current member', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    migrate(db, 1, 7);
+    const insert = db.prepare('INSERT INTO records (owner, collection, id, data) VALUES (?, ?, ?, ?)');
+    db.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?), (?, ?)').run('c1', 'alice', 'c1', 'bob');
+    insert.run('alice', 'items', 'charm', JSON.stringify({
+      id: 'charm', name: 'Healing Charm', source: 'Homebrew', pocket: 'TRAINER_ITEMS', description: 'Heals.', oneUse: true, PMD: false,
+      trainerPrice: null, pmdPrice: '50', image: '', campaignId: 'private', userId: 'alice',
+    }));
+    insert.run('bob', 'items', 'charm', JSON.stringify({ id: 'charm', name: 'Poison Vial', campaignId: 'bob-private' }));
+    insert.run('carol', 'items', 'stranger', JSON.stringify({ id: 'stranger', name: 'Not shared' }));
+    const snapshot = { id: 's1', itemId: 'charm', itemSnapshot: { id: 'charm', name: 'Old reward' }, quantity: 1 };
+    insert.run('city:c1', 'cities', 'c1', JSON.stringify({ id: 'c1', name: 'Pallet', inventory: [
+      { id: 'e1', itemId: 'pokeball', quantity: 3 }, { id: 'e2', itemId: 'charm', quantity: 2 }, snapshot,
+      { id: 'e3', itemId: 'stranger', quantity: 1 }, { id: 'e4', name: 'Inline', quantity: 1 },
+    ] }));
+    insert.run('city:c2', 'cities', 'c2', JSON.stringify({ id: 'c2', name: 'Viridian' }));
+    insert.run('alice', 'trainers', 't1', JSON.stringify({ id: 't1', inventory: [{ id: 't1e', itemId: 'charm', quantity: 1 }] }));
+    migrate(db, 8, 8);
+    const data = Object.fromEntries(db.prepare('SELECT collection, id, data FROM records').all().map(row => [`${row.collection}:${row.id}`, JSON.parse(row.data)]));
+    assert.deepEqual(data['cities:c1'].inventory, [
+      { id: 'e1', itemId: 'pokeball', quantity: 3 },
+      { id: 'e2', quantity: 2, name: 'Healing Charm', source: 'Homebrew', pocket: 'TRAINER_ITEMS', description: 'Heals.', oneUse: true, PMD: false, pmdPrice: '50', image: '' },
+      snapshot,
+      { id: 'e3', itemId: 'stranger', quantity: 1 },
+      { id: 'e4', name: 'Inline', quantity: 1 },
+    ], 'the oldest member item is copied; reference, snapshot, inline and non-member rows stay as they are');
+    assert.equal(data['cities:c2'].inventory, undefined);
+    assert.deepEqual(data['trainers:t1'].inventory, [{ id: 't1e', itemId: 'charm', quantity: 1 }], 'trainer inventories are untouched');
+  } finally { db.close(); }
+});
+
+test('city storage only resolves reference IDs, so unresolved rows show as unavailable instead of a member\'s own item', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Orphan Depot' })).body;
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const campaign = (await h.request('campaigns', 'POST', { name: 'Bob rewards' }, bob)).body;
+    assert.equal((await h.request('items', 'POST', { ...item('left-behind', 'Poison Vial', 'TRAINER_ITEMS', null), campaignId: campaign.id }, bob)).status, 201);
+    h.db.prepare("UPDATE records SET data = json_set(data, '$.inventory', json(?)) WHERE collection = 'cities' AND id = ?")
+      .run(JSON.stringify([{ id: 'orphan', itemId: 'left-behind', quantity: 1 }, { id: 'balls', itemId: 'pokeball', quantity: 2 }]), city.id);
+    for (const owner of ['alice', bob]) {
+      const shared = (await h.request(`cities/${city.id}`, 'GET', undefined, owner)).body;
+      assert.deepEqual(shared.inventory.map(entry => [entry.item.id, entry.item.name, entry.quantity]),
+        [['custom-orphan', 'Unavailable item', 1], ['pokeball', 'Pokeball', 2]], owner);
+    }
+    const trainer = (await h.request('trainers', 'POST', { name: 'Blue' }, bob)).body;
+    const withdraw = (entryId) => h.request(`cities/${city.id}/inventory`, 'POST', { trainerId: trainer.id, entryId, quantity: 1, direction: 'withdraw' }, bob);
+    assert.equal((await withdraw('orphan')).status, 400, 'an unresolved row is not swapped for the member\'s own item');
+    assert.deepEqual((await withdraw('balls')).body.trainer.inventory.map(entry => entry.item.name), ['Pokeball']);
+    // The leader can see, discard and then delete what nobody can withdraw.
+    assert.equal((await h.request(`cities/${city.id}`, 'DELETE', undefined, bob)).body.left, true);
+    assert.equal((await h.request(`cities/${city.id}`, 'DELETE')).status, 409);
+    assert.equal((await h.request(`cities/${city.id}/discard`, 'POST', { entryId: 'orphan', quantity: 1 })).status, 200);
+    assert.equal((await h.request(`cities/${city.id}/discard`, 'POST', { entryId: 'balls', quantity: 1 })).status, 200);
+    assert.equal((await h.request(`cities/${city.id}`, 'DELETE')).status, 200);
+  } finally { h.close(); }
 });

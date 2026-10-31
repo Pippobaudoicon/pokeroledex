@@ -306,10 +306,21 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       } as Pokemon;
     }
 
-    function inventory(entries: Row[] | undefined) {
-      return (entries ?? []).map((entry: Row) => ({ ...entry,
-        item: entry.itemSnapshot ?? (entry.itemId ? find('items', entry.itemId) : { ...entry, id: `custom-${entry.id}` }),
-      })).filter((entry: Row) => entry.item);
+    /** The item an inventory entry points at. City storage only shares reference IDs, so it never
+     * resolves to the viewer's own item that happens to have the same ID. */
+    function inventoryItem(itemId: unknown, shared: boolean): Row | null {
+      return shared ? referenceRows.items.find(item => item.id === itemId) ?? null : find('items', itemId);
+    }
+
+    function inventory(entries: Row[] | undefined, shared = false) {
+      return (entries ?? []).map((entry: Row) => {
+        // Older generated rewards used snapshots with account-scoped item IDs.
+        if (entry.itemSnapshot) entry = { ...customInventoryFields(entry.itemSnapshot), id: entry.id, quantity: entry.quantity };
+        let item: Row | null = entry.itemId ? inventoryItem(entry.itemId, shared) : { ...entry, id: `custom-${entry.id}` };
+        // A stored campaign item whose owner is gone (see migrations/0008) stays visible so the leader can discard it.
+        if (!item && shared) item = { id: `custom-${entry.id}`, name: 'Unavailable item', description: 'The original item is no longer available.' };
+        return { ...entry, item };
+      }).filter((entry: Row) => entry.item);
     }
 
     function trainer(record: Row): Trainer {
@@ -333,7 +344,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const profiles = Object.fromEntries(residents.map(p => [p.id, work[p.id].profile]));
         const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, ...rest } = record;
         return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
-          ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory), research: record.research ?? {},
+          ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory, true), research: record.research ?? {},
           order: ((record.order ?? []) as Json[]).filter(line => reference.items.some(item => item.id === line.itemId)),
           members: members.get(record.id) ?? [] };
       }
@@ -381,9 +392,23 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       };
     }
 
-    /** Adds `quantity` of an entry; reference items stack on an entry for the same item. */
-    function addToInventory(entries: Row[], entry: Json, quantity: number) {
-      const same = entry.itemId ? entries.find(candidate => candidate.itemId === entry.itemId) : undefined;
+    function customInventoryFields(item: Json): Json {
+      return {
+        name: item.name, source: item.source, category: item.category, pocket: item.pocket,
+        description: item.description, oneUse: item.oneUse, PMD: item.PMD, trainerPrice: item.trainerPrice,
+        pmdPrice: item.pmdPrice, image: item.image,
+      };
+    }
+
+    /** Only reference IDs are shared across accounts; custom items move as self-contained copies. */
+    function addToInventory(entries: Row[], entry: Json, quantity: number, fromCity = false) {
+      if (entry.itemSnapshot) entry = customInventoryFields(entry.itemSnapshot);
+      else if (entry.itemId) {
+        const item = inventoryItem(entry.itemId, fromCity);
+        if (!item) fail(400, 'That inventory item is no longer available.');
+        if (!referenceRows.items.includes(item)) entry = customInventoryFields(item);
+      }
+      const same = entry.itemId ? entries.find(candidate => candidate.itemId === entry.itemId && !candidate.itemSnapshot) : undefined;
       if (same) {
         same.quantity += quantity;
         return;
@@ -701,15 +726,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (!item) fail(400, 'Choose an item from your collection.');
       if (!Number.isInteger(body.quantity) || body.quantity < 1 || body.quantity > 999) fail(400, 'Choose a quantity from 1 to 999.');
       city.inventory ??= [];
-      const isReferenceItem = referenceRows.items.some(entry => entry.id === item.id);
-      addToInventory(city.inventory, {
-        itemId: item.id,
-        ...(!isReferenceItem && { itemSnapshot: {
-          id: item.id, name: item.name, source: item.source, category: item.category, pocket: item.pocket,
-          description: item.description, oneUse: item.oneUse, PMD: item.PMD, trainerPrice: item.trainerPrice,
-          pmdPrice: item.pmdPrice, image: item.image, hash: item.hash,
-        } }),
-      }, body.quantity);
+      addToInventory(city.inventory, { itemId: item.id }, body.quantity);
       put(name, city);
       return reply(hydrate(name, city));
     }
@@ -741,7 +758,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       entry.quantity -= body.quantity;
       if (!entry.quantity) from.inventory = from.inventory.filter((candidate: Row) => candidate !== entry);
       to.inventory ??= [];
-      addToInventory(to.inventory, entry, body.quantity);
+      addToInventory(to.inventory, entry, body.quantity, from === city);
       put('cities', city);
       put('trainers', trainerRecord);
       return reply({ city: hydrate(name, city), trainer: hydrate('trainers', trainerRecord) });

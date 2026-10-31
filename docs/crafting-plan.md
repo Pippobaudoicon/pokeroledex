@@ -192,7 +192,7 @@ Unpriced items use a category default:
    - `POST /cities/:id/research { itemId, faces? }` (leader only)
    - `POST /cities/:id/steps { itemId, steps }` (leader only; GM override that skips the research gates)
    - `POST /cities/:id/inventory { trainerId, entryId, quantity, direction }` (any member)
-   - `POST /cities/:id/stock { itemId, quantity }` (leader only; any reference item)
+   - `POST /cities/:id/stock { itemId, quantity }` (leader only; a reference item or one from the leader's collection, campaign items are copied inline)
    - `POST /cities/:id/discard { entryId, quantity }` (leader only)
    - The city response includes the hydrated inventory, the research steps and the order. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers`/`orderRoom` the server enforces (409 with the reasons).
 6. **UI**:

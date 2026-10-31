@@ -188,7 +188,14 @@ The **Crafting** tab turns the city's skills into items (rules in
 - **Storage** is the city inventory. Any member can store items from one of
   their trainers or take items out to one. The leader can also add any reference
   item directly (**Add item**) and remove items for good, e.g. to adjust the
-  city's stock as GM.
+  city's stock as GM. In **Generators → Items**, the leader can add generated
+  reference or campaign items to a city. Reference items stack; custom items
+  are self-contained copies that stay separate, even when different accounts
+  use the same item ID. Members can withdraw and edit these copies without
+  needing access to the original campaign. Older stored campaign items are
+  turned into copies by `migrations/0008_city_inventory_copies.sql`, using a
+  current member's item. Any that no member has any more show as
+  **Unavailable item** for the leader to remove.
 
 ### Sharing a city
 
@@ -234,7 +241,7 @@ Crafting (rules in `docs/crafting-plan.md` and `shared/crafting.ts`):
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
 | `POST /api/cities/:id/steps` | Leader | `{ itemId, steps }` | Sets a recipe's research steps (0 to what its tier needs) without the rank or Research gates |
 | `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |
-| `POST /api/cities/:id/stock` | Leader | `{ itemId, quantity }` | Adds 1 to 999 of a reference item straight to the city inventory (no recipe needed) |
+| `POST /api/cities/:id/stock` | Leader | `{ itemId, quantity }` | Adds 1 to 999 of a reference item or an item from the leader's collection straight to the city inventory (no recipe needed); custom items are copied inline |
 | `POST /api/cities/:id/discard` | Leader | `{ entryId, quantity }` | Removes items from the city inventory for good |
 
 `faces` are the dice of a physical research roll and must match the pool, each 1 to 6;
