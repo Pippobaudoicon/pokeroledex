@@ -298,7 +298,7 @@ export const EncounterGenerator = () => {
   );
 };
 
-const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails: () => void }) => {
+const EncounterCard = ({ entry, onDetails, showTyping }: { entry: EncounterEntry; onDetails: () => void; showTyping: boolean }) => {
   const { setEntries, isGenerating } = React.useContext(EncounterContext);
   const [rolling, setRolling] = React.useState(false);
   React.useEffect(() => {
@@ -343,9 +343,7 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
         </div>
         <div className="flex flex-wrap items-center gap-1">
           <RankBadge rank={pokemon.rank} />
-          {species.types.map((type) => (
-            <TypePill key={type} type={type} size="sm" />
-          ))}
+          {showTyping && species.types.map((type) => <TypePill key={type} type={type} size="sm" />)}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-footnote text-label-2">
           <span>Gen {generationFor(species.number) ?? "—"}</span>
@@ -412,7 +410,15 @@ const EncounterCard = ({ entry, onDetails }: { entry: EncounterEntry; onDetails:
   );
 };
 
-const EncounterDetails = ({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string | null) => void }) => {
+const EncounterDetails = ({
+  selectedId,
+  onSelect,
+  showTyping,
+}: {
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  showTyping: boolean;
+}) => {
   const { entries, setEntries, isGenerating } = React.useContext(EncounterContext);
   const idPrefix = React.useId();
   const selected = entries.find((entry) => entry.pokemon.id === selectedId);
@@ -472,7 +478,7 @@ const EncounterDetails = ({ selectedId, onSelect }: { selectedId: string | null;
               <p className="px-4 pt-3 text-footnote text-label-2">
                 Nature: {selected.pokemon.nature?.name ?? "—"} · Confidence: {selected.pokemon.nature?.confidence ?? "—"}
               </p>
-              <PokemonSheet showButtons="add" embedded />
+              <PokemonSheet showButtons="add" showTyping={showTyping} embedded />
             </StaticPokemonProvider>
           </div>
         </>
@@ -537,7 +543,13 @@ const EncounterHistory = () => {
   );
 };
 
-export const GeneratedEncounterList = () => {
+export const GeneratedEncounterList = ({
+  showTyping,
+  onShowTypingChange,
+}: {
+  showTyping: boolean;
+  onShowTypingChange: (showTyping: boolean) => void;
+}) => {
   const { entries, status } = React.useContext(EncounterContext);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const resultsRef = useScrollToDetail(entries.map((entry) => entry.pokemon.id).join(",") || undefined);
@@ -566,6 +578,9 @@ export const GeneratedEncounterList = () => {
           </button>
         </div>
       </div>
+      <div className="mb-3 max-w-sm">
+        <ToggleField label="Show Pokémon typing" checked={showTyping} onChange={onShowTypingChange} />
+      </div>
       <p role="status" className="mb-4 text-footnote text-label-2">
         {status}
       </p>
@@ -577,11 +592,11 @@ export const GeneratedEncounterList = () => {
       ) : (
         <div className="grid auto-rows-fr grid-cols-2 items-stretch gap-2 @[480px]:grid-cols-3 @[640px]:grid-cols-4 @[640px]:gap-3">
           {entries.map((entry) => (
-            <EncounterCard key={entry.pokemon.id} entry={entry} onDetails={() => setSelectedId(entry.pokemon.id)} />
+            <EncounterCard key={entry.pokemon.id} entry={entry} showTyping={showTyping} onDetails={() => setSelectedId(entry.pokemon.id)} />
           ))}
         </div>
       )}
-      <EncounterDetails selectedId={selectedId} onSelect={setSelectedId} />
+      <EncounterDetails selectedId={selectedId} onSelect={setSelectedId} showTyping={showTyping} />
     </section>
   );
 };
