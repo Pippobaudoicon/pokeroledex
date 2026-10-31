@@ -29,7 +29,13 @@ type PokemonSettings = Required<Omit<T.GeneratePokemonBody, keyof T.SelectionBod
   Pick<T.GeneratePokemonBody, "pokemonTemplateId">;
 type ItemSettings = Required<Omit<T.GenerateItemsBody, keyof T.SelectionBody>>;
 
-const GeneratedPokemonList = ({ showTyping }: { showTyping: boolean }) => {
+const GeneratedPokemonList = ({
+  showTyping,
+  onShowTypingChange,
+}: {
+  showTyping: boolean;
+  onShowTypingChange: (showTyping: boolean) => void;
+}) => {
   const { content, setContent } = useGeneratorContent();
   const [lockedPokemon, setLockedPokemon] = React.useState<T.Pokemon[]>([]);
   const generated = (content ?? []).filter((entry): entry is T.Pokemon => "pokemonTemplate" in entry);
@@ -42,6 +48,9 @@ const GeneratedPokemonList = ({ showTyping }: { showTyping: boolean }) => {
         <span className="text-footnote text-label-2" aria-live="polite">
           {pokemon.length} Pokémon
         </span>
+      </div>
+      <div className="mb-3 max-w-sm">
+        <ToggleField label="Show Pokémon typing" checked={showTyping} onChange={onShowTypingChange} />
       </div>
       {pokemon.length === 0 ? (
         <GeneratorEmpty
@@ -130,34 +139,38 @@ const GeneratedItemList = () => {
                 <Package aria-hidden className="size-4 text-label-2" />
                 {count} × {item.name}
               </p>
-              <ItemCard item={item} />
-              {cities.isLoading || me.isLoading ? (
-                <p role="status" className="mt-2 text-footnote text-label-2">Loading your cities…</p>
-              ) : cities.isError || me.isError ? (
-                <p role="alert" className="mt-2 text-footnote text-label-2">Your cities could not be loaded.</p>
-              ) : leaderCities.length ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <label className="sr-only" htmlFor={`generated-item-city-${item.id}`}>City for {item.name}</label>
-                  <select
-                    id={`generated-item-city-${item.id}`}
-                    value={selectedCities[item.id] ?? leaderCities[0].id}
-                    onChange={(event) => setSelectedCities((current) => ({ ...current, [item.id]: event.target.value }))}
-                    className={fieldClass}
-                  >
-                    {leaderCities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
-                  </select>
-                  <button
-                    type="button"
-                    className={button({ variant: "tinted", size: "sm" })}
-                    disabled={stock.isPending}
-                    onClick={() => stock.mutate({ cityId: selectedCities[item.id] ?? leaderCities[0].id, item, count })}
-                  >
-                    <Plus aria-hidden className="size-4" />Add to city
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-2 text-footnote text-label-2">You do not lead a city.</p>
-              )}
+              <ItemCard
+                item={item}
+                footer={
+                  cities.isLoading || me.isLoading ? (
+                    <p role="status" className="text-footnote text-label-2">Loading your cities…</p>
+                  ) : cities.isError || me.isError ? (
+                    <p role="alert" className="text-footnote text-label-2">Your cities could not be loaded.</p>
+                  ) : leaderCities.length ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="sr-only" htmlFor={`generated-item-city-${item.id}`}>City for {item.name}</label>
+                      <select
+                        id={`generated-item-city-${item.id}`}
+                        value={selectedCities[item.id] ?? leaderCities[0].id}
+                        onChange={(event) => setSelectedCities((current) => ({ ...current, [item.id]: event.target.value }))}
+                        className={fieldClass}
+                      >
+                        {leaderCities.map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
+                      </select>
+                      <button
+                        type="button"
+                        className={button({ variant: "tinted", size: "sm" })}
+                        disabled={stock.isPending}
+                        onClick={() => stock.mutate({ cityId: selectedCities[item.id] ?? leaderCities[0].id, item, count })}
+                      >
+                        <Plus aria-hidden className="size-4" />Add to city
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-footnote text-label-2">You do not lead a city.</p>
+                  )
+                }
+              />
             </div>
           ))}
         </div>
@@ -166,13 +179,7 @@ const GeneratedItemList = () => {
   );
 };
 
-const PokemonGenerator = ({
-  showTyping,
-  onShowTypingChange,
-}: {
-  showTyping: boolean;
-  onShowTypingChange: (showTyping: boolean) => void;
-}) => {
+const PokemonGenerator = () => {
   const { setContent } = useGeneratorContent();
   const { state: campaignFilter } = useCampaignFilter();
   const { data: templates, isFetching } = useDex();
@@ -269,7 +276,6 @@ const PokemonGenerator = ({
               checked={settings.rankOrBelow}
               onChange={(rankOrBelow) => setSettings({ ...settings, rankOrBelow })}
             />
-            <ToggleField label="Show Pokémon typing" checked={showTyping} onChange={onShowTypingChange} />
           </div>
         </Group>
         <Group title="Habitats">
@@ -405,7 +411,7 @@ const GeneratorPage = () => {
             {active === "encounters" ? (
               <EncounterGenerator />
             ) : active === "pokemon" ? (
-              <PokemonGenerator showTyping={showTyping} onShowTypingChange={setShowTyping} />
+              <PokemonGenerator />
             ) : active === "items" ? (
               <ItemGenerator />
             ) : (
@@ -416,7 +422,7 @@ const GeneratorPage = () => {
             {active === "encounters" ? (
               <GeneratedEncounterList />
             ) : active === "pokemon" ? (
-              <GeneratedPokemonList showTyping={showTyping} />
+              <GeneratedPokemonList showTyping={showTyping} onShowTypingChange={setShowTyping} />
             ) : active === "items" ? (
               <GeneratedItemList />
             ) : null}

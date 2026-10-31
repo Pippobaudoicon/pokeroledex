@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Item } from "../../shared/types";
 import { ItemCategory, ItemPocket } from "@/api/schemas";
 import { ItemImage } from "@/components/ItemImage";
@@ -51,9 +52,10 @@ export const getItemColor = (pocket: ItemPocket | null | undefined, category: It
 export interface ItemCardProps {
   item: Item;
   className?: string;
+  footer?: ReactNode;
 }
 
-export const ItemCard = ({ item, className }: ItemCardProps) => {
+export const ItemCard = ({ item, className, footer }: ItemCardProps) => {
   const facts = [
     ["Pocket", formatEnumName(item.pocket ?? "—")],
     ["Category", item.category ? formatEnumName(item.category) : "—"],
@@ -79,6 +81,7 @@ export const ItemCard = ({ item, className }: ItemCardProps) => {
         ))}
       </dl>
       {item.description && <p className="border-t border-hairline p-4 text-body whitespace-pre-wrap">{item.description}</p>}
+      {footer && <div className="border-t border-hairline p-4">{footer}</div>}
     </div>
   );
 };
