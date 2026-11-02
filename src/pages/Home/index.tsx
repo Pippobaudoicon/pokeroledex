@@ -138,15 +138,15 @@ export const HomePage = () => (
             ))}
             {section.title === "Tools" && (
               <IssueButton
-                trigger={
+                trigger={(open) => (
                   <Row
-                    onClick={() => {}}
+                    onClick={open}
                     title="Suggest a feature"
                     subtitle={<span className="line-clamp-1">Share an idea for improving PokéroleDex</span>}
                     icon={<RowIcon className="bg-[#a16207]"><Lightbulb /></RowIcon>}
                     aria-label="Suggest a feature"
                   />
-                }
+                )}
               />
             )}
           </Group>

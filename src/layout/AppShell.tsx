@@ -88,12 +88,12 @@ const Sidebar = ({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
       <div className="flex flex-col gap-0.5 border-t border-hairline p-3">
         <AppearanceSelect compact={collapsed} />
         <IssueButton
-          trigger={
-            <button type="button" title={collapsed ? "Suggest a feature" : undefined} className={cn("flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body text-label hover:bg-fill", collapsed && "justify-center px-0")}>
+          trigger={(open) => (
+            <button type="button" onClick={open} title={collapsed ? "Suggest a feature" : undefined} className={cn("flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-body text-label hover:bg-fill", collapsed && "justify-center px-0")}>
               <Lightbulb aria-hidden className="size-4" />
               <span className={collapsed ? "sr-only" : undefined}>Suggest a feature</span>
             </button>
-          }
+          )}
         />
         <AccountRow email={me?.email} collapsed={collapsed} />
       </div>

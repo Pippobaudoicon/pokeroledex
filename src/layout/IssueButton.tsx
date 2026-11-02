@@ -1,36 +1,24 @@
-import { Github } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../shared/types";
 import { ISSUE_DESCRIPTION_LIMIT, ISSUE_TITLE_LIMIT } from "../../shared/types";
 import { useIssuesControllerCreate } from "@/api/components";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { button } from "@/components/kit/button";
+import { Sheet } from "@/components/kit/Sheet";
 import { useToast } from "@/hooks/use-toast";
+import { isTouchScreen } from "@/lib/utils";
 
-const issueBody = `## Feature or improvement
-Describe what you would like to add or change.
-
-## Why it would help
-What problem would this solve during your game?
-
-## Expected behaviour
-Describe what should work when this is implemented.`;
+const labelClass = "flex flex-col gap-1.5 text-subhead font-medium";
+const fieldClass = "w-full rounded-xl bg-fill text-body font-normal outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus";
+// Both answers share the Worker's description limit, with room left for the headings.
+const ANSWER_LIMIT = ISSUE_DESCRIPTION_LIMIT / 2 - 50;
 
 // The Worker opens the issue with its own token (worker/github.ts), so no GitHub account is needed.
-export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
+export const IssueButton = ({ trigger }: { trigger: (open: () => void) => React.ReactNode }) => {
   const [open, setOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState("");
+  const [what, setWhat] = React.useState("");
+  const [why, setWhy] = React.useState("");
   const { toast } = useToast();
   const { mutate, isPending } = useIssuesControllerCreate({
     onSuccess: (issue) => {
@@ -44,7 +32,8 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
       });
       setOpen(false);
       setTitle("");
-      setDescription("");
+      setWhat("");
+      setWhy("");
     },
     onError: (error) => {
       toast({
@@ -55,78 +44,67 @@ export const IssueButton = ({ trigger }: { trigger?: React.ReactElement }) => {
       });
     },
   });
-  const isValid = title.trim() !== "" && description.trim() !== "";
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>
-        {trigger ?? (
-          <Button variant="beige" size="equalPadding" className="gap-2" title="Suggest a feature or report a problem">
-            <Github size={18} aria-hidden="true" />
-            Suggest a feature
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl border-hairline bg-surface text-label">
-        <DialogHeader>
-          <DialogTitle className="text-label">Suggest a feature</DialogTitle>
-          <DialogDescription className="text-label-2">
-            Your suggestion is published as a public GitHub issue. Your email is not included.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-4 p-1">
-          <div className="space-y-2">
-            <label htmlFor="issue-title" className="block font-move text-sm font-medium text-label">
-              Title *
-            </label>
-            <Input
-              id="issue-title"
+    <>
+      {trigger(() => setOpen(true))}
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+        title="Suggest a feature"
+        description="Posted as a public GitHub issue. Your email isn’t included."
+        initialExpanded
+      >
+        <form
+          className="flex flex-col gap-4 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const description = `## What it should do\n${what.trim()}${why.trim() && `\n\n## Why it would help\n${why.trim()}`}`;
+            mutate({ body: { title: title.trim(), description } });
+          }}
+        >
+          <label className={labelClass}>
+            Your idea
+            <input
+              autoFocus={!isTouchScreen()}
+              autoComplete="off"
               placeholder="A short summary"
               value={title}
               maxLength={ISSUE_TITLE_LIMIT}
-              onChange={(event) => {
-                setTitle(event.target.value);
-              }}
+              onChange={(event) => setTitle(event.target.value)}
+              className={`${fieldClass} h-11 px-3 lg:h-9 lg:rounded-lg`}
             />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="issue-description" className="block font-move text-sm font-medium text-label">
-              Description *
-            </label>
-            <Textarea
-              id="issue-description"
-              className="text-pokerole-black"
-              placeholder={issueBody}
-              value={description}
-              maxLength={ISSUE_DESCRIPTION_LIMIT}
-              rows={10}
-              onChange={(event) => {
-                setDescription(event.target.value);
-              }}
+          </label>
+          <label className={labelClass}>
+            What should it do?
+            <textarea
+              placeholder="Describe what you would like to add or change."
+              rows={5}
+              value={what}
+              maxLength={ANSWER_LIMIT}
+              onChange={(event) => setWhat(event.target.value)}
+              className={`${fieldClass} resize-y p-3`}
             />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setOpen(false);
-            }}
-            disabled={isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="green"
-            onClick={() => {
-              mutate({ body: { title: title.trim(), description: description.trim() } });
-            }}
-            disabled={isPending || !isValid}
-          >
-            {isPending ? "Sending..." : "Send"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </label>
+          <label className={labelClass}>
+            <span>
+              Why would it help? <span className="font-normal text-label-2">Optional</span>
+            </span>
+            <textarea
+              placeholder="What problem would this solve during your game?"
+              rows={3}
+              value={why}
+              maxLength={ANSWER_LIMIT}
+              onChange={(event) => setWhy(event.target.value)}
+              className={`${fieldClass} resize-y p-3`}
+            />
+          </label>
+          <button type="submit" disabled={isPending || !title.trim() || !what.trim()} className={button({ variant: "filled" })}>
+            {isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <Send aria-hidden className="size-4" />}
+            {isPending ? "Sending…" : "Send suggestion"}
+          </button>
+        </form>
+      </Sheet>
+    </>
   );
 };
