@@ -17,7 +17,7 @@ import { useDex } from "@/hooks/use-dex";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
 import { formatEnumName } from "@/lib/utils";
-import { EncounterContext, isShiny } from "./encounter-context";
+import { type AllyEntry, EncounterContext, isShiny } from "./encounter-context";
 
 const clampHp = (pokemon: T.Pokemon): T.Pokemon => {
   const maxHp = pokemon.pokemonTemplate.baseHp + getTotalStat(pokemon, "vitality");
@@ -171,12 +171,7 @@ export const EncounterDetails = ({
     value: turnOf(key),
     onChange: (value: number) => setTurns((turns) => ({ ...turns, [key]: value })),
   });
-  const removeAllyButton = selectedAlly && (
-    <button type="button" onClick={() => removeAlly(selectedAlly.key)} className={button({ variant: "destructive" })}>
-      <X aria-hidden className="size-4" />
-      Remove from encounter
-    </button>
-  );
+  const allyName = (ally: AllyEntry) => (ally.kind === "owned" ? ally.name : ally.pokemon.pokemonTemplate.name);
   return (
     <Sheet
       open={selectedEnemy !== undefined || selectedAlly !== undefined}
@@ -244,6 +239,18 @@ export const EncounterDetails = ({
                           turn={turnOf(ally.key)}
                         />
                       ),
+                    trailing:
+                      ally.key === selectedAlly?.key ? (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${allyName(ally)} from the encounter`}
+                          title="Remove from encounter"
+                          onClick={() => removeAlly(ally.key)}
+                          className="mr-1 grid size-9 shrink-0 place-items-center rounded-full text-label-2 transition-colors hover:bg-fill hover:text-tint lg:size-6"
+                        >
+                          <X aria-hidden className="size-4 lg:size-3.5" />
+                        </button>
+                      ) : undefined,
                   }))}
                   className="w-max min-w-full"
                 />
@@ -284,10 +291,13 @@ export const EncounterDetails = ({
                 pokemon={{ ...selectedEnemy.pokemon, shiny: isShiny(selectedEnemy) }}
                 onChange={isGenerating ? undefined : updatePokemon}
               >
-                <p className="px-4 pt-3 text-footnote text-label-2">
-                  Nature: {selectedEnemy.pokemon.nature?.name ?? "—"} · Confidence: {selectedEnemy.pokemon.nature?.confidence ?? "—"}
-                </p>
-                <PokemonSheet showButtons="add" showTyping={showTyping} embedded turn={turnControl(selectedEnemy.pokemon.id)} />
+                <PokemonSheet
+                  showButtons="add"
+                  showTyping={showTyping}
+                  embedded
+                  showHeader={false}
+                  turn={turnControl(selectedEnemy.pokemon.id)}
+                />
               </StaticPokemonProvider>
             </div>
           )}
@@ -295,15 +305,11 @@ export const EncounterDetails = ({
             <div key={selectedAlly.key} {...segmentPanelProps(idPrefix, selectedAlly.key)}>
               {selectedAlly.kind === "owned" ? (
                 <PokemonProvider id={selectedAlly.pokemonId}>
-                  <p className="px-4 pt-3 text-footnote text-label-2">Your Pokémon: HP, Will and edits are saved to My Pokémon.</p>
-                  <PokemonSheet embedded allowRemoval={false} turn={turnControl(selectedAlly.key)} extraActions={removeAllyButton} />
+                  <PokemonSheet embedded showHeader={false} showActions={false} turn={turnControl(selectedAlly.key)} />
                 </PokemonProvider>
               ) : (
                 <StaticPokemonProvider pokemon={selectedAlly.pokemon} onChange={updateAlly}>
-                  <p className="px-4 pt-3 text-footnote text-label-2">
-                    Nature: {selectedAlly.pokemon.nature?.name ?? "—"} · Confidence: {selectedAlly.pokemon.nature?.confidence ?? "—"}
-                  </p>
-                  <PokemonSheet showButtons="add" embedded turn={turnControl(selectedAlly.key)} extraActions={removeAllyButton} />
+                  <PokemonSheet showButtons="add" embedded showHeader={false} showActions={false} turn={turnControl(selectedAlly.key)} />
                 </StaticPokemonProvider>
               )}
             </div>

@@ -185,7 +185,7 @@ export const InfoGroups = ({ showTrainer = true }: { showTrainer?: boolean }) =>
           )}
         </FieldRow>
         <FieldRow label="Nature">
-          {editing ? <NaturePicker pokemon={pokemon} /> : <span className="text-body text-label-2">{pokemon.nature ? `${pokemon.nature.name} · ${pokemon.nature.nature}` : "None"}</span>}
+          {editing ? <NaturePicker pokemon={pokemon} /> : <span className="text-body text-label-2">{pokemon.nature ? `${pokemon.nature.name} · ${pokemon.nature.nature} · Confidence ${pokemon.nature.confidence}` : "None"}</span>}
         </FieldRow>
         {editing && (
           <FieldRow label="Shiny" htmlFor={shinyId}>

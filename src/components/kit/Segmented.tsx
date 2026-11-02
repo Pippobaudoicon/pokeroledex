@@ -15,7 +15,12 @@ export const Segmented = <V extends string>({
   className,
 }: {
   label: string;
-  options: { value: V; label: React.ReactNode }[];
+  options: {
+    value: V;
+    label: React.ReactNode;
+    /** A control shown at the right edge of the segment, e.g. a remove button. */
+    trailing?: React.ReactNode;
+  }[];
   value: V;
   onChange: (value: V) => void;
   idPrefix: string;
@@ -49,27 +54,39 @@ export const Segmented = <V extends string>({
           style={{ width: `calc((100% - 4px) / ${options.length})`, transform: `translateX(${index * 100}%)` }}
         />
       )}
-      {options.map((option, optionIndex) => (
-        <button
-          key={option.value}
-          ref={(element) => {
-            refs.current[optionIndex] = element;
-          }}
-          type="button"
-          role="tab"
-          id={`${idPrefix}-tab-${option.value}`}
-          aria-selected={option.value === value}
-          aria-controls={`${idPrefix}-panel-${option.value}`}
-          tabIndex={option.value === value || (index === -1 && optionIndex === 0) ? 0 : -1}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            "relative z-10 h-10 rounded-lg px-2 text-subhead font-semibold transition-colors duration-150 lg:h-7",
-            option.value === value ? "text-label" : "text-label-2 hover:text-label",
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
+      {options.map((option, optionIndex) => {
+        const tab = (
+          <button
+            key={option.value}
+            ref={(element) => {
+              refs.current[optionIndex] = element;
+            }}
+            type="button"
+            role="tab"
+            id={`${idPrefix}-tab-${option.value}`}
+            aria-selected={option.value === value}
+            aria-controls={`${idPrefix}-panel-${option.value}`}
+            tabIndex={option.value === value || (index === -1 && optionIndex === 0) ? 0 : -1}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "relative z-10 h-10 rounded-lg px-2 text-subhead font-semibold transition-colors duration-150 lg:h-7",
+              option.value === value ? "text-label" : "text-label-2 hover:text-label",
+              option.trailing !== undefined && "min-w-0 flex-1",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+        // Buttons cannot nest, so a trailing control sits beside its tab inside the same segment.
+        return option.trailing === undefined ? (
+          tab
+        ) : (
+          <div key={option.value} role="presentation" className="relative z-10 flex min-w-0 items-center">
+            {tab}
+            {option.trailing}
+          </div>
+        );
+      })}
     </div>
   );
 };
