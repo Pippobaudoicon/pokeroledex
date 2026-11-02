@@ -491,7 +491,7 @@ test('city residents are excluded from personal lists until explicitly assigned 
   } finally { h.close(); }
 });
 
-test('cities and residents cannot be deleted until residents are transferred or taken into ownership', async () => {
+test('a city cannot be deleted until its residents are transferred or taken into ownership', async () => {
   const h = harness();
   try {
     const a = (await h.request('cities', 'POST', { name: 'A' })).body;
@@ -501,7 +501,6 @@ test('cities and residents cannot be deleted until residents are transferred or 
     const second = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: b.id })).body;
     const third = (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, trainerId: trainer.id })).body;
     assert.equal((await h.request(`cities/${a.id}`, 'DELETE')).status, 409);
-    assert.equal((await h.request(`pokemon/${first.id}`, 'DELETE')).status, 409);
     assert.equal((await h.request(`pokemon/${first.id}`)).body.cityId, a.id);
     assert.equal((await h.request(`pokemon/${second.id}`)).body.cityId, b.id);
     assert.equal((await h.request(`pokemon/${third.id}`)).body.trainerId, trainer.id);
@@ -514,6 +513,36 @@ test('cities and residents cannot be deleted until residents are transferred or 
     assert.equal((await h.request('pokemon')).body.length, 3);
     assert.equal((await h.request(`pokemon/${first.id}`)).body.cityId, null);
     assert.equal((await h.request(`pokemon/${second.id}`)).body.trainerId, trainer.id);
+  } finally { h.close(); }
+});
+
+test('only the leader deletes a resident, which removes its sheet, its work and its slot', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    const path = `cities/${city.id}`;
+    const add = async () => (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, cityId: city.id })).body.id;
+    const worker = await add();
+    const other = await add();
+    await h.request(`${path}/members`, 'POST', { email: bob });
+    assert.equal((await h.request(path, 'PATCH', { assignments: { [worker]: 'skill:catalyst', [other]: 'skill:catalyst' } })).status, 200);
+
+    assert.equal((await h.request(`pokemon/${worker}`, 'DELETE', undefined, 'carol@example.com')).status, 404);
+    assert.equal((await h.request(`pokemon/${worker}`, 'DELETE')).status, 200);
+    assert.equal((await h.request(`pokemon/${worker}`)).status, 404);
+    let stored = (await h.request('cities')).body.find(entry => entry.id === city.id);
+    assert.deepEqual(stored.assignments, { [other]: 'skill:catalyst' });
+    assert.deepEqual(Object.keys(stored.bonuses), [other]);
+
+    assert.equal((await h.request(`pokemon/${other}`, 'DELETE', undefined, bob)).status, 403);
+    assert.equal((await h.request(`pokemon/${other}`)).status, 200);
+    assert.equal((await h.request(`pokemon/${other}`, 'DELETE')).status, 200);
+    stored = (await h.request('cities')).body.find(entry => entry.id === city.id);
+    assert.deepEqual(stored.assignments, {});
+    assert.equal((await h.request('pokemon/all')).body.length, 0);
+    await h.request(`${path}/members/${encodeURIComponent(bob)}`, 'DELETE');
+    assert.equal((await h.request(path, 'DELETE')).status, 200);
   } finally { h.close(); }
 });
 

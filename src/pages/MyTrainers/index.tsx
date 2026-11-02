@@ -206,12 +206,7 @@ const TrainerList = ({ compact = false, selectedId }: { compact?: boolean; selec
 export const MyTrainersPage = () => {
   const { id } = useParams();
   const desktop = useMediaQuery("(min-width: 1024px)");
-  if (!id)
-    return (
-      <div className="mx-auto max-w-6xl">
-        <TrainerList />
-      </div>
-    );
+  if (!id) return <TrainerList />;
   const sheet = (
     <TrainerProvider key={id} id={id} editingMode="view">
       <TrainerSheet />

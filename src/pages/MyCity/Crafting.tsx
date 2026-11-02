@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dices, Hammer, Keyboard, Lock, Minus, Plus, Trash2, Unlock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Dices, Hammer, Keyboard, Lock, Minus, Plus, Trash2, Unlock } from "lucide-react";
 import * as React from "react";
 import {
   CRAFTING_SKILLS, type City, type CityCraftResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrderBody,
@@ -36,6 +36,8 @@ const useReferenceItems = () => useQuery({
   queryFn: ({ signal }) => apiFetch<Item[]>({ url: "/items/campaigns", method: "post", body: { includeCore: true, campaignIds: [] }, signal }),
   staleTime: Infinity,
 });
+
+const PAGE_SIZE = 35;
 
 const replaceCity = (cities: City[] | undefined, city: City) => cities?.map(entry => entry.id === city.id ? city : entry);
 /** Dice typed in from a physical roll: every digit 1-6, with or without separators. */
@@ -331,6 +333,23 @@ const OrderPanel = ({ city, lines, usage, isLeader, leader, disabled, onSet, onO
   </section>;
 };
 
+const Pager = ({ page, pages, onChange }: { page: number; pages: number; onChange: (page: number) => void }) => {
+  const shown = [...new Set([0, page - 1, page, page + 1, pages - 1])].filter(number => number >= 0 && number < pages).sort((a, b) => a - b);
+  // The neighbouring page numbers step back and forward, so phones can do without the arrows.
+  return <nav aria-label="Recipe pages" className="flex flex-wrap items-center justify-center gap-1">
+    <button type="button" className={cn(button({ variant: "gray", size: "icon" }), "max-lg:size-9 max-sm:hidden")} aria-label="Previous page" disabled={page === 0} onClick={() => onChange(page - 1)}>
+      <ChevronLeft aria-hidden className="size-4" />
+    </button>
+    {shown.map((number, index) => <React.Fragment key={number}>
+      {index > 0 && number - shown[index - 1] > 1 && <span aria-hidden className="px-0.5 text-label-2">…</span>}
+      <button type="button" className={cn(button({ variant: number === page ? "filled" : "gray", size: "icon" }), "tabular-nums max-lg:size-9")} aria-label={`Page ${number + 1}`} aria-current={number === page ? "page" : undefined} onClick={() => onChange(number)}>{number + 1}</button>
+    </React.Fragment>)}
+    <button type="button" className={cn(button({ variant: "gray", size: "icon" }), "max-lg:size-9 max-sm:hidden")} aria-label="Next page" disabled={page === pages - 1} onClick={() => onChange(page + 1)}>
+      <ChevronRight aria-hidden className="size-4" />
+    </button>
+  </nav>;
+};
+
 /** Crafting tab of My City: the crafting order, research and storage (docs/crafting-plan.md). */
 export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer[] }) => {
   const client = useQueryClient();
@@ -342,6 +361,9 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const [skill, setSkill] = React.useState<CraftingSkill | "all">("all");
   const [showLocked, setShowLocked] = React.useState(false);
   const [pockets, setPockets] = React.useState<ItemPocket[]>([]);
+  const [page, setPage] = React.useState(0);
+  const listTop = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => setPage(0), [view, query, skill, showLocked, pockets]);
   const [shown, setShown] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
   const [detail, setDetail] = React.useState<Entry | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
@@ -417,6 +439,11 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     .filter(row => showLocked || !row.blockers.length)
     .sort((a, b) => Number(a.blockers.length > 0) - Number(b.blockers.length > 0) || Number(b.steps > 0) - Number(a.steps > 0) || byTier(a, b));
   const researchedCount = researchable.filter(entry => isUnlocked(entry.recipe, city.research)).length;
+  // Recipes and blockers are worked out here from the whole item list, but only one page is rendered.
+  const pages = Math.max(1, Math.ceil((view === "craft" ? craftRows : researchRows).length / PAGE_SIZE));
+  // Rows can leave the list while reading it, e.g. when research completes.
+  const currentPage = Math.min(page, pages - 1);
+  const onPage = <Row,>(rows: Row[]) => rows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
   const storedCount = city.inventory.reduce((total, entry) => total + entry.quantity, 0);
   const detailBlockers = detail ? blockersOf(detail) : [];
 
@@ -457,10 +484,10 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
               {formatEnumName(pocket)}
             </Chip>)}
           </div>
-          {view === "craft" ? <>
+          <div ref={listTop} className="scroll-mt-16 space-y-3">{view === "craft" ? <>
             <p className="text-footnote text-label-2">{craftableCount} of {entries.filter(entry => entry.recipe.craftable).length} recipes can be crafted now.</p>
             {!craftRows.length ? <p className="text-label-2">{showLocked ? "No recipes match." : "Nothing matches that the city can craft yet. Turn on Show locked recipes to see what each one needs."}</p> :
-              <ul className="divide-y divide-hairline">{craftRows.map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
+              <ul className="divide-y divide-hairline">{onPage(craftRows).map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
                 actions={!row.blockers.length && stepper(row)}>
                 <Blockers reasons={row.blockers} />
               </RecipeRow>)}</ul>}
@@ -468,7 +495,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
             <p className="text-footnote text-label-2">Research rolls {dice(city.skills.research)} (the Research skill); each success is one step. Tier 1 and 2 recipes need none. {researchedCount} of {researchable.length} recipes are researched.
               {isLeader && " As the leader you can also add or remove steps, or unlock a recipe outright, even if the city could not research it yet."}</p>
             {!researchRows.length ? <p className="text-label-2">{showLocked ? "Nothing left to research that matches." : "Nothing the city can research yet matches. Turn on Show locked recipes to see what each one needs."}</p> :
-              <ul className="divide-y divide-hairline">{researchRows.map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
+              <ul className="divide-y divide-hairline">{onPage(researchRows).map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
                 actions={isLeader && <div className="flex flex-wrap items-center gap-2">
                   {!row.blockers.length && <RollActions pool={city.skills.research} label="Research" disabled={pending}
                     onRoll={faces => research.mutate({ itemId: row.item.id, faces })} />}
@@ -483,6 +510,8 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
                 <Blockers reasons={row.blockers} />
               </RecipeRow>)}</ul>}
           </>}
+          {pages > 1 && <Pager page={currentPage} pages={pages} onChange={next => { setPage(next); listTop.current?.scrollIntoView(); }} />}
+          </div>
         </>}
     </div>
     <ItemDetail entry={detail} open={detailOpen} onOpenChange={setDetailOpen} blockers={detailBlockers}>

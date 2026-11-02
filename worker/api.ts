@@ -879,11 +879,15 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           writes.push(env.DB.prepare('DELETE FROM city_members WHERE city_id = ? AND email = ?').bind(action, owner));
           return reply({ id: action, left: true });
         }
-        if (db.pokemon.some(p => p.cityId === action)) fail(409, 'Move every resident to another city or take ownership before deleting this city.');
+        if (db.pokemon.some(p => p.cityId === action)) fail(409, 'Move or delete every resident before deleting this city.');
         if (db.cities[index].inventory?.length) fail(409, 'Withdraw the stored items before deleting this city.');
         writes.push(env.DB.prepare('DELETE FROM city_members WHERE city_id = ?').bind(action));
       }
-      if (name === 'pokemon' && db.pokemon[index].cityId) fail(409, 'City residents must be moved to another city or assigned to you, not deleted.');
+      if (name === 'pokemon') {
+        const { cityId } = db.pokemon[index];
+        if (cityId && (members.get(cityId) ?? [])[0] !== owner) fail(403, 'Only the city leader can delete residents.');
+        leaveCity(db.pokemon[index]);
+      }
       // Keep references valid when a campaign or referenced custom entry is in use.
       const removed: [string, Row][] = [[name, db[name][index]]];
       if (name === 'campaigns') for (const kind of referenceNames) {

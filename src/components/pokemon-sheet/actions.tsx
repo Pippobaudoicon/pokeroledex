@@ -14,15 +14,14 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 /** iOS-style alert to confirm deleting the Pokémon. */
-const DeleteAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: boolean; onOpenChange: (open: boolean) => void }) => {
+export const DeleteAlert = ({ pokemon, open, onOpenChange, onDeleted }: { pokemon: T.Pokemon; open: boolean; onOpenChange: (open: boolean) => void; onDeleted: () => void }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const { mutate, isPending } = usePokemonControllerRemove({
     onSuccess: () => {
       toast({ title: `${pokemon.nickname || pokemon.pokemonTemplate.name} was deleted` });
       onOpenChange(false);
-      navigate("/myPokemon");
+      onDeleted();
       queryClient.invalidateQueries({ queryKey: ["pokemon"] });
     },
     onError: () => toast({ title: "Couldn’t delete the Pokémon", description: "Check your connection and try again." }),
@@ -136,7 +135,7 @@ const SendAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: 
   );
 };
 
-const MenuItem = ({ icon, children, onClick, destructive = false, disabled = false }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; destructive?: boolean; disabled?: boolean }) => (
+export const MenuItem = ({ icon, children, onClick, destructive = false, disabled = false }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; destructive?: boolean; disabled?: boolean }) => (
   <button
     type="button"
     disabled={disabled}
@@ -156,6 +155,7 @@ const MenuItem = ({ icon, children, onClick, destructive = false, disabled = fal
 /** View mode: Edit, plus a menu with Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
 export const SheetActions = () => {
   const { updatedPokemon, editingMode, setEditingMode, savePokemon, cancelEdit } = usePokemon();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [evolving, setEvolving] = React.useState(false);
@@ -233,7 +233,7 @@ export const SheetActions = () => {
           </PopoverPrimitive.Content>
         </PopoverPrimitive.Portal>
       </PopoverPrimitive.Root>
-      <DeleteAlert pokemon={updatedPokemon} open={deleting} onOpenChange={setDeleting} />
+      <DeleteAlert pokemon={updatedPokemon} open={deleting} onOpenChange={setDeleting} onDeleted={() => navigate("/myPokemon")} />
       <SendAlert pokemon={updatedPokemon} open={sending} onOpenChange={setSending} />
       {evolving && <EvolutionSheet open={evolving} onOpenChange={setEvolving} />}
     </>
