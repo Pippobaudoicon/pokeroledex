@@ -154,7 +154,7 @@ const MenuItem = ({ icon, children, onClick, destructive = false, disabled = fal
 );
 
 /** View mode: Edit, plus a menu with Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
-export const SheetActions = () => {
+export const SheetActions = ({ allowRemoval = true }: { allowRemoval?: boolean }) => {
   const { updatedPokemon, editingMode, setEditingMode, savePokemon, cancelEdit } = usePokemon();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
@@ -209,7 +209,7 @@ export const SheetActions = () => {
                 Evolve or change form
               </MenuItem>
             )}
-            {!updatedPokemon.cityId && (
+            {allowRemoval && !updatedPokemon.cityId && (
               <MenuItem
                 icon={<Send />}
                 onClick={() => {
@@ -220,7 +220,7 @@ export const SheetActions = () => {
                 Send to another player
               </MenuItem>
             )}
-            {!updatedPokemon.cityId && <MenuItem
+            {allowRemoval && !updatedPokemon.cityId && <MenuItem
               icon={<Trash2 />}
               destructive
               onClick={() => {

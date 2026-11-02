@@ -52,7 +52,10 @@ export const MoveRow = ({
   const accuracyDice = poolDice(pools?.accuracy);
   const damageDice = poolDice(pools?.damage);
   const [damageReduction, setDamageReduction] = React.useState(0);
-  const damageRollDice = damageDice === undefined ? undefined : Math.max(0, damageDice - damageReduction);
+  // Defenses never reduce the damage pool below 1 die (see the Damage quick reference).
+  const maxDamageReduction = Math.max(0, (damageDice ?? 0) - 1);
+  const appliedDamageReduction = Math.min(damageReduction, maxDamageReduction);
+  const damageRollDice = damageDice === undefined ? undefined : damageDice - appliedDamageReduction;
   const [roll, setRoll] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
   const rollPool = (kind: DiceRollRequest["kind"], dice: number) => () =>
     setRoll((previous) => ({ title: move.name, kind, dice, key: (previous?.key ?? 0) + 1 }));
@@ -135,23 +138,23 @@ export const MoveRow = ({
                     <RollChip
                       dice={damageRollDice ?? 0}
                       label="damage"
-                      title={`${damageHint}${damageReduction ? `, minus ${damageReduction} dice` : ""}`}
+                      title={`${damageHint}${appliedDamageReduction ? `, minus ${appliedDamageReduction} dice` : ""}`}
                       onClick={rollPool("damage", damageRollDice ?? 0)}
                     />
-                    <span className="ml-1 text-label-2" aria-hidden="true">−</span>
+                    <span className="mx-1 text-label-2" aria-hidden="true">−</span>
                     <input
                       type="number"
                       min={0}
-                      max={damageDice}
+                      max={maxDamageReduction}
                       step={1}
-                      value={Math.min(damageReduction, damageDice)}
+                      value={appliedDamageReduction}
                       aria-label={`Damage dice to remove for ${move.name}`}
-                      title="Damage dice to remove"
+                      title="Damage dice to remove (the pool never drops below 1 die)"
                       onChange={(event) => {
                         const value = Number(event.currentTarget.value);
-                        setDamageReduction(Number.isFinite(value) ? Math.min(damageDice, Math.max(0, Math.floor(value))) : 0);
+                        setDamageReduction(Number.isFinite(value) ? Math.min(maxDamageReduction, Math.max(0, Math.floor(value))) : 0);
                       }}
-                      className="h-7 w-[2ch] border-0 bg-transparent p-0 text-center text-subhead tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-tint [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className="h-7 w-7 rounded-md border-0 bg-fill p-0 text-center text-subhead tabular-nums outline-none hover:bg-fill-strong focus-visible:ring-2 focus-visible:ring-tint [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                   </>
                 ) : (

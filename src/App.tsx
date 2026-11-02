@@ -11,7 +11,7 @@ import { AppShell } from "@/layout/AppShell";
 import { activeNav } from "@/layout/nav";
 import { CampaignsPage } from "@/pages/Campaigns";
 import { GeneratorsPage } from "@/pages/Generators";
-import { EncounterProvider } from "@/pages/Generators/Encounters";
+import { EncounterProvider } from "@/pages/Generators/encounter-context";
 import { HomePage } from "@/pages/Home";
 import { ImportPage } from "@/pages/Import";
 import { ItemsPage } from "@/pages/Items";

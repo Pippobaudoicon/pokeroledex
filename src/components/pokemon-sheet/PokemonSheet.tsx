@@ -167,8 +167,57 @@ const Vital = ({ property, label, max, color }: { property: "currentHp" | "curre
   );
 };
 
+/** Turn tracking for encounters: the Nth action in a round needs N successes, up to 5 actions. */
+export interface SheetTurn {
+  value: number;
+  onChange: (value: number) => void;
+}
+
+const MAX_TURN = 5;
+
+const turnHint = (turn: number) =>
+  turn === 0 ? "1st action: 1 success" : `Needs ${turn} ${turn === 1 ? "success" : "successes"}`;
+
+const TurnPool = ({ turn, name }: { turn: SheetTurn; name: string }) => (
+  <div
+    title="The Nth action in a round needs N successes"
+    className="col-span-5 flex items-center justify-between gap-2 border-t border-hairline px-3 py-2 @2xl:col-span-1 @2xl:flex-col @2xl:justify-center @2xl:gap-0.5 @2xl:border-t-0 @2xl:px-1 @2xl:py-2.5"
+  >
+    <dt className="text-caption font-medium text-label-2">
+      Turn <span className="@2xl:hidden">· {turnHint(turn.value)}</span>
+    </dt>
+    <dd className="flex flex-col items-center gap-0.5">
+      <span className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={`Decrease turn for ${name}`}
+          disabled={turn.value <= 0}
+          onClick={() => turn.onChange(Math.max(0, turn.value - 1))}
+          className="grid size-9 place-items-center rounded-full bg-fill transition-colors hover:bg-fill-strong active:scale-95 disabled:opacity-30 lg:size-6"
+        >
+          <Minus aria-hidden className="size-3.5" />
+        </button>
+        <output aria-live="polite" aria-label={`Turn for ${name}`} className="min-w-9 text-center text-headline font-semibold tabular-nums">
+          {turn.value}
+          <span className="text-caption font-normal text-label-2">/{MAX_TURN}</span>
+        </output>
+        <button
+          type="button"
+          aria-label={`Increase turn for ${name}`}
+          disabled={turn.value >= MAX_TURN}
+          onClick={() => turn.onChange(Math.min(MAX_TURN, turn.value + 1))}
+          className="grid size-9 place-items-center rounded-full bg-fill transition-colors hover:bg-fill-strong active:scale-95 disabled:opacity-30 lg:size-6"
+        >
+          <Plus aria-hidden className="size-3.5" />
+        </button>
+      </span>
+      <span className="hidden text-caption text-label-2 @2xl:block">{turnHint(turn.value)}</span>
+    </dd>
+  </div>
+);
+
 /** Pools rolled every round, worked out from the sheet (corebook p. 51). */
-const Pools = ({ pokemon }: { pokemon: T.Pokemon }) => {
+const Pools = ({ pokemon, turn }: { pokemon: T.Pokemon; turn?: SheetTurn }) => {
   const stat = (key: keyof T.Stats) => pokemon.stats[key];
   const strength = getTotalStat(pokemon, "strength");
   const special = getTotalStat(pokemon, "special");
@@ -181,17 +230,21 @@ const Pools = ({ pokemon }: { pokemon: T.Pokemon }) => {
     ["Sp. Def", String(getTotalStat(pokemon, "insight")), "Insight"],
   ];
   return (
-    <dl className="grid grid-cols-5 overflow-hidden rounded-2xl bg-surface shadow-card">
+    <dl className={cn("grid grid-cols-5 overflow-hidden rounded-2xl bg-surface shadow-card", turn && "@2xl:grid-cols-6")}>
       {pools.map(([label, value, formula]) => (
         <div
           key={label}
           title={formula}
-          className="flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0"
+          className={cn(
+            "flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0",
+            turn && "nth-5:border-r-0 @2xl:nth-5:border-r",
+          )}
         >
           <dt className="text-caption font-medium text-label-2">{label}</dt>
           <dd className="text-headline font-semibold tabular-nums">{value}</dd>
         </div>
       ))}
+      {turn && <TurnPool turn={turn} name={pokemon.nickname || pokemon.pokemonTemplate.name} />}
     </dl>
   );
 };
@@ -314,12 +367,21 @@ export const PokemonSheet = ({
   showTyping = true,
   back,
   embedded = false,
+  allowRemoval = true,
+  extraActions,
+  turn,
 }: {
   showButtons?: SheetButtons;
   showTyping?: boolean;
   back?: { to: string; label: string };
   /** Inside another page (generators): the top bar does not stick. */
   embedded?: boolean;
+  /** Offer Send and Delete in the actions menu of a saved Pokémon. */
+  allowRemoval?: boolean;
+  /** Shown next to the sheet's own actions while viewing. */
+  extraActions?: React.ReactNode;
+  /** Adds a turn counter next to the rolled pools. */
+  turn?: SheetTurn;
 }) => {
   const { updatedPokemon: pokemon, isLoading, isError, editingMode } = usePokemon();
   const [section, setSection] = React.useState<Section>("battle");
@@ -341,12 +403,16 @@ export const PokemonSheet = ({
       </div>
     );
 
+  // Generated Pokémon get "Add to My Pokémon" at the bottom of the sheet instead.
   const actions =
     showButtons === "edit" ? (
-      <SheetActions />
+      <>
+        {editingMode === "view" && extraActions}
+        <SheetActions allowRemoval={allowRemoval} />
+      </>
     ) : (
       <>
-        <AddToMyPokemon />
+        {extraActions}
         {showButtons === "addAndLock" && <LockButton />}
       </>
     );
@@ -391,7 +457,7 @@ export const PokemonSheet = ({
             <Vital property="currentWill" label="Will" max={getTotalStat(pokemon, "insight") + 3} color="var(--color-will)" />
           </div>
         </div>
-        <Pools pokemon={pokemon} />
+        <Pools pokemon={pokemon} turn={turn} />
         <Segmented
           label="Sheet section"
           idPrefix={`sheet-${pokemon.id}`}
@@ -424,6 +490,11 @@ export const PokemonSheet = ({
             <InfoGroups showTrainer={showButtons !== "addAndLock"} />
           </div>
         </div>
+        {showButtons !== "edit" && (
+          <div className="flex justify-end border-t border-hairline pt-4">
+            <AddToMyPokemon />
+          </div>
+        )}
       </div>
     </article>
   );
