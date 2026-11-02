@@ -132,6 +132,12 @@ export const MoveRow = ({
                 {" = "}
                 {damageDice !== undefined && damageHint ? (
                   <>
+                    <RollChip
+                      dice={damageRollDice ?? 0}
+                      label="damage"
+                      title={`${damageHint}${damageReduction ? `, minus ${damageReduction} dice` : ""}`}
+                      onClick={rollPool("damage", damageRollDice ?? 0)}
+                    />
                     <span className="ml-1 text-label-2" aria-hidden="true">−</span>
                     <input
                       type="number"
@@ -145,13 +151,7 @@ export const MoveRow = ({
                         const value = Number(event.currentTarget.value);
                         setDamageReduction(Number.isFinite(value) ? Math.min(damageDice, Math.max(0, Math.floor(value))) : 0);
                       }}
-                      className="h-9 w-9 rounded-md border border-hairline bg-fill px-1 text-center text-subhead tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-tint lg:h-7"
-                    />
-                    <RollChip
-                      dice={damageRollDice ?? 0}
-                      label="damage"
-                      title={`${damageHint}${damageReduction ? `, minus ${damageReduction} dice` : ""}`}
-                      onClick={rollPool("damage", damageRollDice ?? 0)}
+                      className="h-7 w-[2ch] border-0 bg-transparent p-0 text-center text-subhead tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-tint [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                   </>
                 ) : (

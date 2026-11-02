@@ -1,22 +1,25 @@
 import * as React from "react";
-import { ChevronDown, Copy, Lock, Sparkles, Tag, Unlock, X } from "lucide-react";
+import { ChevronDown, Copy, Lock, Plus, RotateCcw, Sparkles, Tag, Unlock, X } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { generationFor, isMythical } from "../../../shared/encounters";
 import { apiFetch } from "@/api/client";
+import { usePokemonControllerFindAllMinimal } from "@/api/components";
 import { LegendaryFilter, PokemonType, Rank, RankUpMethod } from "@/api/schemas";
 import { HabitatPicker } from "@/components/HabitatPicker";
 import { habitatName } from "../../../shared/habitats";
 import { button } from "@/components/kit/button";
 import { Stepper } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
+import { Picker } from "@/components/kit/Picker";
 import { RankBadge, RankBall, TypeDot, TypePill } from "@/components/kit/Pills";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
 import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
-import { StaticPokemonProvider } from "@/components/pokemon-sheet/context";
+import { PokemonProvider, StaticPokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
+import { useDex } from "@/hooks/use-dex";
 import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
@@ -28,6 +31,14 @@ interface EncounterEntry {
   locked: boolean;
   shinyRoll: [number, number];
 }
+
+/** Your side of the encounter: a Pokémon from My Pokémon (saved as you play), or any species generated for this encounter. */
+type AllyEntry =
+  | { key: string; kind: "owned"; pokemonId: string; name: string; image: string; shiny: boolean }
+  | { key: string; kind: "species"; pokemon: T.Pokemon };
+
+/** A Pokémon gets up to 5 actions per round; the Nth action needs N successes. */
+const MAX_TURN = 5;
 
 const rollShiny = (): [number, number] => [Math.floor(Math.random() * 20) + 1, Math.floor(Math.random() * 20) + 1];
 const isShiny = (entry: EncounterEntry) => entry.shinyRoll.every((die) => die === 20);
@@ -60,6 +71,11 @@ const EncounterContext = React.createContext<{
   setIsGenerating: (value: boolean) => void;
   status: string;
   setStatus: (value: string) => void;
+  allies: AllyEntry[];
+  setAllies: React.Dispatch<React.SetStateAction<AllyEntry[]>>;
+  /** Current turn per tab key (encounter Pokémon id or ally key); missing means 0. */
+  turns: Record<string, number>;
+  setTurns: React.Dispatch<React.SetStateAction<Record<string, number>>>;
 }>(null!);
 
 export const EncounterProvider = ({ children }: { children: React.ReactNode }) => {
@@ -68,6 +84,8 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
   const [settings, setSettings] = React.useState(defaultSettings);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [status, setStatus] = React.useState("Choose filters and generate an encounter.");
+  const [allies, setAllies] = React.useState<AllyEntry[]>([]);
+  const [turns, setTurns] = React.useState<Record<string, number>>({});
   return (
     <EncounterContext.Provider
       value={{
@@ -81,6 +99,10 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
         setIsGenerating,
         status,
         setStatus,
+        allies,
+        setAllies,
+        turns,
+        setTurns,
       }}
     >
       {children}
@@ -410,6 +432,150 @@ const EncounterCard = ({ entry, onDetails, showTyping }: { entry: EncounterEntry
   );
 };
 
+const clampHp = (pokemon: T.Pokemon): T.Pokemon => {
+  const maxHp = pokemon.pokemonTemplate.baseHp + getTotalStat(pokemon, "vitality");
+  return { ...pokemon, currentHp: Math.max(0, Math.min(maxHp, pokemon.currentHp)) };
+};
+
+const turnHint = (turn: number) =>
+  turn === 0
+    ? "No actions yet this round. The first action needs 1 success."
+    : `${turn === MAX_TURN ? "Last action this round" : "This action"} needs ${turn} ${turn === 1 ? "success" : "successes"}.`;
+
+const TurnTracker = ({ tabKey, name, children }: { tabKey: string; name: string; children?: React.ReactNode }) => {
+  const { turns, setTurns } = React.useContext(EncounterContext);
+  const turn = turns[tabKey] ?? 0;
+  return (
+    <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface p-3 shadow-card">
+      <div className="min-w-0">
+        <p className="text-headline font-semibold">Turn</p>
+        <p className="text-footnote text-label-2">{turnHint(turn)}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Stepper
+          label={`Turn for ${name}`}
+          value={turn}
+          min={0}
+          max={MAX_TURN}
+          display={
+            <>
+              {turn}
+              <span className="font-normal text-label-2"> / {MAX_TURN}</span>
+            </>
+          }
+          className="[&>output]:min-w-14"
+          onChange={(value) => setTurns((turns) => ({ ...turns, [tabKey]: value }))}
+        />
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const TabLabel = ({ index, name, image, shiny, turn }: { index: number; name: string; image: string; shiny?: boolean; turn: number }) => (
+  <span className="flex items-center justify-center gap-2">
+    <Sprite image={image} set="box" className="size-7" />
+    <span className="max-w-40 truncate">
+      {index + 1}. {name}
+    </span>
+    {shiny && <ShinyMark compact />}
+    <span className="font-normal whitespace-nowrap text-label-2 tabular-nums">· Turn {turn}</span>
+  </span>
+);
+
+const AddAllyPanel = ({ onAdded }: { onAdded: (key: string) => void }) => {
+  const { allies, setAllies, settings } = React.useContext(EncounterContext);
+  const { state: campaignFilter } = useCampaignFilter();
+  const { toast } = useToast();
+  const { data: owned, isFetching: ownedLoading } = usePokemonControllerFindAllMinimal({});
+  const { data: dex, isFetching: dexLoading } = useDex();
+  const [pending, setPending] = React.useState(false);
+  const ownedItems = React.useMemo(
+    () =>
+      [...(owned ?? [])]
+        .sort((first, second) => (first.name ?? "").localeCompare(second.name ?? ""))
+        .map((pokemon) => ({
+          value: pokemon.id,
+          label: pokemon.name,
+          detail: [formatEnumName(pokemon.rank), ...pokemon.types.map(formatEnumName)].join(" · "),
+        })),
+    [owned],
+  );
+  const speciesItems = React.useMemo(
+    () =>
+      (dex ?? []).map((species) => ({
+        value: species.id,
+        label: species.name,
+        detail: `#${species.dexID || species.number} · ${formatEnumName(species.recommendedRank)}`,
+      })),
+    [dex],
+  );
+  const addOwned = (id: string) => {
+    const pokemon = owned?.find((other) => other.id === id);
+    if (!pokemon) return;
+    const key = `ally-${pokemon.id}`;
+    if (!allies.some((ally) => ally.key === key))
+      setAllies((allies) => [...allies, { key, kind: "owned", pokemonId: pokemon.id, name: pokemon.name, image: pokemon.image, shiny: pokemon.shiny }]);
+    onAdded(key);
+  };
+  const addSpecies = async (id: string) => {
+    const species = dex?.find((other) => other.id === id);
+    if (!species) return;
+    setPending(true);
+    try {
+      const [pokemon] = await apiFetch<T.Pokemon[]>({
+        url: "/pokemon/generate",
+        method: "post",
+        body: {
+          pokemonTemplateId: species.id,
+          rank: species.recommendedRank === Rank.UNRANKED ? Rank.STARTER : species.recommendedRank,
+          numberToGenerate: 1,
+          seed: Date.now(),
+          rankUpMethod: settings.rankUpMethod,
+          campaignIds: campaignFilter.campaignIds,
+          includeCore: campaignFilter.includeCore,
+        } satisfies T.GeneratePokemonBody,
+      });
+      if (!pokemon) throw new Error("No Pokémon generated");
+      const key = `ally-${pokemon.id}`;
+      setAllies((allies) => [...allies, { key, kind: "species", pokemon }]);
+      onAdded(key);
+    } catch {
+      toast({ title: `Couldn’t add ${species.name}`, description: "Please try again." });
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <fieldset disabled={pending} aria-busy={pending} className="grid min-w-0 gap-2 sm:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-footnote text-label-2">From My Pokémon</span>
+        <Picker
+          label="Add from My Pokémon"
+          items={ownedItems}
+          value=""
+          onChange={addOwned}
+          placeholder={owned?.length === 0 ? "No Pokémon yet" : "Choose one of your Pokémon"}
+          loading={ownedLoading}
+          clearable={false}
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-footnote text-label-2">Any Pokémon by name</span>
+        <Picker
+          label="Add any Pokémon"
+          items={speciesItems}
+          value=""
+          onChange={addSpecies}
+          placeholder={pending ? "Adding…" : "Search a species"}
+          loading={dexLoading}
+          clearable={false}
+        />
+      </div>
+    </fieldset>
+  );
+};
+
 const EncounterDetails = ({
   selectedId,
   onSelect,
@@ -419,9 +585,11 @@ const EncounterDetails = ({
   onSelect: (id: string | null) => void;
   showTyping: boolean;
 }) => {
-  const { entries, setEntries, isGenerating } = React.useContext(EncounterContext);
+  const { entries, setEntries, isGenerating, allies, setAllies, turns, setTurns } = React.useContext(EncounterContext);
   const idPrefix = React.useId();
-  const selected = entries.find((entry) => entry.pokemon.id === selectedId);
+  const [adding, setAdding] = React.useState(false);
+  const selectedEnemy = entries.find((entry) => entry.pokemon.id === selectedId);
+  const selectedAlly = allies.find((ally) => ally.key === selectedId);
   const revealSelectedTab = React.useCallback(
     (element: HTMLDivElement | null) => {
       element?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -430,57 +598,167 @@ const EncounterDetails = ({
   );
   const updatePokemon = (changes: Partial<T.Pokemon>) => {
     setEntries((entries) =>
-      entries.map((entry) => {
-        if (entry.pokemon.id !== selectedId) return entry;
-        const pokemon = { ...entry.pokemon, ...changes };
-        const maxHp = pokemon.pokemonTemplate.baseHp + getTotalStat(pokemon, "vitality");
-        pokemon.currentHp = Math.max(0, Math.min(maxHp, pokemon.currentHp));
-        return { ...entry, pokemon };
-      }),
+      entries.map((entry) => (entry.pokemon.id === selectedId ? { ...entry, pokemon: clampHp({ ...entry.pokemon, ...changes }) } : entry)),
     );
   };
+  const updateAlly = (changes: Partial<T.Pokemon>) => {
+    setAllies((allies) =>
+      allies.map((ally) => (ally.key === selectedId && ally.kind === "species" ? { ...ally, pokemon: clampHp({ ...ally.pokemon, ...changes }) } : ally)),
+    );
+  };
+  const removeAlly = (key: string) => {
+    const index = allies.findIndex((ally) => ally.key === key);
+    const rest = allies.filter((ally) => ally.key !== key);
+    setAllies(rest);
+    setTurns(({ [key]: _removed, ...turns }) => turns);
+    onSelect(rest[Math.min(index, rest.length - 1)]?.key ?? entries[0]?.pokemon.id ?? null);
+  };
+  const turnOf = (key: string) => turns[key] ?? 0;
   return (
     <Sheet
-      open={selected !== undefined}
+      open={selectedEnemy !== undefined || selectedAlly !== undefined}
       onOpenChange={(open) => {
-        if (!open) onSelect(null);
+        if (open) return;
+        onSelect(null);
+        setAdding(false);
       }}
       title="Encounter details"
-      description="Switch Pokémon using the tabs. Tap a move to roll accuracy or damage."
+      description="Switch Pokémon using the tabs. Tap a move to roll accuracy or damage. Track each Pokémon's turn: the Nth action in a round needs N successes."
       initialExpanded
       className="lg:max-w-5xl"
     >
-      {selected && (
+      {(selectedEnemy || selectedAlly) && (
         <>
-          <div ref={revealSelectedTab} className="sticky top-0 z-20 overflow-x-auto border-b border-hairline bg-canvas p-3">
-            <Segmented
-              label="Encounter Pokémon"
-              idPrefix={idPrefix}
-              value={selected.pokemon.id}
-              onChange={onSelect}
-              options={entries.map((entry, index) => ({
-                value: entry.pokemon.id,
-                label: (
-                  <span className="flex items-center justify-center gap-2">
-                    <Sprite image={entry.pokemon.pokemonTemplate.image} set="box" className="size-7" />
-                    <span className="max-w-40 truncate">
-                      {index + 1}. {entry.pokemon.pokemonTemplate.name}
-                    </span>
-                    {isShiny(entry) && <ShinyMark compact />}
-                  </span>
-                ),
-              }))}
-              className="w-max min-w-full"
-            />
+          <div ref={revealSelectedTab} className="sticky top-0 z-20 flex flex-col gap-2 border-b border-hairline bg-canvas p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-footnote font-semibold text-label-2 uppercase">Your Pokémon</h3>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  aria-expanded={adding}
+                  onClick={() => setAdding(!adding)}
+                  className={button({ variant: adding ? "tinted" : "gray", size: "sm" })}
+                >
+                  <Plus aria-hidden className="size-3.5" strokeWidth={2.5} />
+                  Add Pokémon
+                </button>
+                <button
+                  type="button"
+                  disabled={Object.values(turns).every((turn) => turn === 0)}
+                  onClick={() => setTurns({})}
+                  className={button({ variant: "gray", size: "sm" })}
+                >
+                  <RotateCcw aria-hidden className="size-3.5" />
+                  Refresh round
+                </button>
+              </div>
+            </div>
+            {adding && (
+              <AddAllyPanel
+                onAdded={(key) => {
+                  onSelect(key);
+                  setAdding(false);
+                }}
+              />
+            )}
+            {allies.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Segmented
+                  label="Your Pokémon"
+                  idPrefix={idPrefix}
+                  value={selectedAlly?.key ?? ""}
+                  onChange={onSelect}
+                  options={allies.map((ally, index) => ({
+                    value: ally.key,
+                    label:
+                      ally.kind === "owned" ? (
+                        <TabLabel index={index} name={ally.name} image={ally.image} shiny={ally.shiny} turn={turnOf(ally.key)} />
+                      ) : (
+                        <TabLabel
+                          index={index}
+                          name={ally.pokemon.pokemonTemplate.name}
+                          image={ally.pokemon.pokemonTemplate.image}
+                          turn={turnOf(ally.key)}
+                        />
+                      ),
+                  }))}
+                  className="w-max min-w-full"
+                />
+              </div>
+            ) : (
+              !adding && <p className="text-footnote text-label-2">Add your Pokémon, or any species, to track them alongside the encounter.</p>
+            )}
+            <h3 className="mt-1 text-footnote font-semibold text-label-2 uppercase">Encounter Pokémon</h3>
+            {entries.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Segmented
+                  label="Encounter Pokémon"
+                  idPrefix={idPrefix}
+                  value={selectedEnemy?.pokemon.id ?? ""}
+                  onChange={onSelect}
+                  options={entries.map((entry, index) => ({
+                    value: entry.pokemon.id,
+                    label: (
+                      <TabLabel
+                        index={index}
+                        name={entry.pokemon.pokemonTemplate.name}
+                        image={entry.pokemon.pokemonTemplate.image}
+                        shiny={isShiny(entry)}
+                        turn={turnOf(entry.pokemon.id)}
+                      />
+                    ),
+                  }))}
+                  className="w-max min-w-full"
+                />
+              </div>
+            ) : (
+              <p className="text-footnote text-label-2">No encounter Pokémon.</p>
+            )}
           </div>
-          <div key={selected.pokemon.id} {...segmentPanelProps(idPrefix, selected.pokemon.id)}>
-            <StaticPokemonProvider pokemon={{ ...selected.pokemon, shiny: isShiny(selected) }} onChange={isGenerating ? undefined : updatePokemon}>
-              <p className="px-4 pt-3 text-footnote text-label-2">
-                Nature: {selected.pokemon.nature?.name ?? "—"} · Confidence: {selected.pokemon.nature?.confidence ?? "—"}
-              </p>
-              <PokemonSheet showButtons="add" showTyping={showTyping} embedded />
-            </StaticPokemonProvider>
-          </div>
+          {selectedEnemy && (
+            <div key={selectedEnemy.pokemon.id} {...segmentPanelProps(idPrefix, selectedEnemy.pokemon.id)}>
+              <StaticPokemonProvider
+                pokemon={{ ...selectedEnemy.pokemon, shiny: isShiny(selectedEnemy) }}
+                onChange={isGenerating ? undefined : updatePokemon}
+              >
+                <TurnTracker tabKey={selectedEnemy.pokemon.id} name={selectedEnemy.pokemon.pokemonTemplate.name} />
+                <p className="px-4 pt-3 text-footnote text-label-2">
+                  Nature: {selectedEnemy.pokemon.nature?.name ?? "—"} · Confidence: {selectedEnemy.pokemon.nature?.confidence ?? "—"}
+                </p>
+                <PokemonSheet showButtons="add" showTyping={showTyping} embedded />
+              </StaticPokemonProvider>
+            </div>
+          )}
+          {selectedAlly && (
+            <div key={selectedAlly.key} {...segmentPanelProps(idPrefix, selectedAlly.key)}>
+              <TurnTracker
+                tabKey={selectedAlly.key}
+                name={selectedAlly.kind === "owned" ? selectedAlly.name : selectedAlly.pokemon.pokemonTemplate.name}
+              >
+                <button
+                  type="button"
+                  onClick={() => removeAlly(selectedAlly.key)}
+                  className={button({ variant: "destructive", size: "sm" })}
+                >
+                  <X aria-hidden className="size-3.5" />
+                  Remove from encounter
+                </button>
+              </TurnTracker>
+              {selectedAlly.kind === "owned" ? (
+                <PokemonProvider id={selectedAlly.pokemonId}>
+                  <p className="px-4 pt-3 text-footnote text-label-2">Your Pokémon: HP, Will and edits are saved to My Pokémon.</p>
+                  <PokemonSheet embedded />
+                </PokemonProvider>
+              ) : (
+                <StaticPokemonProvider pokemon={selectedAlly.pokemon} onChange={updateAlly}>
+                  <p className="px-4 pt-3 text-footnote text-label-2">
+                    Nature: {selectedAlly.pokemon.nature?.name ?? "—"} · Confidence: {selectedAlly.pokemon.nature?.confidence ?? "—"}
+                  </p>
+                  <PokemonSheet showButtons="add" embedded />
+                </StaticPokemonProvider>
+              )}
+            </div>
+          )}
         </>
       )}
     </Sheet>

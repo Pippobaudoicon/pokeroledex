@@ -364,6 +364,8 @@ The Pokémon and item generators are local approximations: the original server's
 
 Cards support locking across rolls, removal, two-d20 shiny rolls, HP tracking, full sheets and all rank-eligible moves with calculated dice pools. History holds the last encounter's unique templates and excludes them from the next roll; remove individual entries or clear history to allow them again. Copy exports the current encounter. Results, HP, shiny status and history last until you leave the generator screen or reload. All three generators use a fresh seed for each generation; manual seed selection is not available. Shiny rolls remain independent.
 
+The encounter details sheet has a **Your Pokémon** tablist above the encounter tablist. **Add Pokémon** adds one of My Pokémon (its live sheet: HP, Will and edits are saved to My Pokémon) or any species by name (generated at its recommended rank, kept only for the encounter). Every tab shows the Pokémon's turn (`1. Obstagoon · Turn 2`); set it in the sheet with the turn stepper, 0–5, where the Nth action in a round needs N successes. **Refresh round** resets every turn to 0.
+
 ## What was recovered
 
 The original source code, server and source maps were not available. The frontend was rebuilt from the deployed production bundle: bundled libraries were replaced by npm packages pinned to the versions found in it, and the application code was split into modules, renamed and typed. Every screen was compared against the original with screenshots and smoke flows. Some of the original's own bugs remain: for example, a new trainer does not save the chosen nature, and error toasts never show the server's message. Comments in the code mark these quirks.
