@@ -177,7 +177,7 @@ The **Crafting** tab turns the city's skills into items (rules in
   needs city rank N, Starter to Champion), how much of its skill each item uses
   (the tier's effort: 1 to 4), and any assist skill or Catalyst type it needs.
   **Show locked recipes** adds the others with what each still needs. Long lists
-  show 20 recipes per page. Select an
+  show 35 recipes per page, with numbered pages to jump between. Select an
   item to read its description. Any member adds items to the **crafting order**
   and takes them out again: each crafting skill's value is how much of the order
   its recipes can fill (Apothecary 3 holds three tier 1 Apothecary items, or one

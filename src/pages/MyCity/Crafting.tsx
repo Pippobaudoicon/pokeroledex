@@ -37,7 +37,7 @@ const useReferenceItems = () => useQuery({
   staleTime: Infinity,
 });
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 35;
 
 const replaceCity = (cities: City[] | undefined, city: City) => cities?.map(entry => entry.id === city.id ? city : entry);
 /** Dice typed in from a physical roll: every digit 1-6, with or without separators. */
@@ -333,16 +333,22 @@ const OrderPanel = ({ city, lines, usage, isLeader, leader, disabled, onSet, onO
   </section>;
 };
 
-const Pager = ({ page, pages, onChange }: { page: number; pages: number; onChange: (page: number) => void }) =>
-  <nav aria-label="Recipe pages" className="flex items-center justify-center gap-3">
-    <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label="Previous page" disabled={page === 0} onClick={() => onChange(page - 1)}>
+const Pager = ({ page, pages, onChange }: { page: number; pages: number; onChange: (page: number) => void }) => {
+  const shown = [...new Set([0, page - 1, page, page + 1, pages - 1])].filter(number => number >= 0 && number < pages).sort((a, b) => a - b);
+  // The neighbouring page numbers step back and forward, so phones can do without the arrows.
+  return <nav aria-label="Recipe pages" className="flex flex-wrap items-center justify-center gap-1">
+    <button type="button" className={cn(button({ variant: "gray", size: "icon" }), "max-lg:size-9 max-sm:hidden")} aria-label="Previous page" disabled={page === 0} onClick={() => onChange(page - 1)}>
       <ChevronLeft aria-hidden className="size-4" />
     </button>
-    <span className="text-subhead tabular-nums text-label-2" aria-live="polite">Page {page + 1} of {pages}</span>
-    <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label="Next page" disabled={page === pages - 1} onClick={() => onChange(page + 1)}>
+    {shown.map((number, index) => <React.Fragment key={number}>
+      {index > 0 && number - shown[index - 1] > 1 && <span aria-hidden className="px-0.5 text-label-2">…</span>}
+      <button type="button" className={cn(button({ variant: number === page ? "filled" : "gray", size: "icon" }), "tabular-nums max-lg:size-9")} aria-label={`Page ${number + 1}`} aria-current={number === page ? "page" : undefined} onClick={() => onChange(number)}>{number + 1}</button>
+    </React.Fragment>)}
+    <button type="button" className={cn(button({ variant: "gray", size: "icon" }), "max-lg:size-9 max-sm:hidden")} aria-label="Next page" disabled={page === pages - 1} onClick={() => onChange(page + 1)}>
       <ChevronRight aria-hidden className="size-4" />
     </button>
   </nav>;
+};
 
 /** Crafting tab of My City: the crafting order, research and storage (docs/crafting-plan.md). */
 export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer[] }) => {
