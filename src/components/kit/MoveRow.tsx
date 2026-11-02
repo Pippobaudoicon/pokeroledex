@@ -51,6 +51,8 @@ export const MoveRow = ({
   const damageHint = pools && pools.damage !== "—" ? `${pools.damageBreakdown} = ${pools.damage} dice` : undefined;
   const accuracyDice = poolDice(pools?.accuracy);
   const damageDice = poolDice(pools?.damage);
+  const [damageReduction, setDamageReduction] = React.useState(0);
+  const damageRollDice = damageDice === undefined ? undefined : Math.max(0, damageDice - damageReduction);
   const [roll, setRoll] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
   const rollPool = (kind: DiceRollRequest["kind"], dice: number) => () =>
     setRoll((previous) => ({ title: move.name, kind, dice, key: (previous?.key ?? 0) + 1 }));
@@ -128,8 +130,30 @@ export const MoveRow = ({
             {pools && pools.damage !== "—" && (
               <>
                 {" = "}
-                {damageDice && damageHint ? (
-                  <RollChip dice={damageDice} label="damage" title={damageHint} onClick={rollPool("damage", damageDice)} />
+                {damageDice !== undefined && damageHint ? (
+                  <>
+                    <span className="ml-1 text-label-2" aria-hidden="true">−</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={damageDice}
+                      step={1}
+                      value={Math.min(damageReduction, damageDice)}
+                      aria-label={`Damage dice to remove for ${move.name}`}
+                      title="Damage dice to remove"
+                      onChange={(event) => {
+                        const value = Number(event.currentTarget.value);
+                        setDamageReduction(Number.isFinite(value) ? Math.min(damageDice, Math.max(0, Math.floor(value))) : 0);
+                      }}
+                      className="h-9 w-9 rounded-md border border-hairline bg-fill px-1 text-center text-subhead tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-tint lg:h-7"
+                    />
+                    <RollChip
+                      dice={damageRollDice ?? 0}
+                      label="damage"
+                      title={`${damageHint}${damageReduction ? `, minus ${damageReduction} dice` : ""}`}
+                      onClick={rollPool("damage", damageRollDice ?? 0)}
+                    />
+                  </>
                 ) : (
                   `${pools.damage} dice`
                 )}
@@ -147,8 +171,8 @@ export const MoveRow = ({
           key={roll.key}
           request={roll}
           onClose={() => setRoll(null)}
-          next={roll.kind === "accuracy" && damageDice ? `Roll damage (${damageDice} dice)` : undefined}
-          onNext={damageDice ? () => rollPool("damage", damageDice)() : undefined}
+          next={roll.kind === "accuracy" && damageRollDice !== undefined ? `Roll damage (${damageRollDice} dice)` : undefined}
+          onNext={damageRollDice !== undefined ? () => rollPool("damage", damageRollDice)() : undefined}
         />
       )}
     </li>
