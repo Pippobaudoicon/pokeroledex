@@ -40,7 +40,7 @@ const invalidateTemplateQueries = (queryClient: QueryClient) => {
   });
 };
 
-// apiFetch errors carry no payload, so this is always the fallback (kept from the hosted build).
+// apiFetch errors carry no payload, so this is always the fallback.
 const errorDescription = (error: ApiFetchError) =>
   (error as Partial<T.ApiError>).payload ?? "An error occurred";
 

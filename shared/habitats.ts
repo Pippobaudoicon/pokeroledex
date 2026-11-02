@@ -94,7 +94,7 @@ export const HABITAT_ALIASES = {
   ULTRA_RUIN: 'OTHER_DIMENSIONS',
 } as const satisfies Record<string, SpecificHabitat>;
 
-/** Legacy values remain readable in captured snapshots and saved campaign templates. */
+/** Legacy values remain readable in the base data and saved campaign templates. */
 export type Habitat = SpecificHabitat | keyof typeof HABITAT_ALIASES;
 
 export const HABITAT_MACROS = {

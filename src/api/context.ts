@@ -10,9 +10,9 @@ export interface QueryOperation {
 
 export function useApiContext<TQueryOptions extends object>(queryOptions?: TQueryOptions) {
   return {
-    // Hosted builds sent an Auth0 bearer token here; the local API needs none.
+    // Cloudflare Access handles login, so requests need no auth headers.
     fetcherOptions: { headers: {} } as FetcherExtraProps,
-    // This overrides any caller `enabled: false`, so every query runs (the hosted build only waited for the token).
+    // This overrides any caller `enabled: false`, so every query runs.
     queryOptions: { ...queryOptions, enabled: true },
     queryKeyFn,
   };

@@ -1,5 +1,5 @@
 // Read-only reference data, served as static assets by scripts/build-reference.ts and
-// parsed once per isolate. Templates are hydrated back to the captured API shape;
+// parsed once per isolate. Templates are hydrated back to their full shape;
 // they share the move and ability objects, so this costs little extra memory.
 import type { Ability, CompactPokemonTemplate, Item, Move, Nature, PokemonTemplate, RankUpTable } from '../shared/types.ts';
 

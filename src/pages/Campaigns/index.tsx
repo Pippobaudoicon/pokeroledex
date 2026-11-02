@@ -226,7 +226,7 @@ const CampaignList = ({
   const [search, setSearch] = React.useState("");
   const filteredCampaigns = React.useMemo(
     () =>
-      // Sorts the cached query data in place, as the original did.
+      // Sorts the cached query data in place.
       campaigns
         ?.sort((a, b) => a.name.localeCompare(b.name))
         .filter((campaign) =>

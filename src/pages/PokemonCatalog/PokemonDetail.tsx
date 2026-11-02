@@ -229,7 +229,7 @@ const Overview = ({ template, dex }: { template: Summary; dex: Summary[] }) => (
         {template.habitatProvenance && (
           <Row title="Habitat source" subtitle={
             <span>
-              {template.habitatProvenance.status === "needs-review" ? "Original API habitats · awaiting review" :
+              {template.habitatProvenance.status === "needs-review" ? "Default habitats · awaiting review" :
                 template.habitatProvenance.status === "inherited" ? "Bulbapedia · inherited from species" :
                   template.habitatProvenance.status === "not-applicable" ? "Not applicable" : "Bulbapedia"}
               {template.habitatProvenance.source && (

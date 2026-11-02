@@ -265,7 +265,7 @@ const CreateItemDialog = ({ trigger }: { trigger: React.ReactNode }) => {
       });
       return;
     }
-    // Sent exactly as the hosted build did: capitalised `PMDPrice` (the Worker
+    // Sent with a capitalised `PMDPrice` (the Worker
     // maps it to `pmdPrice`). A non-literal body skips TypeScript's
     // excess-property check for that key.
     const body = {
@@ -359,7 +359,7 @@ const EditItemDialog = ({
       description: item.description ?? "",
       oneUse: item.oneUse ?? false,
       pmd: item.PMD ?? false,
-      // Only `undefined` is checked: a null price throws here, as in the original.
+      // Only `undefined` is checked: a null price throws here.
       trainerPrice:
         item.trainerPrice !== undefined ? item.trainerPrice!.toString() : "",
       pmdPrice: item.pmdPrice !== undefined ? item.pmdPrice!.toString() : "",
@@ -547,7 +547,7 @@ export const CampaignItems = () => {
                 <TableRow key={item.id}>
                   <TableCell>{item.name}</TableCell>
                   <TableCell>
-                    {/* Only `undefined` is checked: a null category throws, as in the original. */}
+                    {/* Only `undefined` is checked: a null category throws. */}
                     {item.category !== undefined && (
                       <Badge variant="outline">
                         {item.category!.replace(/_/g, " ")}

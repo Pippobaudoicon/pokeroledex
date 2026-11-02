@@ -33,8 +33,7 @@ function fail(status: number, message: string): never {
   throw new HttpError(status, message);
 }
 
-// The server implementation was not published. These seeded local generators use
-// the recovered data and rank point budgets, not the original selection algorithm.
+// Seeded generators that pick from the reference data and rank point budgets.
 function randomSource(seed: unknown) {
   let state = Number(seed) >>> 0 || 1;
   return () => {
@@ -110,7 +109,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
     // Give one of your own Pokemon (not a city resident) to a player who already has records or
     // a city here. It leaves your trainers; it gets a new id if theirs is taken, as two people
-    // can import the same campaign from pokeroledex.nl.
+    // can import the same campaign.
     if (name === 'pokemon' && action && id === 'send' && method === 'POST') {
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
       if (email === owner) fail(400, 'This Pokemon is already yours.');

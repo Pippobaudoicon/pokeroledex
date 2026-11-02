@@ -1,7 +1,7 @@
 -- Records belong to the email Cloudflare Access logged the request in with
 -- (worker/access.ts). Records from before logins belong to 'local-user', which is
 -- also the only user of `pnpm dev`. Ids stay unique per owner, so two people can
--- import the same shared campaign from pokeroledex.nl.
+-- import the same shared campaign.
 CREATE TABLE records_by_owner (
   seq INTEGER PRIMARY KEY,
   owner TEXT NOT NULL,

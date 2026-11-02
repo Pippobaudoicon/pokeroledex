@@ -103,7 +103,7 @@ function hasListChanges(base: { id: string }[], updated: { id: string }[]) {
   for (let i = 0; i < base.length; i++) if (base[i].id !== updated[i].id) return true;
   return false;
 }
-/** A cleared nature leaves natureId undefined, which (like the original) does not count as an update. */
+/** A cleared nature leaves natureId undefined, which does not count as an update. */
 function hasUpdates(body: T.UpdateTrainerBody) {
   return Object.entries(body).some(([key, value]) => key !== "id" && value !== undefined);
 }
@@ -179,7 +179,7 @@ export const TrainerProvider = ({
   };
   const updateTrainer = (changes: Partial<EditableTrainer>) => {
     if (updatedTrainer === undefined) return;
-    // Spreads even if the queued state is undefined, exactly as the original did.
+    // Spreads even if the queued state is undefined.
     setUpdatedTrainer((current) => ({ ...current, ...changes }) as EditableTrainer);
   };
   const setEditingMode = (mode: EditingMode) => {

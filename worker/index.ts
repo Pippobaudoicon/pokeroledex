@@ -63,7 +63,7 @@ export default {
     const type = url.pathname.startsWith('/rulebook/') && rulebookType(key);
     if (type) return rulebook(request, env, key, type);
     if (url.pathname.startsWith('/images/pokemon/BoxSprites/')) {
-      // Some newer forms have no box sprite on the original site.
+      // Some newer forms have no box sprite.
       const book = await env.ASSETS.fetch(new Request(new URL(url.pathname.replace('/BoxSprites/', '/BookSprites/'), url), request));
       if (book.ok) return book;
     }

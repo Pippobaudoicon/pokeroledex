@@ -20,7 +20,7 @@ test('replacement overrides rather than merges habitats, preserving unrelated fi
   assert.deepEqual(template.habitats, ['CITIES']);
 });
 
-test('review entries retain original API habitats and inherited entries expose their origin', () => {
+test('review entries keep default habitats and inherited entries expose their origin', () => {
   const review = { ...entry, status: 'needs-review', habitats: [], reviewReason: 'Unclear habitat' };
   assert.deepEqual(replaceHabitats([template], [review])[0].habitats, ['URBAN_AREAS']);
   const inherited = { ...entry, status: 'inherited', inheritedFrom: 'Example' };
@@ -179,7 +179,7 @@ test('eight macro habitats partition the 31 canonical specifics with no aliases 
   assert.ok(Object.keys(HABITAT_ALIASES).every(id => !Object.hasOwn(HABITATS, id)));
 });
 
-test('synonyms normalize idempotently and deduplicate, including all captured legacy categories', () => {
+test('synonyms normalize idempotently and deduplicate, including all legacy categories', () => {
   const examples = [
     [['FORESTS', 'WOODLANDS', 'TEMPERATE_DECIDUOUS_FORESTS'], ['FORESTS']],
     [['PLAINS', 'PRAIRIES', 'SAVANNAS', 'GRASSLANDS_SAVANNAS_PLAINS_AND_PRAIRIES'], ['GRASSLANDS']],

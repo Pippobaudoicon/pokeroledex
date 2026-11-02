@@ -404,7 +404,7 @@ export const PokemonTemplateForm = ({
               Max
             </Text>
             {ATTRIBUTES.map((attribute) => (
-              // Unkeyed fragment kept from the hosted build (dev-only missing-key warning).
+              // Unkeyed fragment (dev-only missing-key warning).
               <>
                 <Text
                   key={`${attribute}-label`}
@@ -592,7 +592,7 @@ export const PokemonTemplateForm = ({
                 <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
                   <div className="col-span-1 md:col-span-3">
                     <Combobox
-                      // The current target is appended as an extra item (kept from the hosted build).
+                      // The current target is appended as an extra item.
                       items={[
                         ...templateOptions,
                         { label: evolution.targetId, value: evolution.targetId },

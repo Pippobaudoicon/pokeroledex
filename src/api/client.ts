@@ -6,7 +6,7 @@ export interface LocalUser {
   nickname: string;
 }
 
-// Hosted builds used Auth0; locally there is always one signed-in user.
+// Cloudflare Access handles login in front of the site, so the client always has one signed-in user.
 export const localAuth = {
   isAuthenticated: true,
   isLoading: false,

@@ -113,8 +113,8 @@ export async function captureHabitats(refresh = false): Promise<void> {
           sections: [...new Set(selected.map(entry => entry.section))].sort(),
         } } : {}),
         ...(inherited ? { inheritedFrom: species } : {}),
-        ...(!habitats.length ? { reviewReason: article.missing ? 'Article not found; original API habitats retained.' :
-          'No unambiguous habitat statement matched; original API habitats retained.' } : {}),
+        ...(!habitats.length ? { reviewReason: article.missing ? 'Article not found; default habitats kept.' :
+          'No unambiguous habitat statement matched; default habitats kept.' } : {}),
       });
     }
   }

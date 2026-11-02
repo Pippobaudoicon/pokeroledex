@@ -69,7 +69,7 @@ const EmptyState = () => (
     <Pokeball className="size-14 text-tint" strokeWidth={5} />
     <h2 className="text-title-3 font-semibold">No Pokémon yet</h2>
     <p className="max-w-sm text-subhead text-label-2">
-      Every Pokémon you add gets a sheet with HP, Will, stats and moves with their dice pools. Find one in the Pokédex, or bring your collection over from pokeroledex.nl.
+      Every Pokémon you add gets a sheet with HP, Will, stats and moves with their dice pools. Find one in the Pokédex, or import your collection.
     </p>
     <div className="mt-2 flex flex-wrap justify-center gap-2">
       <Link to="/pokemon" className={button({ variant: "filled" })}>

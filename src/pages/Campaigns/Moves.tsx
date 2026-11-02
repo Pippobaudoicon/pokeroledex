@@ -301,7 +301,7 @@ const CreateMoveDialog = ({ trigger }: { trigger: React.ReactNode }) => {
       });
       return;
     }
-    // Sent exactly as the hosted build did: `_id` and capitalised `Category`
+    // Sent with `_id` and capitalised `Category`
     // (the Worker maps `Category` to `category`). A non-literal body skips
     // TypeScript's excess-property check for those two keys.
     const body = {

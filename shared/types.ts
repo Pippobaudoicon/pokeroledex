@@ -1,5 +1,5 @@
 // Domain and API types shared by the frontend and the Worker. Shapes are taken from
-// data/reference/*.json (captured from pokeroledex.nl) and the local API in worker/api.ts.
+// data/reference/*.json and the local API in worker/api.ts.
 import type { Habitat, HabitatFilter, PokemonHabitatEntry } from './habitats.ts';
 export type { Habitat } from './habitats.ts';
 

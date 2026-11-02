@@ -14,10 +14,10 @@ for (const name of ['natures', 'abilities', 'moves', 'items', 'rankup-attributes
   writeFileSync(new URL(`${name}.json`, target), JSON.stringify(JSON.parse(readFileSync(new URL(`${name}.json`, source), 'utf8'))));
 }
 
-const captured: PokemonTemplate[] = JSON.parse(readFileSync(new URL('pokemon-templates.json', source), 'utf8'));
+const base: PokemonTemplate[] = JSON.parse(readFileSync(new URL('pokemon-templates.json', source), 'utf8'));
 const habitats: PokemonHabitatEntry[] = JSON.parse(readFileSync(new URL('pokemon-habitats.json', source), 'utf8'));
 const normalized = habitats.map(entry => ({ ...entry, habitats: normalizeHabitats(entry.habitats) }));
-const templates = replaceHabitats(captured, habitats);
+const templates = replaceHabitats(base, habitats);
 const catalog = habitatCatalog(templates);
 const macros = habitatMacroCatalog(templates);
 writeFileSync(new URL('pokemon-habitats.json', source), JSON.stringify(normalized, null, 2) + '\n');

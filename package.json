@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.11.1",
   "type": "module",
-  "description": "PokéroleDex recovery as a React + TypeScript app on Cloudflare Workers",
+  "description": "PokéroleDex: a companion app for the Pokérole tabletop RPG, on Cloudflare Workers",
   "scripts": {
     "dev": "node scripts/build-reference.ts && wrangler d1 migrations apply pokeroledex --local && vite",
     "dev:offline": "pnpm dev --mode offline",
