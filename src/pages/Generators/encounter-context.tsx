@@ -46,7 +46,7 @@ export const EncounterContext = React.createContext<{
   setStatus: (value: string) => void;
   allies: AllyEntry[];
   setAllies: React.Dispatch<React.SetStateAction<AllyEntry[]>>;
-  /** Current turn per tab key (encounter Pokémon id or ally key); missing means 0. */
+  /** Current turn (1–5) per tab key (encounter Pokémon id or ally key); missing means 1. */
   turns: Record<string, number>;
   setTurns: React.Dispatch<React.SetStateAction<Record<string, number>>>;
 }>(null!);

@@ -173,14 +173,14 @@ export interface SheetTurn {
   onChange: (value: number) => void;
 }
 
+const MIN_TURN = 1;
 const MAX_TURN = 5;
 
-const turnHint = (turn: number) =>
-  turn === 0 ? "Next needs 1 success" : `Needs ${turn} ${turn === 1 ? "success" : "successes"}`;
+const turnHint = (turn: number) => `Needs ${turn} ${turn === 1 ? "success" : "successes"}`;
 
-/** Sits next to HP and Will: actions taken this round, as − value + with one segment per action. */
+/** Sits next to HP and Will: the action this round (1–5), as − value + with one segment per action. */
 const TurnCard = ({ turn, name }: { turn: SheetTurn; name: string }) => (
-  <div title="The Nth action in a round needs N successes" className="flex flex-col gap-2 rounded-2xl bg-surface p-3 shadow-card">
+  <div title="The Nth action in a round needs N successes" className="flex h-full flex-col gap-2 rounded-2xl bg-surface p-3 shadow-card">
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-footnote font-semibold tracking-wide text-label-2 uppercase">Turn</span>
       <span className="truncate text-footnote text-label-2">{turnHint(turn.value)}</span>
@@ -189,8 +189,8 @@ const TurnCard = ({ turn, name }: { turn: SheetTurn; name: string }) => (
       <button
         type="button"
         aria-label={`Decrease turn for ${name}`}
-        disabled={turn.value <= 0}
-        onClick={() => turn.onChange(Math.max(0, turn.value - 1))}
+        disabled={turn.value <= MIN_TURN}
+        onClick={() => turn.onChange(Math.max(MIN_TURN, turn.value - 1))}
         className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}
       >
         <Minus aria-hidden className="size-5 lg:size-4" />

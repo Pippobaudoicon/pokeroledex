@@ -166,7 +166,7 @@ export const EncounterDetails = ({
     setTurns(({ [key]: _removed, ...turns }) => turns);
     onSelect(rest[Math.min(index, rest.length - 1)]?.key ?? entries[0]?.pokemon.id ?? null);
   };
-  const turnOf = (key: string) => turns[key] ?? 0;
+  const turnOf = (key: string) => turns[key] ?? 1;
   const turnControl = (key: string) => ({
     value: turnOf(key),
     onChange: (value: number) => setTurns((turns) => ({ ...turns, [key]: value })),
@@ -202,7 +202,7 @@ export const EncounterDetails = ({
                 </button>
                 <button
                   type="button"
-                  disabled={Object.values(turns).every((turn) => turn === 0)}
+                  disabled={Object.values(turns).every((turn) => turn === 1)}
                   onClick={() => setTurns({})}
                   className={button({ variant: "gray", size: "sm" })}
                 >
