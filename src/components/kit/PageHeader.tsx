@@ -47,7 +47,7 @@ export const PageHeader = ({
           className,
         )}
       >
-        <div className="flex min-w-0 flex-1 items-center">
+        <div className="flex min-w-0 flex-initial items-center lg:flex-1">
           {leading ??
             (back && (
               <Link
@@ -63,7 +63,9 @@ export const PageHeader = ({
         <BarTitle
           aria-hidden={compact ? undefined : true}
           className={cn(
-            "pointer-events-none absolute left-1/2 max-w-[50%] -translate-x-1/2 truncate text-headline font-semibold transition-opacity duration-200",
+            // On phones a title centred on the page runs into the actions, so it takes only the space between them.
+            "pointer-events-none min-w-0 flex-1 truncate text-headline font-semibold transition-opacity duration-200 lg:absolute lg:left-1/2 lg:max-w-[50%] lg:flex-none lg:-translate-x-1/2",
+            (leading ?? back) && "max-lg:text-center",
             scrolled ? "opacity-100" : "opacity-0",
           )}
         >

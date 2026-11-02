@@ -88,11 +88,12 @@ Shiny sprites are not shown yet.
 ## My City
 
 Open **My City** from the sidebar, Home, or app search. Each account can create
-multiple named cities and switch between them. The overview counts residents by
-type **and rank** in collapsible sections for each populated rank, ordered from
-Unranked to Champion. Each section shows all 18 types, including zero counts,
-with attribute-style pips and an exact numeric count. Each filled pip represents
-one Pokémon; counts above five wrap rather than being capped. A dual-type resident
+multiple named cities and switch between them. The overview starts with the
+city's capabilities, then counts residents by type **and rank**: one compact block
+for each populated rank, ordered from Unranked to Champion, with all 18 types. Each
+type is a bar with its count, filled by its share of the Pokémon at that rank. The
+resident limit belongs to the whole city and grows with its rank, so it appears once,
+as a total bar above the types (for example 22 / 25 Pokémon). A dual-type resident
 counts once under each type, so the sum of type counts can exceed the population.
 
 **Add Pokémon** creates a sheet from a core or campaign species, or moves an
@@ -103,9 +104,10 @@ the city roster. City residents are separate from the personal **My Pokémon**
 collection, including residents created directly from the Pokédex.
 Moving an existing personal Pokémon into a city removes it from My Pokémon;
 cached personal and trainer lists refresh before the transfer reports success.
-The **Pokémon roster** links to each city sheet and requires a destination for
-transfers: another city, a trainer, or **Assign to me (My Pokémon)**.
-Residents cannot simply be removed or deleted, and a city must be empty before
+The **Pokémon roster** is a grid of cards linking to each city sheet. A card's
+**⋯** menu moves the resident to another city, a trainer, or **My Pokémon**. The
+city leader can also delete it for good after a confirmation, freeing its slot and
+its assignment. A city must be empty before
 it can be deleted.
 
 Every city has a rank, like trainers and Pokémon (new and older cities start
@@ -174,7 +176,8 @@ The **Crafting** tab turns the city's skills into items (rules in
 - **Craft** lists what the city can craft now, each with its skill, tier (tier N
   needs city rank N, Starter to Champion), how much of its skill each item uses
   (the tier's effort: 1 to 4), and any assist skill or Catalyst type it needs.
-  **Show locked recipes** adds the others with what each still needs. Select an
+  **Show locked recipes** adds the others with what each still needs. Long lists
+  show 20 recipes per page. Select an
   item to read its description. Any member adds items to the **crafting order**
   and takes them out again: each crafting skill's value is how much of the order
   its recipes can fill (Apothecary 3 holds three tier 1 Apothecary items, or one

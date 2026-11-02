@@ -1,18 +1,21 @@
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown, Plus, Tag } from "lucide-react";
+import { ArrowRightLeft, Building2, MoreHorizontal, Plus, Tag, Trash2 } from "lucide-react";
 import * as React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CITY_SKILLS, CRAFTING_SKILLS, POKEMON_TYPES, RANKS, SUPPORT_SKILLS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type ProfileSkill, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
 import { cityLimits, cityRankGroups, cityValues, type ResidentWork } from "../../../shared/cities";
 import { canWork, workBonus } from "../../../shared/crafting";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { button } from "@/components/kit/button";
+import { Group, Row } from "@/components/kit/List";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Picker } from "@/components/kit/Picker";
-import { RankBadge, RankBall, TypePill } from "@/components/kit/Pills";
+import { RankBadge, RankBall, TypePill, TypeIcon, typeColor } from "@/components/kit/Pills";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
 import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
+import { DeleteAlert, MenuItem } from "@/components/pokemon-sheet/actions";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useToast } from "@/hooks/use-toast";
@@ -210,7 +213,7 @@ const CitySettings = ({ city, residentCount }: { city: City; residentCount: numb
           if (window.confirm(`Leave ${city.name}?`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
         }}>Leave city</button>
       </> : <>
-        <p className="mb-3 text-subhead text-label-2">Before deleting this city, move every resident to another city or assign it to yourself. Residents cannot simply be removed.</p>
+        <p className="mb-3 text-subhead text-label-2">Before deleting this city, move or delete every resident in the Pokémon roster.</p>
         <button type="button" disabled={change.isPending || residentCount > 0} className={button({ variant: "gray" })} onClick={() => {
           if (window.confirm(`Delete ${city.name}?`)) change.mutate({ kind: "delete", id: city.id }, { onSuccess: () => navigate("/myCity") });
         }}>Delete city</button>
@@ -226,7 +229,7 @@ const CityMembers = ({ city }: { city: City }) => {
   const leader = city.members[0];
   return <section className={`${panel} space-y-4`}>
     <h2 className="text-title-3 font-semibold">Members</h2>
-    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Invite friends with the email they log in with. The leader can remove members; their residents stay in the city.</p>
+    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Invite friends with the email they log in with. The leader can delete residents and remove members; a removed member's residents stay in the city.</p>
     <ul className="divide-y divide-hairline">
       {city.members.map(member => <li key={member} className="flex items-center gap-2 py-2">
         <span className="flex-1 break-all">{member}{member === leader && <span className="text-label-2"> (leader)</span>}{member === me && <span className="text-label-2"> (you)</span>}</span>
@@ -245,25 +248,60 @@ const CityMembers = ({ city }: { city: City }) => {
   </section>;
 };
 
-const TransferPokemon = ({ pokemon, cities, trainers, allPokemon }: { pokemon: Pokemon; cities: City[]; trainers: Trainer[]; allPokemon: Pokemon[] }) => {
-  const [destination, setDestination] = React.useState("");
+/** Moves the original sheet out of the city; a full city is listed but cannot be picked. */
+const MoveResident = ({ pokemon, cities, trainers, allPokemon, open, onOpenChange }: {
+  pokemon: Pokemon; cities: City[]; trainers: Trainer[]; allPokemon: Pokemon[]; open: boolean; onOpenChange: (open: boolean) => void;
+}) => {
   const change = useCityChange();
-  return <form className="flex flex-wrap items-center gap-2" onSubmit={event => {
-    event.preventDefault();
-    const [kind, id] = destination.split(":");
-    change.mutate({ kind: "assign", body: { id: pokemon.id, ...(kind === "city" ? { cityId: id } : kind === "personal" ? { takeOwnership: true } : { trainerId: id }) } });
-  }}>
-    <select aria-label={`Destination for ${pokemon.nickname || pokemon.pokemonTemplate.name}`} required value={destination} className={`${field} sm:max-w-60`} onChange={event => setDestination(event.target.value)}>
-      <option value="">Choose destination</option>
-      <option value="personal">Assign to me (My Pokémon)</option>
-      {trainers.map(trainer => <option key={trainer.id} value={`trainer:${trainer.id}`}>Trainer: {trainer.name}</option>)}
-      {cities.filter(city => city.id !== pokemon.cityId).map(city => {
-        const full = allPokemon.filter(entry => entry.cityId === city.id).length >= city.limits.residents;
-        return <option key={city.id} value={`city:${city.id}`} disabled={full}>City: {city.name}{full ? " (full)" : ""}</option>;
-      })}
-    </select>
-    <button disabled={!destination || change.isPending} className={button({ variant: "tinted", size: "sm" })}>Move</button>
-  </form>;
+  const move = (destination: Omit<UpdatePokemonBody, "id">) => {
+    if (!change.isPending) change.mutate({ kind: "assign", body: { id: pokemon.id, ...destination } }, { onSuccess: () => onOpenChange(false) });
+  };
+  const otherCities = cities.filter(city => city.id !== pokemon.cityId);
+  return <Sheet open={open} onOpenChange={onOpenChange} title={`Move ${pokemon.nickname || pokemon.pokemonTemplate.name}`} description="Its sheet keeps its stats and moves." initialExpanded>
+    <div className="flex flex-col gap-6 p-4">
+      <Group><Row title="My Pokémon" subtitle="Assign to me" onClick={() => move({ takeOwnership: true })} /></Group>
+      {trainers.length > 0 && <Group title="Trainers">
+        {trainers.map(trainer => <Row key={trainer.id} title={trainer.name || "Unnamed trainer"} onClick={() => move({ trainerId: trainer.id })} />)}
+      </Group>}
+      {otherCities.length > 0 && <Group title="Cities">
+        {otherCities.map(city => {
+          const full = allPokemon.filter(entry => entry.cityId === city.id).length >= city.limits.residents;
+          return <Row key={city.id} title={city.name} value={full ? "Full" : undefined} onClick={full ? undefined : () => move({ cityId: city.id })} />;
+        })}
+      </Group>}
+    </div>
+  </Sheet>;
+};
+
+const ResidentCard = ({ pokemon, cityId, canDelete, cities, trainers, allPokemon }: { pokemon: Pokemon; cityId: string; canDelete: boolean; cities: City[]; trainers: Trainer[]; allPokemon: Pokemon[] }) => {
+  const client = useQueryClient();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [moving, setMoving] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const name = pokemon.nickname || pokemon.pokemonTemplate.name;
+  return <li className={cn("relative min-w-0 rounded-xl bg-fill transition-colors duration-150 hover:bg-fill-strong", pokemon.shiny && shinyRing)}>
+    <Link to={`/myCity/${cityId}/pokemon/${pokemon.id}`} className="flex flex-col items-center gap-1 rounded-xl p-2 text-center outline-none focus-visible:outline-2 focus-visible:outline-focus sm:flex-row sm:gap-3 sm:text-left">
+      <Sprite image={pokemon.pokemonTemplate.image} set="box" className="h-14 w-17 shrink-0" />
+      <span className="max-w-full min-w-0 flex-1">
+        <span className="flex items-center justify-center gap-1.5 font-semibold sm:justify-start sm:pr-7"><span className="truncate">{name}</span>{pokemon.shiny && <ShinyMark compact />}</span>
+        <span className="flex items-center justify-center gap-1.5 text-footnote text-label-2 sm:justify-start"><RankBall rank={pokemon.rank} className="size-3.5" />{formatEnumName(pokemon.rank)}</span>
+        <span className="mt-1 flex flex-wrap justify-center gap-1 sm:justify-start">{pokemon.pokemonTemplate.types.map(type => <TypePill key={type} type={type} size="sm" />)}</span>
+      </span>
+    </Link>
+    <PopoverPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
+      <PopoverPrimitive.Trigger aria-label={`More actions for ${name}`} className="absolute top-1 right-1 grid size-9 place-items-center rounded-full text-label-2 outline-none hover:bg-fill-strong focus-visible:outline-2 focus-visible:outline-focus lg:size-7">
+        <MoreHorizontal aria-hidden className="size-4" />
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content align="end" sideOffset={6} className="z-50 w-52 overflow-hidden rounded-xl border border-hairline bg-surface/95 shadow-float backdrop-blur-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [--tw-duration:150ms]">
+          <MenuItem icon={<ArrowRightLeft />} onClick={() => { setMenuOpen(false); setMoving(true); }}>Move…</MenuItem>
+          {canDelete && <MenuItem icon={<Trash2 />} destructive onClick={() => { setMenuOpen(false); setDeleting(true); }}>Delete Pokémon</MenuItem>}
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+    <MoveResident pokemon={pokemon} cities={cities} trainers={trainers} allPokemon={allPokemon} open={moving} onOpenChange={setMoving} />
+    {canDelete && <DeleteAlert pokemon={pokemon} open={deleting} onOpenChange={setDeleting} onDeleted={() => client.invalidateQueries({ queryKey: ["cities"] })} />}
+  </li>;
 };
 
 type WorkTarget = CityAssignment | "unassigned";
@@ -437,49 +475,41 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   </section>;
 };
 
+/** Every rank lists the 18 types in the same order, so they line up in columns from one rank to the next. */
 const CityTypeOverview = ({ residents }: { residents: Pokemon[] }) => {
   const groups = cityRankGroups(residents);
   if (!groups.length) return <p>No residents yet. Add a Pokémon to get started.</p>;
-  return <div className="grid items-start gap-4 xl:grid-cols-2">
-    {groups.map(({ rank, population, types }) => <details key={rank} open className="group/rank min-w-0 overflow-hidden rounded-xl bg-fill">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-3 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
-        <RankBall rank={rank} />
-        <h3 className="text-body">{formatEnumName(rank)}</h3>
-        <span className="ml-auto text-footnote font-medium text-label-2">{population} Pokémon</span>
-        <ChevronDown aria-hidden className="size-4 shrink-0 text-label-2 transition-transform group-open/rank:rotate-180" />
-      </summary>
-      <table className="w-full table-fixed border-collapse text-body">
-        <caption className="sr-only">{formatEnumName(rank)} Pokémon counts by type</caption>
-        <colgroup><col className="w-28" /><col /><col className="w-14" /></colgroup>
-        <thead className="sr-only"><tr><th scope="col">Type</th><th scope="col">Population pips</th><th scope="col">Count</th></tr></thead>
-        <tbody>
-          {types.map(({ type, count }) => <tr key={type} className="border-t border-hairline">
-            <th scope="row" className="w-28 px-3 py-2 text-left font-medium"><TypePill type={type} size="sm" /></th>
-            <td className="py-2">
-              <span aria-hidden className="flex flex-wrap gap-[3px]">
-                {Array.from({ length: Math.max(5, count) }, (_, index) => <span key={index} className={cn(
-                  "h-2.5 w-5 shrink-0 rounded-full",
-                  index < count ? "bg-label" : "border-[1.5px] border-label/25",
-                )} />)}
-              </span>
-            </td>
-            <td className="w-14 px-3 py-2 text-right font-semibold tabular-nums">{count}</td>
-          </tr>)}
-        </tbody>
-      </table>
-    </details>)}
+  return <div className="divide-y divide-hairline">
+    {groups.map(({ rank, population, types }) => <section key={rank} className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0 xl:flex-row xl:items-center xl:gap-4">
+      <h3 className="flex shrink-0 items-center gap-1.5 text-subhead font-semibold xl:w-28">
+        <RankBall rank={rank} />{formatEnumName(rank)}
+        <span className="ml-auto font-normal tabular-nums text-label-2">{population}</span>
+      </h3>
+      <ul className="grid flex-1 grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-1.5">
+        {types.map(({ type, count }) => <li key={type} className={cn("relative isolate flex h-6 items-center gap-1.5 overflow-hidden rounded-full bg-fill pr-2.5 pl-1 text-footnote font-semibold tabular-nums", !count && "text-label-2")}>
+          {count > 0 && <span className="absolute inset-y-0 left-0 -z-10 rounded-full opacity-50" style={{ width: `calc(1.5rem + (100% - 1.5rem) * ${count / population})`, background: typeColor(type) }} />}
+          <span className={cn("grid size-4 shrink-0 place-items-center rounded-full", !count && "opacity-40")} style={{ background: typeColor(type) }}><TypeIcon type={type} className="size-3" /></span>
+          <span className="mr-auto truncate">{formatEnumName(type)}</span>
+          <span className="shrink-0">{count}</span>
+        </li>)}
+      </ul>
+    </section>)}
   </div>;
 };
 
+const CITY_VIEWS = [["overview", "Overview"], ["roster", "Pokémon roster"], ["settings", "Skills & actions"], ["crafting", "Crafting"]] as const;
+
 export const MyCityPage = () => {
   const { id } = useParams();
-  const [tab, setTab] = React.useState<"overview" | "roster" | "settings" | "crafting">("overview");
+  const me = useMe().data?.email;
+  // In the URL so the back link of a resident's sheet returns to the same view.
+  const [params, setParams] = useSearchParams();
+  const tab = CITY_VIEWS.find(([view]) => view === params.get("tab"))?.[0] ?? "overview";
   const cities = useQuery({ queryKey: ["cities"], queryFn: ({ signal }) => apiFetch<City[]>({ url: "/cities", method: "get", signal }), refetchInterval: 5_000 });
   const pokemon = useQuery({ queryKey: ["pokemon", "city-roster"], queryFn: ({ signal }) => apiFetch<Pokemon[]>({ url: "/pokemon/all", method: "get", signal }) });
   const trainers = useQuery({ queryKey: ["trainers"], queryFn: ({ signal }) => apiFetch<Trainer[]>({ url: "/trainers", method: "get", signal }) });
   const city = id ? cities.data?.find(city => city.id === id) : cities.data?.[0];
   const residents = pokemon.data?.filter(pokemon => pokemon.cityId === city?.id) ?? [];
-  React.useEffect(() => setTab("overview"), [city?.id]);
   const failed = cities.isError || pokemon.isError || trainers.isError;
   return <>
     <PageHeader title="My City" actions={<CreateCity />}>
@@ -497,19 +527,15 @@ export const MyCityPage = () => {
             <AddPokemon key={city.id} city={city} cities={cities.data} pokemon={pokemon.data} />
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="City views">
-            {(["overview", "roster", "settings", "crafting"] as const).map(view => <button key={view} type="button" aria-pressed={tab === view} className={button({ variant: tab === view ? "filled" : "gray" })} onClick={() => setTab(view)}>{view === "overview" ? "Overview" : view === "roster" ? "Pokémon roster" : view === "settings" ? "Skills & actions" : "Crafting"}</button>)}
+            {CITY_VIEWS.map(([view, label]) => <button key={view} type="button" aria-pressed={tab === view} className={button({ variant: tab === view ? "filled" : "gray" })} onClick={() => setParams(view === "overview" ? {} : { tab: view }, { replace: true })}>{label}</button>)}
           </div>
           {tab === "overview" ? <>
             <section className={panel}>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-title-3 font-semibold">{city.name}</h2>
                 <RankBadge rank={city.rank} />
-                <span className="ml-auto text-subhead tabular-nums text-label-2">{residents.length} / {city.limits.residents} Pokémon</span>
               </div>
-              <p className="mt-1 mb-4 text-footnote text-label-2">Expand or collapse a rank to see all types. Each filled pip is one Pokémon; dual-type Pokémon count under both types.</p>
-              <CityTypeOverview key={city.id} residents={residents} />
-            </section>
-            <section className={panel}><h2 className="mb-3 text-headline font-semibold">Capabilities <span className="text-footnote font-normal text-label-2">(max {city.limits.skill})</span></h2>
+              <h3 className="mt-3 mb-2 text-headline font-semibold">Capabilities <span className="text-footnote font-normal text-label-2">(max {city.limits.skill})</span></h3>
               <div className="flex flex-wrap gap-2">{CITY_SKILLS.filter(skill => skill !== "catalyst" && city.skills[skill] > 0).map(skill => <span key={skill} className="inline-flex items-center gap-2 rounded-xl bg-fill px-3 py-2"><SkillIcon skill={skill} />{skillLabel(skill)} {city.skills[skill]}</span>)}</div>
               {!CITY_SKILLS.some(skill => city.skills[skill] > 0) && <p className="text-label-2">No residents are working on city skills yet. Assign them in Skills & actions.</p>}
               {city.skills.catalyst > 0 && <div className="mt-3 flex flex-wrap items-center gap-2"><SkillIcon skill="catalyst" /><span>Catalyst types</span>
@@ -517,21 +543,24 @@ export const MyCityPage = () => {
               <div className="mt-3 flex flex-wrap gap-2">{city.tags.map(tag => <span key={tag} className="rounded-full bg-tint/10 px-3 py-1 text-tint">{tag}: {city.tagValues[tag] ?? 0}</span>)}</div>
               {!city.tags.length && <p className="mt-3 text-label-2">No custom actions yet. Add them in Skills & actions.</p>}
             </section>
+            <section className={panel}>
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="text-headline font-semibold">Types</h2>
+                <span className="text-subhead tabular-nums text-label-2">{residents.length} / {city.limits.residents} Pokémon</span>
+              </div>
+              <div aria-hidden className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-fill"><div className="h-full rounded-full bg-tint" style={{ width: `${residents.length / city.limits.residents * 100}%` }} /></div>
+              <p className="mt-1.5 mb-3 text-footnote text-label-2">Each bar is that type's share of the Pokémon at that rank. Dual-type Pokémon count under both types.</p>
+              <CityTypeOverview residents={residents} />
+            </section>
           </> : tab === "crafting" ? <CityCrafting key={city.id} city={city} trainers={trainers.data} /> : tab === "settings" ? <>
             <CityWorkBoard city={city} residents={residents} />
             <CityMembers key={city.id} city={city} />
             <CitySettings key={`${city.id}:${city.name}:${city.rank}:${city.tags.join("\n")}`} city={city} residentCount={residents.length} />
           </> :
             <section className={panel}><h2 className="mb-3 text-title-3 font-semibold">Pokémon roster ({residents.length})</h2>
-              {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="divide-y divide-hairline">{residents.map(resident => <li key={resident.id} className="space-y-3 py-4">
-                <Link to={`/myCity/${city.id}/pokemon/${resident.id}`} className="flex items-center gap-3">
-                  <Sprite image={resident.pokemonTemplate.image} set="box" className={cn("h-14 w-17 rounded-xl", resident.shiny && shinyRing)} />
-                  <span><span className="inline-flex items-center gap-1.5 font-semibold">{resident.nickname || resident.pokemonTemplate.name}{resident.shiny && <ShinyMark compact />}</span><span className="block text-footnote text-label-2">{formatEnumName(resident.rank)} · Open sheet</span>
-                    <span className="mt-1 flex gap-1">{resident.pokemonTemplate.types.map(type => <TypePill key={type} type={type} size="sm" />)}</span>
-                  </span>
-                </Link>
-                <TransferPokemon key={`${resident.id}:${resident.cityId}`} pokemon={resident} cities={cities.data!} trainers={trainers.data!} allPokemon={pokemon.data!} />
-              </li>)}</ul>}
+              {!residents.length ? <p>No Pokémon assigned to this city.</p> : <ul className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(230px,1fr))]">
+                {residents.map(resident => <ResidentCard key={resident.id} pokemon={resident} cityId={city.id} canDelete={city.members[0] === me} cities={cities.data!} trainers={trainers.data!} allPokemon={pokemon.data!} />)}
+              </ul>}
             </section>}
         </>}
     </div>
@@ -548,6 +577,6 @@ const CitySelect = ({ cities, selected }: { cities: City[]; selected: string }) 
 export const CityPokemonPage = () => {
   const { cityId, id } = useParams();
   return <PokemonProvider key={id} id={id!} editingMode="view">
-    <PokemonSheet back={{ to: `/myCity/${cityId}`, label: "My City" }} />
+    <PokemonSheet back={{ to: `/myCity/${cityId}?tab=roster`, label: "My City" }} />
   </PokemonProvider>;
 };

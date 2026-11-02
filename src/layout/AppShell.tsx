@@ -57,9 +57,16 @@ const Sidebar = ({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
           aria-expanded={!collapsed}
           aria-controls="sidebar-nav"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-label-2 hover:bg-fill"
+          className="group/toggle grid size-8 shrink-0 place-items-center rounded-lg text-label-2 hover:bg-fill"
         >
-          {collapsed ? <PanelLeftOpen aria-hidden className="size-4" /> : <PanelLeftClose aria-hidden className="size-4" />}
+          {collapsed ? (
+            <>
+              <Pokeball className="size-6 text-tint group-hover/toggle:hidden group-focus-visible/toggle:hidden" strokeWidth={9} />
+              <PanelLeftOpen aria-hidden className="hidden size-4 group-hover/toggle:block group-focus-visible/toggle:block" />
+            </>
+          ) : (
+            <PanelLeftClose aria-hidden className="size-4" />
+          )}
         </button>
       </div>
       <button
