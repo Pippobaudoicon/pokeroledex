@@ -434,14 +434,12 @@ export const PokemonSheet = ({
         <RankUpBanner />
         <div
           className={cn(
-            "grid gap-3 @3xl:items-stretch",
-            turn
-              ? "@3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]"
-              : "@3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]",
+            "grid gap-3",
+            !turn && "@3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] @3xl:items-stretch",
           )}
         >
           <Identity pokemon={pokemon} showTyping={showTyping} />
-          <div className="grid grid-cols-2 gap-3 @3xl:contents">
+          <div className={cn("grid grid-cols-2 gap-3", turn ? "@xl:grid-cols-3" : "@3xl:contents")}>
             <Vital
               property="currentHp"
               label="HP"
@@ -450,7 +448,7 @@ export const PokemonSheet = ({
             />
             <Vital property="currentWill" label="Will" max={getTotalStat(pokemon, "insight") + 3} color="var(--color-will)" />
             {turn && (
-              <div className="col-span-2 @3xl:col-span-1">
+              <div className="col-span-2 @xl:col-span-1">
                 <TurnCard turn={turn} name={pokemon.nickname || pokemon.pokemonTemplate.name} />
               </div>
             )}
