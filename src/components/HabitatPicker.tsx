@@ -27,25 +27,39 @@ const macroColors = {
 } satisfies Record<HabitatMacro, string>;
 
 export const HabitatPicker = ({
-  selected, onChange, collapsible = false,
+  selected, onChange, collapsible = false, specificOnly = false,
+  description = "Pick a whole macro habitat or specific habitats. Matches any selection.",
 }: {
   selected: HabitatFilter[];
   onChange: (habitats: HabitatFilter[]) => void;
   collapsible?: boolean;
+  /** Macro chips select or clear all of their specific habitats instead of the macro itself. */
+  specificOnly?: boolean;
+  description?: string;
 }) => {
   const [expanded, setExpanded] = React.useState<HabitatMacro[]>([]);
   const id = React.useId();
   const toggle = (habitat: HabitatFilter) =>
     onChange(selected.includes(habitat) ? selected.filter(value => value !== habitat) : [...selected, habitat]);
+  const macroPressed = (macro: HabitatMacro) => specificOnly
+    ? HABITAT_MACROS[macro].habitats.every(habitat => selected.includes(habitat))
+    : selected.includes(macro);
+  const toggleMacro = (macro: HabitatMacro) => {
+    if (!specificOnly) return toggle(macro);
+    const habitats: readonly HabitatFilter[] = HABITAT_MACROS[macro].habitats;
+    onChange(macroPressed(macro)
+      ? selected.filter(value => !habitats.includes(value))
+      : [...selected, ...habitats.filter(habitat => !selected.includes(habitat))]);
+  };
   const content = (
     <div className="flex flex-col gap-3 p-3" role="group" aria-label="Habitats">
-      <p className="text-footnote text-label-2">Pick a whole macro habitat or specific habitats. Matches any selection.</p>
+      <p className="text-footnote text-label-2">{description}</p>
       {habitatMacroIds.map(macro => {
         const Icon = macroIcons[macro];
         return (
         <div key={macro} className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <Chip pressed={selected.includes(macro)} onClick={() => toggle(macro)}
+            <Chip pressed={macroPressed(macro)} onClick={() => toggleMacro(macro)}
               className="h-auto min-h-9 min-w-0 shrink py-1.5 text-left whitespace-normal lg:min-h-7">
               <span className={`grid size-6 shrink-0 place-items-center rounded-full ${macroColors[macro]}`}>
                 <Icon aria-hidden className="size-4" />

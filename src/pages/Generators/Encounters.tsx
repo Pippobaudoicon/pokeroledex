@@ -7,9 +7,8 @@ import { generationFor, isMythical } from "../../../shared/encounters";
 import { apiFetch } from "@/api/client";
 import { PokemonType, Rank, RankUpMethod } from "@/api/schemas";
 import { HabitatPicker } from "@/components/HabitatPicker";
-import { HABITAT_MACROS, habitatMacroIds, habitatName, normalizeHabitats, type SpecificHabitat } from "../../../shared/habitats";
+import { habitatName, normalizeHabitats, type SpecificHabitat } from "../../../shared/habitats";
 import { button } from "@/components/kit/button";
-import { Chip } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
 import { RankBadge, RankBall, TypeDot, TypePill } from "@/components/kit/Pills";
 import { Sheet } from "@/components/kit/Sheet";
@@ -254,8 +253,6 @@ const HabitatEditor = ({
   React.useEffect(() => {
     if (open) setSelected(normalizeHabitats(species.habitats));
   }, [open, species.habitats]);
-  const toggle = (habitat: SpecificHabitat) =>
-    setSelected((current) => (current.includes(habitat) ? current.filter((value) => value !== habitat) : [...current, habitat]));
   const save = async () => {
     setSaving(true);
     try {
@@ -285,26 +282,18 @@ const HabitatEditor = ({
       open={open}
       onOpenChange={onOpenChange}
       title={`Habitats · ${species.name}`}
-      description="Pick any number of habitats. Future encounters filtered by habitat use this list for every player."
+      description="Pick whole macro habitats or specific habitats. Future encounters filtered by habitat use this list for every player."
       initialExpanded
     >
       <div className="flex flex-col gap-4 p-4">
-        {habitatMacroIds.map((macro) => (
-          <Group key={macro} title={HABITAT_MACROS[macro].name}>
-            <div className="flex flex-wrap gap-1.5 p-3" role="group" aria-label={HABITAT_MACROS[macro].name}>
-              {HABITAT_MACROS[macro].habitats.map((habitat) => (
-                <Chip
-                  key={habitat}
-                  pressed={selected.includes(habitat)}
-                  onClick={() => toggle(habitat)}
-                  className="h-auto min-h-9 py-1.5 text-left whitespace-normal lg:min-h-7"
-                >
-                  {habitatName(habitat)}
-                </Chip>
-              ))}
-            </div>
-          </Group>
-        ))}
+        <Group>
+          <HabitatPicker
+            specificOnly
+            selected={selected}
+            onChange={(habitats) => setSelected(habitats as SpecificHabitat[])}
+            description="Selecting a macro habitat adds all of its specific habitats."
+          />
+        </Group>
         <p className="text-footnote text-label-2">{selected.length ? `${selected.length} selected` : "No habitat selected"}</p>
         <button type="button" disabled={saving} onClick={save} className={button({ variant: "filled" })}>
           {saving ? "Saving…" : "Save habitats"}
