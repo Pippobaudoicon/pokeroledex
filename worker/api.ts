@@ -7,7 +7,7 @@ import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/ty
 import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
 import { canWork, checkFaces, countSuccesses, craftBlockers, itemRecipe, orderCost, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
-import type { City, GenerateEncounterBody, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
+import type { City, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
 import type { Env } from './index.ts';
@@ -58,6 +58,10 @@ async function readBody(request: Request): Promise<Json> {
 }
 
 const cityOwner = (cityId: string) => `city:${cityId}`;
+// Habitat corrections for core Pokémon, shared by every player (docs/habitats.md). Emails
+// always contain '@', so this owner never collides with a person's records.
+const GLOBAL_OWNER = 'global';
+const HABITAT_OVERRIDES = 'habitat-overrides';
 
 /** Records a stored record points to; a Pokemon's custom entries may belong to another account. */
 function references(name: string, record: Row): [string, unknown][] {
@@ -134,11 +138,17 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       // The stored owner of each loaded record, so changes are written back to the right place.
       const partitions = new Map<Row, string>();
       const loaded = new Map<Row, string>();
+      const habitatOverrides = new Map<string, Habitat[]>();
       const { results } = await env.DB.prepare(`SELECT owner, collection, data FROM records
-        WHERE owner = ? OR owner IN (SELECT 'city:' || city_id FROM city_members WHERE email = ?) ORDER BY seq`)
-        .bind(owner, owner).all<{ owner: string; collection: string; data: string }>();
+        WHERE owner = ? OR owner IN (SELECT 'city:' || city_id FROM city_members WHERE email = ?)
+          OR (owner = ? AND collection = ?) ORDER BY seq`)
+        .bind(owner, owner, GLOBAL_OWNER, HABITAT_OVERRIDES).all<{ owner: string; collection: string; data: string }>();
       for (const row of results) {
         const record = JSON.parse(row.data);
+        if (row.owner === GLOBAL_OWNER) {
+          if (Array.isArray(record.habitats)) habitatOverrides.set(record.id, record.habitats.filter(isHabitat));
+          continue;
+        }
         db[row.collection].push(record);
         partitions.set(record, row.owner);
         if (row.collection === 'cities') loaded.set(record, row.data);
@@ -151,7 +161,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
       const checks = new Map<Row, D1PreparedStatement>();
       const writes: D1PreparedStatement[] = [];
-      const response = route({ db, partitions, loaded, checks, members, foreign, templatesInUse }, reference, writes, method, name, action, id, member, body);
+      const response = route({ db, partitions, loaded, checks, members, foreign, templatesInUse, habitatOverrides }, reference, writes, method, name, action, id, member, body);
       if (!writes.length) return response;
       try {
         await env.DB.batch([...checks.values(), ...writes]);
@@ -220,10 +230,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
   }
 
   function route(state: { db: Collections; partitions: Map<Row, string>; loaded: Map<Row, string>; checks: Map<Row, D1PreparedStatement>;
-    members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string> },
+    members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string>; habitatOverrides: Map<string, Habitat[]> },
     reference: Reference, writes: D1PreparedStatement[],
     method: string, name: string, action: string | undefined, id: string | undefined, member: string | undefined, body: Json): Response {
-    const { db, partitions, loaded, checks, members, foreign, templatesInUse } = state;
+    const { db, partitions, loaded, checks, members, foreign, templatesInUse, habitatOverrides } = state;
     const referenceRows = reference as unknown as Collections;
 
     // Cities and their residents are stored under the city; everything else under the person.
@@ -271,7 +281,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
     function template(record: Row | null): Row | null {
       if (!record) return null;
-      const normalized = { ...record, habitats: normalizeHabitats(record.habitats ?? []) };
+      const override = record.campaignId ? undefined : habitatOverrides.get(record.id);
+      const normalized = { ...record, habitats: normalizeHabitats(override ?? record.habitats ?? []), ...(override && { habitatsEdited: true }) };
       if (!record.campaignId) return normalized;
       const result: Row = { ...normalized, campaign: lookup('campaigns', record.campaignId) };
       for (const key of ['abilityOne', 'abilityTwo', 'hiddenAbility', 'eventAbility']) {
@@ -586,6 +597,28 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (method === 'GET' && action === 'find-many') {
         return reply((id ?? '').split(',').map(value => template(find(name, value))).filter(Boolean));
       }
+    }
+    // Core Pokémon get a shared override, removed again once it matches the reference data;
+    // your own campaign Pokémon are changed directly.
+    if (name === 'pokemon-templates' && action && id === 'habitats' && method === 'PUT') {
+      if (!Array.isArray(body.habitats) || !body.habitats.every(isHabitat)) fail(400, 'Choose valid specific habitats.');
+      const habitats = normalizeHabitats(body.habitats);
+      const core = referenceRows['pokemon-templates'].find(record => record.id === action);
+      if (core) {
+        if (habitats.join() === normalizeHabitats(core.habitats ?? []).join()) {
+          habitatOverrides.delete(core.id);
+          writes.push(env.DB.prepare('DELETE FROM records WHERE owner = ? AND collection = ? AND id = ?').bind(GLOBAL_OWNER, HABITAT_OVERRIDES, core.id));
+        } else {
+          habitatOverrides.set(core.id, habitats);
+          writes.push(upsert(GLOBAL_OWNER, HABITAT_OVERRIDES, { id: core.id, habitats }));
+        }
+        return reply(template(core));
+      }
+      const own = db[name].find(record => record.id === action);
+      if (!own) fail(404, 'Only core Pokémon and your own campaign Pokémon can have their habitats changed.');
+      own.habitats = habitats;
+      put(name, own);
+      return reply(template(own));
     }
     if (name === 'cities' && action && id === 'members' && method === 'POST') {
       const city = find('cities', action);

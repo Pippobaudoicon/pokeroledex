@@ -38,6 +38,9 @@ export const EncounterContext = React.createContext<{
   setEntries: React.Dispatch<React.SetStateAction<EncounterEntry[]>>;
   history: T.PokemonTemplateSummary[];
   setHistory: React.Dispatch<React.SetStateAction<T.PokemonTemplateSummary[]>>;
+  /** Species excluded from every roll until removed; cleared when you leave the Generators page. */
+  banned: T.PokemonTemplateSummary[];
+  setBanned: React.Dispatch<React.SetStateAction<T.PokemonTemplateSummary[]>>;
   settings: T.GenerateEncounterBody;
   setSettings: React.Dispatch<React.SetStateAction<T.GenerateEncounterBody>>;
   isGenerating: boolean;
@@ -54,6 +57,7 @@ export const EncounterContext = React.createContext<{
 export const EncounterProvider = ({ children }: { children: React.ReactNode }) => {
   const [entries, setEntries] = React.useState<EncounterEntry[]>([]);
   const [history, setHistory] = React.useState<T.PokemonTemplateSummary[]>([]);
+  const [banned, setBanned] = React.useState<T.PokemonTemplateSummary[]>([]);
   const [settings, setSettings] = React.useState(defaultSettings);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [status, setStatus] = React.useState("Choose filters and generate an encounter.");
@@ -75,6 +79,8 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
         setEntries,
         history,
         setHistory,
+        banned,
+        setBanned,
         settings,
         setSettings,
         isGenerating,

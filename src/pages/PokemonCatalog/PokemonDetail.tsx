@@ -226,7 +226,9 @@ const Overview = ({ template, dex }: { template: Summary; dex: Summary[] }) => (
             <Row title="Habitats" subtitle={normalizeHabitats(template.habitats).map(habitatName).join(", ")} />
           </>
         )}
-        {template.habitatProvenance && (
+        {template.habitatsEdited ? (
+          <Row title="Habitat source" subtitle="Edited in the encounter generator" />
+        ) : template.habitatProvenance && (
           <Row title="Habitat source" subtitle={
             <span>
               {template.habitatProvenance.status === "needs-review" ? "Default habitats · awaiting review" :

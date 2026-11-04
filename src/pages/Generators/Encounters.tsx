@@ -1,18 +1,21 @@
 import * as React from "react";
-import { ChevronDown, Copy, Lock, Sparkles, Tag, Unlock, X } from "lucide-react";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { useQueryClient } from "@tanstack/react-query";
+import { Ban, ChevronDown, Copy, Lock, MapPin, Sparkles, Swords, Tag, Unlock, X } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { generationFor, isMythical } from "../../../shared/encounters";
 import { apiFetch } from "@/api/client";
 import { PokemonType, Rank, RankUpMethod } from "@/api/schemas";
 import { HabitatPicker } from "@/components/HabitatPicker";
-import { habitatName } from "../../../shared/habitats";
+import { HABITAT_MACROS, habitatMacroIds, habitatName, normalizeHabitats, type SpecificHabitat } from "../../../shared/habitats";
 import { button } from "@/components/kit/button";
-import { Stepper } from "@/components/kit/Controls";
+import { Chip } from "@/components/kit/Controls";
 import { Group } from "@/components/kit/List";
 import { RankBadge, RankBall, TypeDot, TypePill } from "@/components/kit/Pills";
 import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
 import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
+import { MenuItem } from "@/components/pokemon-sheet/actions";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +31,7 @@ export const EncounterGenerator = () => {
     setEntries,
     history,
     setHistory,
+    banned,
     settings,
     setSettings,
     isGenerating,
@@ -69,6 +73,7 @@ export const EncounterGenerator = () => {
           excludedTemplateIds: [
             ...new Set([
               ...history.map((species) => species.id),
+              ...banned.map((species) => species.id),
               ...(!settings.allowDuplicates ? locked.map((entry) => entry.pokemon.pokemonTemplateId) : []),
             ]),
           ],
@@ -78,7 +83,7 @@ export const EncounterGenerator = () => {
       setEntries(next);
       setHistory([...new Map(next.map((entry) => [entry.pokemon.pokemonTemplateId, entry.pokemon.pokemonTemplate])).values()]);
       setStatus(
-        `${next.length} of ${count} Pokémon · Seed ${seed}${next.length < count ? " · Broaden filters or remove entries from history to find more." : ""}`,
+        `${next.length} of ${count} Pokémon · Seed ${seed}${next.length < count ? " · Broaden filters or remove entries from history or the banned list to find more." : ""}`,
       );
     } catch {
       setStatus("Generation failed. Your current encounter has been kept.");
@@ -232,9 +237,88 @@ export const EncounterGenerator = () => {
   );
 };
 
+const HabitatEditor = ({
+  species,
+  open,
+  onOpenChange,
+}: {
+  species: T.PokemonTemplateSummary;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) => {
+  const { setEntries, setHistory, setBanned } = React.useContext(EncounterContext);
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const [selected, setSelected] = React.useState<SpecificHabitat[]>([]);
+  const [saving, setSaving] = React.useState(false);
+  React.useEffect(() => {
+    if (open) setSelected(normalizeHabitats(species.habitats));
+  }, [open, species.habitats]);
+  const toggle = (habitat: SpecificHabitat) =>
+    setSelected((current) => (current.includes(habitat) ? current.filter((value) => value !== habitat) : [...current, habitat]));
+  const save = async () => {
+    setSaving(true);
+    try {
+      const updated = await apiFetch<T.PokemonTemplate>({
+        url: `/pokemon-templates/${encodeURIComponent(species.id)}/habitats`,
+        method: "put",
+        body: { habitats: selected },
+      });
+      const changes = { habitats: updated.habitats, habitatsEdited: updated.habitatsEdited };
+      const patch = <S extends T.PokemonTemplateSummary>(other: S): S => (other.id === species.id ? { ...other, ...changes } : other);
+      setEntries((entries) =>
+        entries.map((entry) => ({ ...entry, pokemon: { ...entry.pokemon, pokemonTemplate: patch(entry.pokemon.pokemonTemplate) } })),
+      );
+      setHistory((history) => history.map(patch));
+      setBanned((banned) => banned.map(patch));
+      client.invalidateQueries({ predicate: (query) => query.queryKey[0] === "dex" || JSON.stringify(query.queryKey).includes("pokemon-templates") });
+      toast({ title: `Habitats updated for ${species.name}` });
+      onOpenChange(false);
+    } catch {
+      toast({ title: "Could not update habitats", description: "Only core Pokémon and your own campaign Pokémon can be changed." });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Habitats · ${species.name}`}
+      description="Pick any number of habitats. Future encounters filtered by habitat use this list for every player."
+      initialExpanded
+    >
+      <div className="flex flex-col gap-4 p-4">
+        {habitatMacroIds.map((macro) => (
+          <Group key={macro} title={HABITAT_MACROS[macro].name}>
+            <div className="flex flex-wrap gap-1.5 p-3" role="group" aria-label={HABITAT_MACROS[macro].name}>
+              {HABITAT_MACROS[macro].habitats.map((habitat) => (
+                <Chip
+                  key={habitat}
+                  pressed={selected.includes(habitat)}
+                  onClick={() => toggle(habitat)}
+                  className="h-auto min-h-9 py-1.5 text-left whitespace-normal lg:min-h-7"
+                >
+                  {habitatName(habitat)}
+                </Chip>
+              ))}
+            </div>
+          </Group>
+        ))}
+        <p className="text-footnote text-label-2">{selected.length ? `${selected.length} selected` : "No habitat selected"}</p>
+        <button type="button" disabled={saving} onClick={save} className={button({ variant: "filled" })}>
+          {saving ? "Saving…" : "Save habitats"}
+        </button>
+      </div>
+    </Sheet>
+  );
+};
+
 const EncounterCard = ({ entry, onDetails, showTyping }: { entry: EncounterEntry; onDetails: () => void; showTyping: boolean }) => {
-  const { setEntries, isGenerating } = React.useContext(EncounterContext);
+  const { setEntries, setBanned, isGenerating, setStatus } = React.useContext(EncounterContext);
   const [rolling, setRolling] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [editingHabitats, setEditingHabitats] = React.useState(false);
   React.useEffect(() => {
     if (!rolling) return;
     const timer = window.setTimeout(() => setRolling(false), 2000);
@@ -243,12 +327,12 @@ const EncounterCard = ({ entry, onDetails, showTyping }: { entry: EncounterEntry
   const { pokemon } = entry;
   const species = pokemon.pokemonTemplate;
   const shiny = isShiny(entry);
-  const maxHp = species.baseHp + getTotalStat(pokemon, "vitality");
   const update = (changes: Partial<EncounterEntry>) =>
     setEntries((entries) => entries.map((other) => (other.pokemon.id === pokemon.id ? { ...other, ...changes } : other)));
-  const updatePokemon = (changes: Partial<T.Pokemon>) => {
-    if (changes.currentHp !== undefined) changes.currentHp = Math.max(0, Math.min(maxHp, changes.currentHp));
-    update({ pokemon: { ...pokemon, ...changes } });
+  const ban = () => {
+    setBanned((banned) => (banned.some((other) => other.id === species.id) ? banned : [...banned, species]));
+    setEntries((entries) => entries.filter((other) => other.pokemon.pokemonTemplateId !== species.id));
+    setStatus(`${species.name} is banned from the generator until you remove it from the banned list.`);
   };
   return (
     <article
@@ -258,16 +342,29 @@ const EncounterCard = ({ entry, onDetails, showTyping }: { entry: EncounterEntry
       <div className="flex h-full flex-col gap-2 p-2 @[220px]:p-3">
         <div className="flex items-center justify-between gap-1">
           <p className="text-footnote text-label-2 tabular-nums">#{species.dexID || String(species.number).padStart(4, "0")}</p>
-          <button
-            type="button"
-            disabled={isGenerating}
-            aria-label={`Remove ${species.name}`}
-            title={`Remove ${species.name}`}
-            onClick={() => setEntries((entries) => entries.filter((other) => other.pokemon.id !== pokemon.id))}
-            className={button({ variant: "destructive", size: "icon" })}
-          >
-            <X aria-hidden className="size-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={isGenerating}
+              aria-pressed={entry.locked}
+              aria-label={`${entry.locked ? "Unlock" : "Lock"} ${species.name}`}
+              title={entry.locked ? "Unlock" : "Lock"}
+              onClick={() => update({ locked: !entry.locked })}
+              className={button({ variant: entry.locked ? "tinted" : "gray", size: "icon" })}
+            >
+              {entry.locked ? <Lock aria-hidden className="size-4" /> : <Unlock aria-hidden className="size-4" />}
+            </button>
+            <button
+              type="button"
+              disabled={isGenerating}
+              aria-label={`Remove ${species.name}`}
+              title={`Remove ${species.name}`}
+              onClick={() => setEntries((entries) => entries.filter((other) => other.pokemon.id !== pokemon.id))}
+              className={button({ variant: "destructive", size: "icon" })}
+            >
+              <X aria-hidden className="size-4" />
+            </button>
+          </div>
         </div>
         <div className="flex items-start gap-1 @[220px]:items-center @[220px]:gap-2">
           <Sprite image={species.image} set="book" className="size-10 shrink-0 @[220px]:size-16" />
@@ -287,85 +384,109 @@ const EncounterCard = ({ entry, onDetails, showTyping }: { entry: EncounterEntry
         <p className="line-clamp-2 text-footnote text-label-2" title={species.habitats.map(habitatName).join(", ") || "No habitat listed"}>
           {species.habitats.map(habitatName).join(", ") || "No habitat listed"}
         </p>
-        <div className="mt-auto grid grid-cols-2 gap-1 [&>button]:min-w-0 [&>button]:w-full">
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            aria-label={`Details & moves for ${species.name}`}
-            title="Details & moves"
-            onClick={onDetails}
-            className={button({ variant: "tinted", size: "icon" })}
+        <PopoverPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
+          <PopoverPrimitive.Trigger
+            aria-label={`Actions for ${species.name}`}
+            title="Actions"
+            className={cn(button({ variant: "tinted" }), "mt-auto w-full")}
           >
             <ChevronDown aria-hidden className="size-4" />
-          </button>
-          <button
-            type="button"
-            disabled={isGenerating}
-            aria-pressed={entry.locked}
-            aria-label={`${entry.locked ? "Unlock" : "Lock"} ${species.name}`}
-            title={entry.locked ? "Unlock" : "Lock"}
-            onClick={() => update({ locked: !entry.locked })}
-            className={button({ variant: entry.locked ? "tinted" : "gray", size: "icon" })}
-          >
-            {entry.locked ? <Lock aria-hidden className="size-4" /> : <Unlock aria-hidden className="size-4" />}
-          </button>
-        </div>
-        <button
-          type="button"
-          disabled={shiny || rolling || isGenerating}
-          aria-label={shiny ? `${species.name} is shiny` : `Roll shiny for ${species.name}: ${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}`}
-          title="Roll shiny"
-          onClick={() => {
-            update({ shinyRoll: rollShiny() });
-            setRolling(true);
-          }}
-          className={button({ variant: shiny ? "tinted" : "gray" })}
-        >
-          <Sparkles aria-hidden className="size-4" />
-          {shiny
-            ? "Shiny!"
-            : `${entry.shinyRoll[0]} + ${entry.shinyRoll[1]}${rolling ? ` = ${entry.shinyRoll[0] + entry.shinyRoll[1]}` : ""}`}
-        </button>
-        <div className="flex flex-wrap items-center justify-between gap-1 border-t border-hairline pt-2">
-          <span className="text-subhead font-medium">
-            HP <span className="font-normal text-label-2">/ {maxHp}</span>
-          </span>
-          <Stepper
-            label={`HP for ${species.name}`}
-            className="max-w-full [&>output]:min-w-6"
-            value={pokemon.currentHp}
-            min={isGenerating ? pokemon.currentHp : 0}
-            max={isGenerating ? pokemon.currentHp : maxHp}
-            onChange={(currentHp) => updatePokemon({ currentHp })}
-          />
-        </div>
+          </PopoverPrimitive.Trigger>
+          <PopoverPrimitive.Portal>
+            <PopoverPrimitive.Content
+              align="center"
+              sideOffset={6}
+              collisionPadding={8}
+              className="z-50 w-60 overflow-hidden rounded-xl border border-hairline bg-surface/95 shadow-float backdrop-blur-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [--tw-duration:150ms]"
+            >
+              <MenuItem
+                icon={<Swords />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDetails();
+                }}
+              >
+                Show encounter
+              </MenuItem>
+              <MenuItem
+                icon={<Ban />}
+                destructive
+                disabled={isGenerating}
+                onClick={() => {
+                  setMenuOpen(false);
+                  ban();
+                }}
+              >
+                Ban from generator
+              </MenuItem>
+              <MenuItem
+                icon={<MapPin />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditingHabitats(true);
+                }}
+              >
+                Edit habitat
+              </MenuItem>
+              <MenuItem
+                icon={<Sparkles />}
+                disabled={shiny || rolling || isGenerating}
+                onClick={() => {
+                  update({ shinyRoll: rollShiny() });
+                  setRolling(true);
+                }}
+              >
+                <span className="flex flex-col py-1.5">
+                  <span>{shiny ? "Shiny!" : "Roll shiny"}</span>
+                  <span className="text-footnote text-label-2 tabular-nums" aria-live="polite">
+                    {entry.shinyRoll[0]} + {entry.shinyRoll[1]}
+                    {rolling ? ` = ${entry.shinyRoll[0] + entry.shinyRoll[1]}` : ""}
+                  </span>
+                </span>
+              </MenuItem>
+            </PopoverPrimitive.Content>
+          </PopoverPrimitive.Portal>
+        </PopoverPrimitive.Root>
+        <HabitatEditor species={species} open={editingHabitats} onOpenChange={setEditingHabitats} />
       </div>
     </article>
   );
 };
 
-const EncounterHistory = () => {
-  const { history, setHistory, isGenerating } = React.useContext(EncounterContext);
+const SpeciesListSheet = ({
+  label,
+  title,
+  description,
+  empty,
+  removeLabel,
+  clearLabel,
+  list,
+  setList,
+}: {
+  label: string;
+  title: string;
+  description: string;
+  empty: string;
+  removeLabel: string;
+  clearLabel: string;
+  list: T.PokemonTemplateSummary[];
+  setList: (list: T.PokemonTemplateSummary[]) => void;
+}) => {
+  const { isGenerating } = React.useContext(EncounterContext);
   const [open, setOpen] = React.useState(false);
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={button({ variant: "gray", size: "sm" })}>
-        History ({history.length})
+        {label} ({list.length})
       </button>
-      <Sheet
-        open={open}
-        onOpenChange={setOpen}
-        title="Encounter history"
-        description="Pokémon from the last encounter are excluded from the next roll. Remove an entry to allow it again."
-        initialExpanded
-      >
+      <Sheet open={open} onOpenChange={setOpen} title={title} description={description} initialExpanded>
         <div className="flex flex-col gap-4 p-4">
           <Group>
-            {history.length === 0 ? (
-              <p className="p-4 text-subhead text-label-2">No Pokémon in history.</p>
+            {list.length === 0 ? (
+              <p className="p-4 text-subhead text-label-2">{empty}</p>
             ) : (
               <ul>
-                {history.map((species) => (
+                {list.map((species) => (
                   <li key={species.id} className="flex items-center gap-3 border-b border-hairline px-3 py-2 last:border-b-0">
                     <Sprite image={species.image} set="box" className="h-14 w-17" />
                     <div className="min-w-0 flex-1">
@@ -375,8 +496,8 @@ const EncounterHistory = () => {
                     <button
                       type="button"
                       disabled={isGenerating}
-                      aria-label={`Remove ${species.name} from history`}
-                      onClick={() => setHistory(history.filter((other) => other.id !== species.id))}
+                      aria-label={`Remove ${species.name} from ${removeLabel}`}
+                      onClick={() => setList(list.filter((other) => other.id !== species.id))}
                       className={button({ variant: "destructive", size: "icon" })}
                     >
                       <X aria-hidden className="size-4" />
@@ -388,15 +509,47 @@ const EncounterHistory = () => {
           </Group>
           <button
             type="button"
-            disabled={isGenerating || history.length === 0}
-            onClick={() => setHistory([])}
+            disabled={isGenerating || list.length === 0}
+            onClick={() => setList([])}
             className={button({ variant: "destructive" })}
           >
-            Clear history
+            {clearLabel}
           </button>
         </div>
       </Sheet>
     </>
+  );
+};
+
+const EncounterHistory = () => {
+  const { history, setHistory } = React.useContext(EncounterContext);
+  return (
+    <SpeciesListSheet
+      label="History"
+      title="Encounter history"
+      description="Pokémon from the last encounter are excluded from the next roll. Remove an entry to allow it again."
+      empty="No Pokémon in history."
+      removeLabel="history"
+      clearLabel="Clear history"
+      list={history}
+      setList={setHistory}
+    />
+  );
+};
+
+const BannedSpecies = () => {
+  const { banned, setBanned } = React.useContext(EncounterContext);
+  return (
+    <SpeciesListSheet
+      label="Banned"
+      title="Banned Pokémon"
+      description="Banned Pokémon are never generated until you remove them. The list is cleared when you leave the Generators page."
+      empty="No banned Pokémon."
+      removeLabel="the banned list"
+      clearLabel="Clear banned list"
+      list={banned}
+      setList={setBanned}
+    />
   );
 };
 
@@ -438,6 +591,7 @@ export const GeneratedEncounterList = ({
             Typing
           </button>
           <EncounterHistory />
+          <BannedSpecies />
           <button type="button" disabled={entries.length === 0} onClick={copy} className={button({ variant: "gray", size: "sm" })}>
             <Copy aria-hidden className="size-3.5" />
             Copy
