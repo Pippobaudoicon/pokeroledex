@@ -3,9 +3,9 @@
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
 // records, works on them in memory and writes back only the records it changed; a city
 // changed by someone else meanwhile makes the request run again (migrations/0007).
-import { ATTRIBUTES, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { ATTRIBUTES, CRAFTING_SKILLS, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
-import { canWork, checkFaces, countSuccesses, craftBlockers, itemRecipe, orderCost, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
+import { canWork, checkCityRecipe, checkFaces, cityRecipe, countSuccesses, craftBlockers, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
 import type { City, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
@@ -358,6 +358,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
           ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory, true), research: record.research ?? {},
           order: ((record.order ?? []) as Json[]).filter(line => reference.items.some(item => item.id === line.itemId)),
+          recipes: Object.fromEntries(Object.entries((record.recipes ?? {}) as Json).filter(([itemId]) => reference.items.some(item => item.id === itemId))),
           members: members.get(record.id) ?? [] };
       }
       return referenceRecord(name, record);
@@ -647,13 +648,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
     // Crafting (docs/crafting-plan.md). Any member fills the crafting order within the city's skills;
     // the leader crafts it into storage and rolls research, whose dice may come from a physical roll.
-    function referenceRecipe(itemId: unknown): { item: Row; recipe: Recipe } | null {
+    // Recipes include the city's own edits (`recipes`), unless `base` asks for the default.
+    function referenceRecipe(itemId: unknown, city: Row, base = false): { item: Row; recipe: Recipe } | null {
       const item = typeof itemId === 'string' ? reference.items.find(entry => entry.id === itemId) : undefined;
-      return item ? { item, recipe: itemRecipe(item, ITEM_EXCEPTIONS[item.name]) } : null;
+      if (!item) return null;
+      const recipe = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
+      return { item, recipe: base ? recipe : cityRecipe(recipe, city.recipes?.[item.id]) };
     }
     function orderLines(city: Row) {
       return ((city.order ?? []) as Json[]).flatMap(line => {
-        const found = referenceRecipe(line.itemId);
+        const found = referenceRecipe(line.itemId, city);
         return found ? [{ ...found, quantity: line.quantity as number }] : [];
       });
     }
@@ -663,7 +667,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     if (name === 'cities' && action && id === 'order' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
-      const found = referenceRecipe(body.itemId);
+      const found = referenceRecipe(body.itemId, city);
       if (!found) fail(400, 'Choose a reference item.');
       if (!Number.isInteger(body.quantity) || body.quantity < 0 || body.quantity > 999) fail(400, 'Choose a quantity from 0 to 999.');
       const { item, recipe } = found;
@@ -674,15 +678,14 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const current = hydrate(name, city) as City;
         const blockers = craftBlockers(recipe, craftingState(current));
         if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
-        const others = lines.filter(line => line.item.id !== item.id);
-        const used = orderUsage(others)[recipe.skill];
-        const capacity = current.skills[recipe.skill];
-        if (used + orderCost(recipe) * body.quantity > capacity) {
-          const fits = Math.max(0, Math.floor((capacity - used) / orderCost(recipe)));
-          fail(409, `${item.name}: the order can hold ${fits} with ${recipe.skill[0].toUpperCase()}${recipe.skill.slice(1)} ${capacity} (each uses ${orderCost(recipe)}).`);
+        const used = orderUsage(lines.filter(line => line.item.id !== item.id));
+        const short = CRAFTING_SKILLS.find(skill => used[skill] + orderCost(recipe, skill) * body.quantity > current.skills[skill]);
+        if (short) {
+          const fits = orderRoom(recipe, current.skills, used);
+          fail(409, `${item.name}: the order can hold ${fits} with ${short[0].toUpperCase()}${short.slice(1)} ${current.skills[short]} (each uses ${orderCost(recipe, short)}).`);
         }
       }
-      const order = ((city.order ?? []) as Json[]).filter(line => referenceRecipe(line.itemId));
+      const order = ((city.order ?? []) as Json[]).filter(line => referenceRecipe(line.itemId, city));
       const existing = order.find(line => line.itemId === item.id);
       if (existing) existing.quantity = body.quantity;
       else order.push({ itemId: item.id, quantity: body.quantity });
@@ -706,16 +709,34 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const over = overCapacity(current.skills, usage);
       if (over.length) fail(409, `The order needs more than the city has: ${over.map(skill => `${skill[0].toUpperCase()}${skill.slice(1)} ${usage[skill]} of ${current.skills[skill]}`).join(', ')}.`);
       city.inventory ??= [];
-      for (const { item, quantity } of lines) addToInventory(city.inventory, { itemId: item.id }, quantity);
+      // Order lines count crafts; each craft makes the recipe's yield.
+      const crafted = lines.map(({ item, recipe, quantity }) => ({ itemId: item.id, quantity: quantity * recipe.yield }));
+      for (const { itemId, quantity } of crafted) addToInventory(city.inventory, { itemId }, quantity);
       city.order = [];
       put(name, city);
-      return reply({ city: hydrate(name, city), crafted: lines.map(({ item, quantity }) => ({ itemId: item.id, quantity })) });
+      return reply({ city: hydrate(name, city), crafted });
+    }
+    // The leader edits a recipe for the city: its tier, the skills one craft uses and how many items it makes.
+    if (name === 'cities' && action && id === 'recipe' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can edit recipes.');
+      const found = referenceRecipe(body.itemId, city, true);
+      if (!found) fail(400, 'Choose a reference item.');
+      const { item, recipe } = found;
+      if (!('recipe' in body)) fail(400, 'Send the recipe changes or null.');
+      const checked = checkCityRecipe(recipe, body.recipe);
+      if ('error' in checked) fail(recipe.craftable ? 400 : 409, `${item.name}: ${checked.error}`);
+      const { [item.id]: _previous, ...rest } = (city.recipes ?? {}) as Json;
+      city.recipes = checked.recipe ? { ...rest, [item.id]: checked.recipe } : rest;
+      put(name, city);
+      return reply(hydrate(name, city));
     }
     if (name === 'cities' && action && id === 'research' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       if (!isLeader(city)) fail(403, 'Only the city leader can research.');
-      const found = referenceRecipe(body.itemId);
+      const found = referenceRecipe(body.itemId, city);
       if (!found) fail(400, 'Choose a reference item.');
       const { item, recipe } = found;
       const current = hydrate(name, city) as City;
@@ -739,7 +760,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       if (!isLeader(city)) fail(403, 'Only the city leader can set research steps.');
-      const found = referenceRecipe(body.itemId);
+      const found = referenceRecipe(body.itemId, city);
       if (!found) fail(400, 'Choose a reference item.');
       const { item, recipe } = found;
       if (!recipe.craftable) fail(409, `${item.name}: ${recipe.note ? `${recipe.note}: not craftable.` : 'This item cannot be crafted.'}`);

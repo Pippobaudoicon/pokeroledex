@@ -33,7 +33,8 @@ The response adds these derived fields:
 - each resident's `bonuses` and `profiles`
 - `inventory` (hydrated like a trainer's)
 - `research` (steps per item ID)
-- `order` (the crafting order, `{ itemId, quantity }[]`)
+- `order` (the crafting order, `{ itemId, quantity }[]`, where quantity counts crafts)
+- `recipes` (the city's recipe edits per item ID, `{ tier?, costs?, yield? }`)
 
 ## Crafting endpoints
 
@@ -41,8 +42,9 @@ The rules are in the [crafting plan](crafting-plan.md) and `shared/crafting.ts`.
 
 | Endpoint | Who | Body | Does |
 | --- | --- | --- | --- |
-| `POST /api/cities/:id/order` | Any member | `{ itemId, quantity }` | Sets how many of a reference item are in the crafting order (0 takes it out). Raising it needs a craftable recipe and room in its skill: each item uses its tier's effort of the skill's value |
-| `POST /api/cities/:id/craft` | Leader | `{}` | Moves the whole order into the city inventory and empties it, if every recipe is still craftable and fits |
+| `POST /api/cities/:id/order` | Any member | `{ itemId, quantity }` | Sets how many of a reference item are in the crafting order (0 takes it out). Raising it needs a craftable recipe and room in every skill it uses: each craft uses the recipe's cost of each skill (by default its tier's effort of its own skill) |
+| `POST /api/cities/:id/craft` | Leader | `{}` | Adds quantity × items per craft of each order line to the city inventory and empties the order, if every recipe is still craftable and fits |
+| `POST /api/cities/:id/recipe` | Leader | `{ itemId, recipe: { tier?, costs?, yield? } \| null }` | Edits the city's recipe for a craftable item: tier 1–8, skill costs 0–14 per crafting skill (at least one above 0), items per craft 1–99. Only differences from the default are kept; `null` resets it |
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
 | `POST /api/cities/:id/steps` | Leader | `{ itemId, steps }` | Sets a recipe's research steps (0 to what its tier needs) without the rank or Research gates |
 | `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |

@@ -55,10 +55,22 @@ export interface City {
   research: Record<string, number>;
   /** The crafting order members are filling; the leader crafts it into the inventory. */
   order: CityOrderLine[];
+  /** The leader's changes to reference recipes, keyed by item ID. */
+  recipes: Record<string, CityRecipe>;
   /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
 }
-/** A reference item in the crafting order. Each one uses its tier's effort of its skill's value. */
+/** Recipe tier: tier N needs city rank N (1 Starter … 8 Champion). */
+export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+/**
+ * A city's own version of a recipe; absent fields keep the default. `costs` is how much of each
+ * crafting skill's value one craft uses (instead of the tier's effort of the recipe's skill), and
+ * `yield` how many items one craft makes.
+ */
+export interface CityRecipe { tier?: Tier; costs?: Partial<Record<CraftingSkill, number>>; yield?: number }
+/** The leader edits a recipe for the city; `null` restores the default. */
+export interface CityRecipeBody { itemId: string; recipe: CityRecipe | null }
+/** A reference item in the crafting order: `quantity` crafts, each using the recipe's costs. */
 export interface CityOrderLine { itemId: string; quantity: number }
 /** Sets how many of a reference item are in the crafting order; 0 takes it out. */
 export interface CityOrderBody { itemId: string; quantity: number }

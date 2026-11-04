@@ -4,13 +4,21 @@ The **Crafting** tab in [My City](cities.md) turns the city's skills into items.
 
 ## Craft
 
-**Craft** lists what the city can craft now. Each item shows its skill, its tier (tier N needs city rank N, Starter to Champion), how much of its skill it uses (the tier's effort, 1 to 4), and any assist skill or Catalyst type it needs.
+**Craft** lists what the city can craft now. Each item shows its skill, its tier (tier N needs city rank N, Starter to Champion), how much of its skill it uses per craft (by default the tier's effort, 1 to 4), how many items one craft makes, and any assist skill or Catalyst type it needs.
 
 **Show locked recipes** adds the others, along with what each still needs. Long lists show 35 recipes per page, with numbered pages to jump between. Select an item to read its description.
 
 Any member can add items to the **crafting order** and take them out again. Each crafting skill's value is how much of the order its recipes can fill: Apothecary 3 holds three tier 1 Apothecary items, or one tier 4 item and one tier 1.
 
-The leader crafts the whole order at once, with no dice, and the items go to city storage.
+The leader crafts the whole order at once, with no dice, and the items go to city storage. Each craft in the order makes the recipe's items per craft.
+
+The leader can change a recipe for their city with **Edit craft**, next to **Add to order** (and in the item's details). The editor sets:
+
+- the **tier** (this changes the city rank and research the recipe needs)
+- how much of each crafting skill one craft uses (raise the main skill or add other skills; each skill used needs at least that value)
+- **items per craft**, for example 1 Apothecary makes 2 Potions
+
+Edited recipes show an **Edited** badge. **Reset to default** restores the reference recipe. Edits only apply to that city.
 
 ## Research
 
