@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Dna, Lock, Unlock, MoreHorizontal, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowUpCircle, ClipboardCheck, Dna, Lock, Unlock, MoreHorizontal, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
@@ -10,8 +10,38 @@ import { Rank } from "@/api/schemas";
 import { button } from "@/components/kit/button";
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { EvolutionSheet } from "@/components/pokemon-sheet/EvolutionDialog";
+import { type StatCategory, StatPointsCheckDialog } from "@/components/StatPointsCheck";
 import { useToast } from "@/hooks/use-toast";
+import { POKEMON_ATTRIBUTES, POKEMON_SKILLS, SOCIALS } from "@/lib/stats";
 import { cn } from "@/lib/utils";
+
+const POKEMON_CATEGORIES: StatCategory[] = [
+  { title: "Attributes", budget: "attributePoints", stats: POKEMON_ATTRIBUTES },
+  { title: "Skills", budget: "skillPoints", stats: POKEMON_SKILLS },
+  { title: "Socials", budget: "socialPoints", stats: SOCIALS },
+];
+
+const PokemonPointsCheck = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const template = pokemon.pokemonTemplate;
+  const extraIssues = POKEMON_ATTRIBUTES.filter((stat) => template.baseStats[stat] + pokemon.stats[stat] > template.maxStats[stat]).map((stat) => ({
+    stat,
+    value: template.baseStats[stat] + pokemon.stats[stat],
+    limit: template.maxStats[stat],
+    reason: `above ${template.name}’s maximum`,
+  }));
+  return (
+    <StatPointsCheckDialog
+      name={pokemon.nickname || template.name}
+      rank={pokemon.rank}
+      stats={pokemon.stats}
+      categories={POKEMON_CATEGORIES}
+      skills={POKEMON_SKILLS}
+      extraIssues={extraIssues}
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  );
+};
 
 /** iOS-style alert to confirm deleting the Pokémon. */
 export const DeleteAlert = ({ pokemon, open, onOpenChange, onDeleted }: { pokemon: T.Pokemon; open: boolean; onOpenChange: (open: boolean) => void; onDeleted: () => void }) => {
@@ -160,6 +190,7 @@ export const SheetActions = () => {
   const [deleting, setDeleting] = React.useState(false);
   const [evolving, setEvolving] = React.useState(false);
   const [sending, setSending] = React.useState(false);
+  const [checking, setChecking] = React.useState(false);
   if (!updatedPokemon) return null;
   if (editingMode !== "view")
     return (
@@ -198,6 +229,15 @@ export const SheetActions = () => {
             >
               Rank up
             </MenuItem>
+            <MenuItem
+              icon={<ClipboardCheck />}
+              onClick={() => {
+                setMenuOpen(false);
+                setChecking(true);
+              }}
+            >
+              Check stat points
+            </MenuItem>
             {updatedPokemon.pokemonTemplate.evolutions.length > 0 && (
               <MenuItem
                 icon={<Dna />}
@@ -235,6 +275,7 @@ export const SheetActions = () => {
       </PopoverPrimitive.Root>
       <DeleteAlert pokemon={updatedPokemon} open={deleting} onOpenChange={setDeleting} onDeleted={() => navigate("/myPokemon")} />
       <SendAlert pokemon={updatedPokemon} open={sending} onOpenChange={setSending} />
+      <PokemonPointsCheck pokemon={updatedPokemon} open={checking} onOpenChange={setChecking} />
       {evolving && <EvolutionSheet open={evolving} onOpenChange={setEvolving} />}
     </>
   );
