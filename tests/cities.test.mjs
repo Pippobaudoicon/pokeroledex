@@ -767,6 +767,50 @@ test('simultaneous crafts only consume a city order once', async () => {
   } finally { h.close(); }
 });
 
+test('the leader edits a recipe for the city: tier, skills per craft and items per craft', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Forge' })).body;
+    assert.deepEqual(city.recipes, {});
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const tauros = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'tauros', cityId: city.id })).body.id;
+    await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER', assignments: { [tauros]: 'skill:technology' } });
+    const edit = (itemId, recipe, owner) => h.request(`cities/${city.id}/recipe`, 'POST', { itemId, recipe }, owner);
+    const order = (itemId, quantity) => h.request(`cities/${city.id}/order`, 'POST', { itemId, quantity });
+
+    assert.equal((await edit('pokeball', { yield: 3 }, bob)).status, 403, 'only the leader edits recipes');
+    assert.equal((await edit('missing', { yield: 3 })).status, 400);
+    assert.equal((await edit('pokeball', { tier: 9 })).status, 400);
+    assert.equal((await h.request(`cities/${city.id}/recipe`, 'POST', { itemId: 'pokeball' })).status, 400, 'recipe is required');
+    assert.equal((await edit('masterball', { yield: 2 })).status, 409, 'uncraftable items stay uncraftable');
+
+    // One craft of a Pokeball makes 3; Tauros' Technology 1 holds one craft.
+    let result = await edit('pokeball', { tier: 1, costs: { technology: 1 }, yield: 3 });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.recipes, { pokeball: { yield: 3 } }, 'only what differs from the default is kept');
+    await order('pokeball', 1);
+    result = await h.request(`cities/${city.id}/craft`, 'POST', {});
+    assert.deepEqual(result.body.crafted, [{ itemId: 'pokeball', quantity: 3 }]);
+    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 3]]);
+
+    // A second skill per craft gates the recipe and limits the order.
+    result = await edit('pokeball', { costs: { technology: 1, metallurgy: 1 }, yield: 3 });
+    assert.deepEqual(result.body.recipes.pokeball, { costs: { technology: 1, metallurgy: 1 }, yield: 3 });
+    assert.match((await order('pokeball', 1)).body.payload, /^Pokeball: Needs Metallurgy 1\.$/);
+
+    // A lower tier unlocks the Ultraball without research; a higher one locks the Pokeball behind rank.
+    await edit('pokeball', null);
+    result = await edit('ultraball', { tier: 1 });
+    assert.deepEqual(result.body.recipes, { ultraball: { tier: 1 } }, 'null restores the default');
+    assert.equal((await order('ultraball', 1)).status, 200);
+    await order('ultraball', 0);
+    await edit('pokeball', { tier: 3 });
+    assert.match((await order('pokeball', 1)).body.payload, /Needs a Standard city\. Needs research\. Needs Technology 3\./);
+    assert.equal((await h.request(`cities/${city.id}/steps`, 'POST', { itemId: 'pokeball', steps: 3 })).status, 200, 'the edited tier needs research');
+  } finally { h.close(); }
+});
+
 test('the leader sets research steps directly, even where the city could not research', async () => {
   const h = harness();
   const bob = 'bob@example.com';

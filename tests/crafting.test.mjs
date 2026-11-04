@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CITY_SKILLS, CRAFTING_SKILLS, TIERS, countSuccesses, craftBlockers, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, speciesOverrides, workProfile } from '../shared/crafting.ts';
+import { CITY_SKILLS, CRAFTING_SKILLS, RECIPE_LIMITS, TIERS, checkCityRecipe, cityRecipe, countSuccesses, craftBlockers, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, speciesOverrides, workProfile } from '../shared/crafting.ts';
 import { cityLimits } from '../shared/cities.ts';
 import { RANKS } from '../shared/types.ts';
 
@@ -52,7 +52,9 @@ test('every species can work at least one crafting skill', () => {
 });
 
 test('items get a skill, tier, catalyst and assist', () => {
-  assert.deepEqual(recipeOf('Fire Stone'), { itemId: recipeOf('Fire Stone').itemId, skill: 'metallurgy', tier: 5, catalyst: ['FIRE'], assist: null, craftable: true });
+  assert.deepEqual(recipeOf('Fire Stone'), {
+    itemId: recipeOf('Fire Stone').itemId, skill: 'metallurgy', tier: 5, catalyst: ['FIRE'], assist: null, craftable: true, costs: { metallurgy: 2 }, yield: 1,
+  });
   assert.deepEqual(recipeOf('Water Gem').catalyst, ['WATER']);
   assert.deepEqual(recipeOf('Firium Z').catalyst, ['FIRE']);
   assert.deepEqual(recipeOf('Splash Plate').catalyst, ['WATER']);
@@ -88,7 +90,7 @@ test('a crafting order fills each skill\'s value, each item using its tier\'s ef
   const skills = { ...Object.fromEntries(CITY_SKILLS.map(skill => [skill, 0])), apothecary: 3, technology: 5 };
   const potion = { skill: 'apothecary', tier: 1 };
   const ball = { skill: 'technology', tier: 4 };
-  assert.deepEqual([orderCost(potion), orderCost(ball), orderCost({ tier: 8 })], [1, 2, 4]);
+  assert.deepEqual([orderCost(potion), orderCost(ball), orderCost({ skill: 'archaeology', tier: 8 })], [1, 2, 4]);
   const usage = orderUsage([{ recipe: potion, quantity: 2 }, { recipe: ball, quantity: 2 }]);
   assert.deepEqual(usage, { apothecary: 2, craftsmanship: 0, technology: 4, metallurgy: 0, archaeology: 0 });
   assert.equal(orderRoom(potion, skills, usage), 1, 'Apothecary 3 holds one more potion');
@@ -96,6 +98,45 @@ test('a crafting order fills each skill\'s value, each item using its tier\'s ef
   assert.deepEqual(overCapacity(skills, usage), []);
   assert.deepEqual(overCapacity({ ...skills, technology: 3 }, usage), ['technology'], 'a resident moved off the skill');
   assert.equal(orderRoom(ball, { ...skills, technology: 3 }, usage), 0, 'room never goes negative');
+});
+
+test('a city\'s recipe edits change the tier, the skills one craft uses and the items it makes', () => {
+  const potion = recipeOf('Potion');
+  assert.deepEqual([potion.skill, potion.costs, potion.yield], ['apothecary', { apothecary: TIERS[potion.tier].effort }, 1]);
+  assert.equal(cityRecipe(potion, undefined), potion);
+
+  // A new tier alone moves the costs to that tier's effort.
+  const tier6 = cityRecipe(potion, { tier: 6 });
+  assert.deepEqual([tier6.tier, tier6.costs, tier6.edited], [6, { apothecary: 3 }, true]);
+
+  // Two skills per craft, two items per craft: both skills limit the room and gate the recipe.
+  const shared = cityRecipe(potion, { tier: 1, costs: { apothecary: 2, technology: 1 }, yield: 2 });
+  assert.deepEqual([shared.skill, shared.yield], ['apothecary', 2]);
+  const skills = { ...Object.fromEntries(CITY_SKILLS.map(skill => [skill, 0])), apothecary: 6, technology: 2 };
+  const usage = orderUsage([{ recipe: shared, quantity: 1 }]);
+  assert.deepEqual(usage, { apothecary: 2, craftsmanship: 0, technology: 1, metallurgy: 0, archaeology: 0 });
+  assert.equal(orderRoom(shared, skills, usage), 1, 'Technology 2 holds only one more');
+  const city = { rank: 'STARTER', skills: { ...skills, technology: 0 }, catalysts: {}, research: {} };
+  assert.deepEqual(craftBlockers(shared, city), ['Needs Technology 1.']);
+  assert.deepEqual(craftBlockers(shared, { ...city, skills: { ...skills, apothecary: 1 } }), ['Needs Apothecary 2.']);
+
+  // Without its own skill, the first skill it uses becomes its skill.
+  assert.equal(cityRecipe(potion, { costs: { metallurgy: 1 } }).skill, 'metallurgy');
+  assert.equal(cityRecipe(recipeOf('Masterball'), { tier: 1 }).tier, recipeOf('Masterball').tier, 'uncraftable recipes stay as they are');
+});
+
+test('recipe edits are checked and keep only what differs from the default', () => {
+  const potion = recipeOf('Potion');
+  assert.deepEqual(checkCityRecipe(potion, null), { recipe: null });
+  assert.deepEqual(checkCityRecipe(potion, { tier: potion.tier, costs: { ...potion.costs, technology: 0 }, yield: 1 }), { recipe: null });
+  assert.deepEqual(checkCityRecipe(potion, { tier: 6, costs: { apothecary: 3 }, yield: 2 }), { recipe: { tier: 6, yield: 2 } }, 'tier 6 effort is 3');
+  assert.deepEqual(checkCityRecipe(potion, { costs: { apothecary: 1, metallurgy: 2 } }), { recipe: { costs: { apothecary: 1, metallurgy: 2 } } });
+  for (const input of [{ tier: 0 }, { tier: 9 }, { tier: 1.5 }, { yield: 0 }, { yield: 100 }, { costs: {} }, { costs: { apothecary: 0 } },
+    { costs: { research: 1 } }, { costs: { apothecary: RECIPE_LIMITS.cost + 1 } }, { costs: [] }, 'tier', []]) {
+    assert.ok('error' in checkCityRecipe(potion, input), JSON.stringify(input));
+  }
+  assert.ok('error' in checkCityRecipe(recipeOf('Masterball'), { yield: 2 }));
+  assert.equal(RECIPE_LIMITS.cost, cityLimits('CHAMPION').skill, 'the highest skill cap');
 });
 
 test('tier N needs rank N, and its minimums fit that rank\'s skill cap', () => {

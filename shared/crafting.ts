@@ -3,12 +3,12 @@
 // and data/crafting-species.json and are passed in, so the Worker, the app and the scripts
 // share the same rules.
 import {
-  POKEMON_TYPES, RANKS, type Attribute, type CitySkill, type CitySkills, type CraftingSkill, type Evolution, type Item, type PokemonType,
-  type ProfileSkill, type Rank, type WorkLevel, type WorkProfile,
+  CRAFTING_SKILLS, POKEMON_TYPES, RANKS, type Attribute, type CityRecipe, type CitySkill, type CitySkills, type CraftingSkill, type Evolution, type Item,
+  type PokemonType, type ProfileSkill, type Rank, type Tier, type WorkLevel, type WorkProfile,
 } from './types.ts';
 
 export { CITY_SKILLS, CRAFTING_SKILLS, SUPPORT_SKILLS } from './types.ts';
-export type { CitySkill, CraftingSkill, ProfileSkill, SupportSkill, WorkLevel, WorkProfile } from './types.ts';
+export type { CityRecipe, CitySkill, CraftingSkill, ProfileSkill, SupportSkill, Tier, WorkLevel, WorkProfile } from './types.ts';
 
 /** Where a species' work profile starts: its types, then its max value in the key attribute. */
 export const SKILL_AFFINITIES: Record<ProfileSkill, { full: PokemonType[]; half: PokemonType[]; attribute: Attribute }> = {
@@ -73,7 +73,6 @@ export const workBonus = (bonus: number, level: WorkLevel | undefined) =>
 export const canWork = (profile: WorkProfile, skill: CitySkill) => skill === 'catalyst' || !!profile[skill];
 
 /** Tier N needs city rank N (1 Starter … 8 Champion), so Unranked cities craft nothing. */
-export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export const TIERS: Record<Tier, { minSkill: number; minRank: Rank; effort: number; research: { steps: number; minResearch: number } | null; catalystStrength: number }> = {
   1: { minSkill: 1, minRank: 'STARTER', effort: 1, research: null, catalystStrength: 1 },
   2: { minSkill: 2, minRank: 'ROOKIE', effort: 1, research: null, catalystStrength: 1 },
@@ -95,8 +94,14 @@ export interface Recipe {
   assist: { skill: CitySkill; min: number } | null;
   craftable: boolean;
   note?: string;
+  /** Skill value one craft uses, per crafting skill; by default the tier's effort of `skill`. */
+  costs: Partial<Record<CraftingSkill, number>>;
+  /** Items one craft makes. */
+  yield: number;
+  /** The city changed this recipe (CityRecipe). */
+  edited?: boolean;
 }
-type RecipeFields = Partial<Omit<Recipe, 'itemId'>>;
+type RecipeFields = Partial<Omit<Recipe, 'itemId' | 'costs' | 'yield' | 'edited'>>;
 /** Keyed by item name. */
 export type ItemExceptions = Record<string, RecipeFields>;
 
@@ -183,10 +188,59 @@ function defaultAssist(item: ItemLike): Recipe['assist'] {
 }
 
 export function itemRecipe(item: ItemLike, exception: RecipeFields = {}): Recipe {
-  return {
+  const recipe = {
     itemId: item.id, skill: defaultSkill(item), tier: defaultTier(item), catalyst: defaultCatalyst(item),
     assist: defaultAssist(item), craftable: true, ...exception,
   };
+  return { ...recipe, costs: { [recipe.skill]: TIERS[recipe.tier].effort }, yield: 1 };
+}
+
+/** Upper bounds for a city's recipe edits: a cost above the highest skill cap could never be crafted. */
+export const RECIPE_LIMITS = { cost: 14, yield: 99 };
+
+/**
+ * A recipe with the city's changes. Without its own costs the recipe uses the (new) tier's effort of
+ * its skill; with them, its skill stays the default one if that is still used, else the first one used.
+ */
+export function cityRecipe(recipe: Recipe, override: CityRecipe | undefined): Recipe {
+  if (!override || !recipe.craftable) return recipe;
+  const tier = override.tier ?? recipe.tier;
+  const costs = override.costs ?? { [recipe.skill]: TIERS[tier].effort };
+  const skill = costs[recipe.skill] ? recipe.skill : CRAFTING_SKILLS.find(entry => costs[entry]) ?? recipe.skill;
+  return { ...recipe, tier, skill, costs, yield: override.yield ?? recipe.yield, edited: true };
+}
+
+const sameCosts = (a: Recipe['costs'], b: Recipe['costs']) => CRAFTING_SKILLS.every(skill => (a[skill] ?? 0) === (b[skill] ?? 0));
+
+/**
+ * Checks a city's recipe edit against the default recipe and keeps only what differs from it.
+ * Returns the error to show, or the edit (`null` when nothing differs, i.e. the default).
+ */
+export function checkCityRecipe(recipe: Recipe, input: unknown): { error: string } | { recipe: CityRecipe | null } {
+  if (input === null) return { recipe: null };
+  if (!recipe.craftable) return { error: 'This item cannot be crafted.' };
+  if (typeof input !== 'object' || Array.isArray(input)) return { error: 'Send the recipe changes or null.' };
+  const { tier, costs, yield: makes } = input as Record<string, unknown>;
+  if (tier !== undefined && !(Number.isInteger(tier) && (tier as number) >= 1 && (tier as number) <= 8)) return { error: 'Choose a tier from 1 to 8.' };
+  if (makes !== undefined && !(Number.isInteger(makes) && (makes as number) >= 1 && (makes as number) <= RECIPE_LIMITS.yield)) {
+    return { error: `Choose from 1 to ${RECIPE_LIMITS.yield} items per craft.` };
+  }
+  let used: Recipe['costs'] | undefined;
+  if (costs !== undefined) {
+    if (!costs || typeof costs !== 'object' || Array.isArray(costs)) return { error: 'Choose the skills the recipe uses.' };
+    used = {};
+    for (const [skill, cost] of Object.entries(costs) as [string, unknown][]) {
+      if (!(CRAFTING_SKILLS as readonly string[]).includes(skill)) return { error: `${skill} is not a crafting skill.` };
+      if (!Number.isInteger(cost) || (cost as number) < 0 || (cost as number) > RECIPE_LIMITS.cost) return { error: `Each skill can use from 0 to ${RECIPE_LIMITS.cost}.` };
+      if (cost) used[skill as CraftingSkill] = cost as number;
+    }
+    if (!Object.keys(used).length) return { error: 'The recipe must use at least one crafting skill.' };
+  }
+  const edit: CityRecipe = {};
+  if (tier !== undefined && tier !== recipe.tier) edit.tier = tier as Tier;
+  if (used && !sameCosts(used, { [recipe.skill]: TIERS[edit.tier ?? recipe.tier].effort })) edit.costs = used;
+  if (makes !== undefined && makes !== recipe.yield) edit.yield = makes as number;
+  return { recipe: Object.keys(edit).length ? edit : null };
 }
 
 /** What crafting and research need to know about a city. `research` holds steps per item ID. */
@@ -207,19 +261,29 @@ export function isUnlocked(recipe: Recipe, research: Record<string, number>) {
   return !needed || (research[recipe.itemId] ?? 0) >= needed.steps;
 }
 
-/** Capacity one item takes in a crafting order: its tier's effort, out of its skill's value. */
-export const orderCost = (recipe: Pick<Recipe, 'tier'>) => TIERS[recipe.tier].effort;
+type CostLike = Pick<Recipe, 'skill' | 'tier'> & { costs?: Recipe['costs'] };
+
+/** Skill value one craft uses, per crafting skill: the recipe's costs, or its tier's effort of its skill. */
+export const recipeCosts = (recipe: CostLike): Recipe['costs'] => recipe.costs ?? { [recipe.skill]: TIERS[recipe.tier].effort };
+
+/** Capacity one craft takes from a skill's value (its own skill by default). */
+export const orderCost = (recipe: CostLike, skill: CraftingSkill = recipe.skill) => recipeCosts(recipe)[skill] ?? 0;
 
 /** Capacity the order uses per crafting skill. */
-export function orderUsage(lines: { recipe: Pick<Recipe, 'skill' | 'tier'>; quantity: number }[]): Record<CraftingSkill, number> {
+export function orderUsage(lines: { recipe: CostLike; quantity: number }[]): Record<CraftingSkill, number> {
   const usage = { apothecary: 0, craftsmanship: 0, technology: 0, metallurgy: 0, archaeology: 0 };
-  for (const { recipe, quantity } of lines) usage[recipe.skill] += orderCost(recipe) * quantity;
+  for (const { recipe, quantity } of lines) {
+    for (const [skill, cost] of Object.entries(recipeCosts(recipe)) as [CraftingSkill, number][]) usage[skill] += cost * quantity;
+  }
   return usage;
 }
 
-/** How many more of the recipe fit in the order, given what it already uses. */
-export const orderRoom = (recipe: Pick<Recipe, 'skill' | 'tier'>, skills: CitySkills, usage: Record<CraftingSkill, number>) =>
-  Math.max(0, Math.floor((skills[recipe.skill] - usage[recipe.skill]) / orderCost(recipe)));
+/** How many more crafts of the recipe fit in the order, given what it already uses, across every skill it uses. */
+export function orderRoom(recipe: CostLike, skills: CitySkills, usage: Record<CraftingSkill, number>) {
+  const costs = (Object.entries(recipeCosts(recipe)) as [CraftingSkill, number][]).filter(([, cost]) => cost > 0);
+  if (!costs.length) return 0;
+  return Math.max(0, Math.min(...costs.map(([skill, cost]) => Math.floor((skills[skill] - usage[skill]) / cost))));
+}
 
 /** Skills whose order lines need more than the city has, e.g. after a resident moved off the skill. */
 export const overCapacity = (skills: CitySkills, usage: Record<CraftingSkill, number>) =>
@@ -232,7 +296,12 @@ export function craftBlockers(recipe: Recipe, city: CraftingCity): string[] {
   const reasons: string[] = [];
   if (!rankAtLeast(city.rank, tier.minRank)) reasons.push(`Needs ${withArticle(label(tier.minRank))} city.`);
   if (!isUnlocked(recipe, city.research)) reasons.push('Needs research.');
-  if (city.skills[recipe.skill] < tier.minSkill) reasons.push(`Needs ${label(recipe.skill)} ${tier.minSkill}.`);
+  // Its own skill needs the tier's minimum; every skill needs enough for one craft.
+  const costs = recipeCosts(recipe);
+  for (const skill of [recipe.skill, ...CRAFTING_SKILLS.filter(entry => entry !== recipe.skill && costs[entry])]) {
+    const needed = Math.max(costs[skill] ?? 0, skill === recipe.skill ? tier.minSkill : 0);
+    if (city.skills[skill] < needed) reasons.push(`Needs ${label(skill)} ${needed}.`);
+  }
   if (recipe.assist && city.skills[recipe.assist.skill] < recipe.assist.min) reasons.push(`Needs ${label(recipe.assist.skill)} ${recipe.assist.min}.`);
   if (recipe.catalyst && !recipe.catalyst.some(type => (city.catalysts[type] ?? 0) >= tier.catalystStrength)) {
     reasons.push(`Needs ${withArticle(recipe.catalyst.map(label).join(' or '))} Catalyst of strength ${tier.catalystStrength}.`);

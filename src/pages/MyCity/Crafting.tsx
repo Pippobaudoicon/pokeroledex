@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Dices, Hammer, Keyboard, Lock, Minus, Plus, Trash2, Unlock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Dices, Hammer, Keyboard, Lock, Minus, Pencil, Plus, RotateCcw, Trash2, Unlock } from "lucide-react";
 import * as React from "react";
 import {
   CRAFTING_SKILLS, type City, type CityCraftResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrderBody,
-  type CityResearchResult, type CityStepsBody, type CityStockBody, type CraftingSkill, type HydratedInventoryEntry, type Item, type Trainer,
+  type CityRecipeBody, type CityResearchResult, type CityStepsBody, type CityStockBody, type CraftingSkill, type HydratedInventoryEntry, type Item,
+  type Tier, type Trainer,
 } from "../../../shared/types";
 import {
-  TIERS, craftBlockers, isUnlocked, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, researchBlockers, type CraftingCity, type Recipe,
+  RECIPE_LIMITS, TIERS, cityRecipe, craftBlockers, isUnlocked, itemRecipe, orderRoom, orderUsage, overCapacity, researchBlockers,
+  type CraftingCity, type Recipe,
 } from "../../../shared/crafting";
 import { ITEM_EXCEPTIONS } from "../../../shared/crafting-data";
 import { apiFetch, type ApiFetchError } from "@/api/client";
@@ -26,7 +28,8 @@ import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
 import { SkillIcon, errorText, field, panel, skillLabel } from "./common";
 
-type Entry = { item: Item; recipe: Recipe };
+/** `recipe` includes the city's edits; `base` is the default recipe. */
+type Entry = { item: Item; recipe: Recipe; base: Recipe };
 type View = "craft" | "research" | "storage";
 type Usage = Record<CraftingSkill, number>;
 
@@ -45,12 +48,18 @@ const parseFaces = (text: string) => (text.match(/[1-6]/g) ?? []).map(Number);
 const dice = (count: number) => `${count} ${count === 1 ? "die" : "dice"}`;
 const cityUrl = (city: City, path: string) => `/cities/${encodeURIComponent(city.id)}/${path}`;
 
+/** What `crafts` crafts of a recipe use, e.g. "2 Apothecary + 1 Technology". */
+const costText = (recipe: Recipe, crafts = 1) => CRAFTING_SKILLS.filter(skill => recipe.costs[skill])
+  .map(skill => `${recipe.costs[skill]! * crafts} ${skillLabel(skill)}`).join(" + ");
+
 const RecipeFacts = ({ recipe }: { recipe: Recipe }) => {
   const tier = TIERS[recipe.tier];
   return <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-footnote text-label-2">
     <span className="inline-flex items-center gap-1"><SkillIcon skill={recipe.skill} className="size-4" />{skillLabel(recipe.skill)}</span>
     <span>Tier {recipe.tier} · {formatEnumName(tier.minRank)}</span>
-    <span>Uses {orderCost(recipe)} {skillLabel(recipe.skill)} each</span>
+    <span>Uses {costText(recipe)} per craft</span>
+    {recipe.yield > 1 && <span>Makes {recipe.yield}</span>}
+    {recipe.edited && <span className="rounded-full bg-fill px-2 py-0.5 text-caption font-medium text-label">Edited</span>}
     {recipe.assist && <span>Assist: {skillLabel(recipe.assist.skill)} {recipe.assist.min}+</span>}
     {recipe.catalyst && <span className="inline-flex flex-wrap items-center gap-1">Catalyst {tier.catalystStrength}+:
       {recipe.catalyst.map(type => <TypePill key={type} type={type} size="sm" />)}</span>}
@@ -284,6 +293,105 @@ const Storage = ({ city, trainers, items, isLeader }: { city: City; trainers: Tr
   </div>;
 };
 
+const noCosts = (): Usage => ({ apothecary: 0, craftsmanship: 0, technology: 0, metallurgy: 0, archaeology: 0 });
+
+/** The leader's edit of a recipe for this city: its tier, the skills one craft uses and how many items one craft makes. */
+const RecipeEditor = ({ city, entry, open, onOpenChange }: { city: City; entry: Entry | null; open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const [tier, setTier] = React.useState<Tier>(1);
+  const [costs, setCosts] = React.useState<Usage>(noCosts);
+  // Until the leader changes a skill, the costs follow the tier's effort.
+  const [customCosts, setCustomCosts] = React.useState(false);
+  const [makes, setMakes] = React.useState(1);
+  const itemId = entry?.item.id;
+  React.useEffect(() => {
+    if (!open || !entry) return;
+    setTier(entry.recipe.tier);
+    setCosts({ ...noCosts(), ...entry.recipe.costs });
+    setCustomCosts(!!city.recipes?.[entry.item.id]?.costs);
+    setMakes(entry.recipe.yield);
+    // Only reset when the sheet opens on an item, not when the city refreshes while editing.
+  }, [open, itemId]);
+  const save = useMutation({
+    mutationFn: (body: CityRecipeBody) => apiFetch<City>({ url: cityUrl(city, "recipe"), method: "post", body }),
+    onSuccess: (result, body) => {
+      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result));
+      toast({ title: body.recipe ? `${entry?.item.name ?? "Recipe"} updated` : `${entry?.item.name ?? "Recipe"} reset to the default` });
+      onOpenChange(false);
+    },
+    onError: (error: ApiFetchError) => toast({ title: "The recipe could not be saved", description: errorText(error) }),
+  });
+  if (!entry) return null;
+  const { base } = entry;
+  const chooseTier = (next: Tier) => {
+    setTier(next);
+    if (!customCosts) setCosts({ ...noCosts(), [base.skill]: TIERS[next].effort });
+  };
+  const setCost = (skill: CraftingSkill, value: number) => {
+    setCustomCosts(true);
+    setCosts(current => ({ ...current, [skill]: value }));
+  };
+  const validCost = (value: number) => Number.isInteger(value) && value >= 0 && value <= RECIPE_LIMITS.cost;
+  const used = CRAFTING_SKILLS.filter(skill => costs[skill] > 0);
+  const valid = CRAFTING_SKILLS.every(skill => validCost(costs[skill])) && used.length > 0 &&
+    Number.isInteger(makes) && makes >= 1 && makes <= RECIPE_LIMITS.yield;
+  const info = TIERS[tier];
+  const edited = !!city.recipes?.[entry.item.id];
+  return <Sheet open={open} onOpenChange={onOpenChange} title={`Edit craft · ${entry.item.name}`} initialExpanded>
+    <form className="flex flex-col gap-4 p-4" onSubmit={event => {
+      event.preventDefault();
+      if (valid) save.mutate({ itemId: entry.item.id, recipe: { tier, costs: Object.fromEntries(used.map(skill => [skill, costs[skill]])), yield: makes } });
+    }}>
+      <p className="text-footnote text-label-2">
+        Changes apply to {city.name} only. The default is tier {base.tier}, using {costText(base)} per craft and making {base.yield}.
+      </p>
+      <label className="flex flex-col gap-1.5 text-subhead font-medium">Tier
+        <select className={cn(field, "sm:w-64")} value={tier} onChange={event => chooseTier(Number(event.target.value) as Tier)}>
+          {(Object.keys(TIERS).map(Number) as Tier[]).map(value =>
+            <option key={value} value={value}>Tier {value} · {formatEnumName(TIERS[value].minRank)}{value === base.tier ? " (default)" : ""}</option>)}
+        </select>
+        <span className="text-footnote font-normal text-label-2">
+          Needs {formatEnumName(info.minRank)} rank and {info.research ? `${info.research.steps} research steps` : "no research"}; its skill needs at least {info.minSkill}.
+        </span>
+      </label>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1.5 text-subhead font-medium">Skills used per craft</legend>
+        <p className="text-footnote text-label-2">How much of each skill's value one craft takes from the order. Set 0 for skills it does not use.</p>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {CRAFTING_SKILLS.map(skill => <li key={skill}>
+            <label className="flex items-center gap-2 rounded-xl bg-fill px-3 py-1.5">
+              <SkillIcon skill={skill} className="size-4" />
+              <span className="flex-1 text-subhead">{skillLabel(skill)}{skill === base.skill && <span className="text-label-2"> (default)</span>}</span>
+              <input type="number" min={0} max={RECIPE_LIMITS.cost} value={costs[skill]} aria-label={`${skillLabel(skill)} per craft`}
+                onChange={event => setCost(skill, Number(event.target.value))}
+                className={cn(field, "w-18 bg-surface text-center tabular-nums", !validCost(costs[skill]) && "text-red-500")} />
+            </label>
+          </li>)}
+        </ul>
+        {!used.length && <p role="alert" className="text-footnote text-red-500">The recipe must use at least one skill.</p>}
+      </fieldset>
+      <label className="flex flex-col gap-1.5 text-subhead font-medium">Items per craft
+        <input type="number" min={1} max={RECIPE_LIMITS.yield} value={makes} onChange={event => setMakes(Number(event.target.value))} className={cn(field, "w-24")} />
+        <span className="text-footnote font-normal text-label-2">Crafting it once puts this many in storage.</span>
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className={button({ variant: "filled" })} disabled={!valid || save.isPending}>Save</button>
+        {edited && <button type="button" className={button({ variant: "gray" })} disabled={save.isPending}
+          onClick={() => save.mutate({ itemId: entry.item.id, recipe: null })}>
+          <RotateCcw aria-hidden className="size-4" />Reset to default
+        </button>}
+        <button type="button" className={button({ variant: "plain" })} onClick={() => onOpenChange(false)}>Cancel</button>
+      </div>
+    </form>
+  </Sheet>;
+};
+
+const EditCraftButton = ({ name, disabled, onEdit }: { name: string; disabled: boolean; onEdit: () => void }) =>
+  <button type="button" className={button({ variant: "gray", size: "sm" })} disabled={disabled} onClick={onEdit} aria-label={`Edit craft for ${name}`}>
+    <Pencil aria-hidden className="size-4" />Edit craft
+  </button>;
+
 /** The crafting order: what members queued, how much of each skill it uses, and the leader's Craft button. */
 const OrderPanel = ({ city, lines, usage, isLeader, leader, disabled, onSet, onOpen, onCraft, blockersOf }: {
   city: City; lines: (Entry & { quantity: number })[]; usage: Usage; isLeader: boolean; leader: string | undefined; disabled: boolean;
@@ -300,7 +408,7 @@ const OrderPanel = ({ city, lines, usage, isLeader, leader, disabled, onSet, onO
       </button>}
     </div>
     <p className="text-footnote text-label-2">
-      Every member can add and remove items. Each crafting skill's value is how much of the order its recipes can fill; each item uses its tier's effort.
+      Every member can add and remove items. Each crafting skill's value is how much of the order its recipes can fill; each craft uses its recipe's skills.
       {isLeader ? " Crafting puts every item in storage." : ` The leader (${leader}) crafts the order into storage.`}
     </p>
     <ul className="flex flex-wrap gap-1.5" aria-label="Skill use">
@@ -317,7 +425,9 @@ const OrderPanel = ({ city, lines, usage, isLeader, leader, disabled, onSet, onO
         const blockers = blockersOf(line);
         return <li key={line.item.id} className="flex items-center gap-3 py-2">
           <ItemTitle item={line.item} size="size-9" onOpen={() => onOpen(line)}>
-            <span className="block text-footnote text-label-2">{skillLabel(line.recipe.skill)} · uses {orderCost(line.recipe) * line.quantity}</span>
+            <span className="block text-footnote text-label-2">
+              Uses {costText(line.recipe, line.quantity)}{line.recipe.yield > 1 && ` · makes ${line.recipe.yield * line.quantity}`}
+            </span>
             <Blockers reasons={blockers} />
           </ItemTitle>
           <div className="flex items-center gap-1">
@@ -366,17 +476,25 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   React.useEffect(() => setPage(0), [view, query, skill, showLocked, pockets]);
   const [shown, setShown] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
   const [detail, setDetail] = React.useState<Entry | null>(null);
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [editOpen, setEditOpen] = React.useState(false);
   const [detailOpen, setDetailOpen] = React.useState(false);
   const leader = city.members[0];
   const isLeader = !!me && me.email === leader;
   const state: CraftingCity = { rank: city.rank, skills: city.skills, catalysts: city.catalysts, research: city.research };
-  const entries = React.useMemo(() => (items.data ?? []).map(item => ({ item, recipe: itemRecipe(item, ITEM_EXCEPTIONS[item.name]) })), [items.data]);
+  const entries = React.useMemo(() => (items.data ?? []).map(item => {
+    const base = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
+    return { item, base, recipe: cityRecipe(base, city.recipes?.[item.id]) };
+  }), [items.data, city.recipes]);
   const byId = React.useMemo(() => new Map(entries.map(entry => [entry.item.id, entry])), [entries]);
   const matches = (entry: Entry) => (skill === "all" || entry.recipe.skill === skill) && (!query || fold(entry.item.name).includes(fold(query))) &&
     (!pockets.length || (!!entry.item.pocket && pockets.includes(entry.item.pocket)));
   const byTier = (a: Entry, b: Entry) => a.recipe.tier - b.recipe.tier || a.item.name.localeCompare(b.item.name);
   const blockersOf = (entry: Entry) => craftBlockers(entry.recipe, state);
   const open = (entry: Entry) => { setDetail(entry); setDetailOpen(true); };
+  const edit = (entry: Entry) => { setEditing(entry.item.id); setEditOpen(true); };
+  const editButton = (entry: Entry) => isLeader && entry.base.craftable &&
+    <EditCraftButton name={entry.item.name} disabled={pending} onEdit={() => edit(entry)} />;
 
   const orderLines = (city.order ?? []).flatMap(line => {
     const entry = byId.get(line.itemId);
@@ -445,7 +563,10 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const currentPage = Math.min(page, pages - 1);
   const onPage = <Row,>(rows: Row[]) => rows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
   const storedCount = city.inventory.reduce((total, entry) => total + entry.quantity, 0);
-  const detailBlockers = detail ? blockersOf(detail) : [];
+  // Look entries up again, so open sheets show the city's latest recipe edits.
+  const detailEntry = detail ? byId.get(detail.item.id) ?? detail : null;
+  const detailBlockers = detailEntry ? blockersOf(detailEntry) : [];
+  const editingEntry = editing ? byId.get(editing) ?? null : null;
 
   return <section className={`${panel} space-y-4`}>
     <div>
@@ -488,7 +609,10 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
             <p className="text-footnote text-label-2">{craftableCount} of {entries.filter(entry => entry.recipe.craftable).length} recipes can be crafted now.</p>
             {!craftRows.length ? <p className="text-label-2">{showLocked ? "No recipes match." : "Nothing matches that the city can craft yet. Turn on Show locked recipes to see what each one needs."}</p> :
               <ul className="divide-y divide-hairline">{onPage(craftRows).map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
-                actions={!row.blockers.length && stepper(row)}>
+                actions={(!row.blockers.length || isLeader) && <div className="flex flex-wrap items-center gap-2">
+                  {!row.blockers.length && stepper(row)}
+                  {editButton(row)}
+                </div>}>
                 <Blockers reasons={row.blockers} />
               </RecipeRow>)}</ul>}
           </> : <>
@@ -514,12 +638,13 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
           </div>
         </>}
     </div>
-    <ItemDetail entry={detail} open={detailOpen} onOpenChange={setDetailOpen} blockers={detailBlockers}>
-      {detail && !detailBlockers.length && <div className="flex flex-wrap items-center gap-3">
-        <span className="text-subhead text-label-2">In the order</span>
-        {stepper(detail)}
+    <ItemDetail entry={detailEntry} open={detailOpen} onOpenChange={setDetailOpen} blockers={detailBlockers}>
+      {detailEntry && (!detailBlockers.length || (isLeader && detailEntry.base.craftable)) && <div className="flex flex-wrap items-center gap-3">
+        {!detailBlockers.length && <><span className="text-subhead text-label-2">In the order</span>{stepper(detailEntry)}</>}
+        {editButton(detailEntry)}
       </div>}
     </ItemDetail>
+    <RecipeEditor city={city} entry={editingEntry} open={editOpen} onOpenChange={setEditOpen} />
     {shown && <DiceRoll key={shown.key} request={shown} onClose={() => setShown(null)} />}
   </section>;
 };
