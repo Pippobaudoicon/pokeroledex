@@ -25,3 +25,12 @@ To change the timing, look at the `shiny-sheen` animation in `src/index.css`:
 - Its `3%` keyframe, plus the `2.99%` opacity hold before it, sets how long the sweep lasts: interval × percentage / 100 = sweep seconds.
 
 The flag is `shiny` on the Pokémon record (and on `/api/pokemon/minimal`). Older records simply aren't shiny and need no migration.
+
+## Checking stat points
+
+**Check stat points** (in a Pokémon sheet's **…** menu, and next to **Rank up** on a trainer's sheet) opens a summary of how the sheet's points compare with ranking up from Unranked to its current rank. The rank-up budgets from `rankup-attributes.json` are added together for every rank from Starter up to and including the current one.
+
+- **Attributes, Skills and Socials** show how many points were spent compared with that total: **Matches**, **N to spend**, or **N too many**. Spent points are the stored stats: attribute points above the species' base for Pokémon (or above 1 for trainers), social points above 1, and skill points.
+- Skills above the current rank's skill limit are listed, and so are Pokémon attributes above the species' maximum.
+
+The check only reports. It never changes the sheet.
