@@ -8,11 +8,18 @@ All three generators use a fresh seed for each generation, and you can't pick th
 
 ### Encounter cards
 
-Cards support locking across rolls, removal, two-d20 shiny rolls (which stay independent of the seed), HP tracking, full sheets, and all rank-eligible moves with calculated dice pools.
+Each card has **Lock** (kept across rolls) and **Remove** buttons in its top corner. The chevron at the bottom opens an actions menu:
+
+- **Show encounter** opens the encounter details sheet: full sheets, HP tracking and all rank-eligible moves with calculated dice pools.
+- **Ban from generator** removes the species from the encounter and adds it to the banned list.
+- **Edit habitat** picks any number of specific habitats for the species. Core Pokémon get a shared override that every player's future habitat filters (both generators and the Pokédex) use; your own campaign Pokémon are updated directly. See [habitats.md](habitats.md#editing-habitats-in-the-app).
+- **Roll shiny** rolls two d20s, independent of the seed; double 20 is shiny.
 
 History holds the last encounter's unique templates and excludes them from the next roll. Remove individual entries or clear the history to allow them again. Copy exports the current encounter.
 
-Results, HP, shiny status and history last until you leave the generator screen or reload.
+**Banned** lists species excluded from every roll until you remove them. Unlike history it isn't replaced by the next roll, but it is cleared when you leave the Generators page.
+
+Results, HP, shiny status and history last until you reload.
 
 ### Running the fight
 

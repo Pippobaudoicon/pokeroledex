@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/layout/AppShell";
 import { formatEnumName } from "@/lib/utils";
 import { GeneratorContentProvider, useGeneratorContent } from "./context";
+import { EncounterContext } from "./encounter-context";
 import { EncounterGenerator, GeneratedEncounterList } from "./Encounters";
 import { ChoiceGroup, Field, fieldClass, GeneratorEmpty } from "./fields";
 
@@ -241,8 +242,12 @@ const GeneratorPage = () => {
   );
 };
 
-export const GeneratorsPage = () => (
-  <GeneratorContentProvider>
-    <GeneratorPage />
-  </GeneratorContentProvider>
-);
+export const GeneratorsPage = () => {
+  const { setBanned } = React.useContext(EncounterContext);
+  React.useEffect(() => () => setBanned([]), [setBanned]);
+  return (
+    <GeneratorContentProvider>
+      <GeneratorPage />
+    </GeneratorContentProvider>
+  );
+};

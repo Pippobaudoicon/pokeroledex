@@ -95,3 +95,12 @@ Collection rewrites the habitat assignments and both catalogs, so review the Git
 2. Run `pnpm build`. This applies the change, normalizes and deduplicates stored assignments, and regenerates both the checked-in and published catalogs.
 
 Your overrides are safe, because the base Pokémon JSON stays unchanged and the build applies this separate dataset. Missing or stale template mappings fail the build and mean you need to run the collector again.
+
+## Editing habitats in the app
+
+**Edit habitat** in an encounter card's menu (`PUT /api/pokemon-templates/<id>/habitats` with `{ "habitats": [...] }`) changes a Pokémon's specific habitats without a rebuild:
+
+- **Core Pokémon** get a shared override in D1 (owner `global`, collection `habitat-overrides`) that applies for every player. The API serves the overridden habitats wherever templates appear, so generator filters and the Pokédex use them, and marks the template `habitatsEdited`; the Pokédex then shows the source as edited. Saving the reference habitats again deletes the override.
+- **Your own campaign Pokémon** are updated directly. Other players' campaign Pokémon can't be changed.
+
+The catalog counts in `habitats.json` and `habitat-macros.json` are built from the reference data and don't include overrides. To make an override permanent, copy it into `pokemon-habitats.json` as described above.

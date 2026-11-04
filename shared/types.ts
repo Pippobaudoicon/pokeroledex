@@ -239,6 +239,8 @@ export interface PokemonTemplate {
   image: string;
   habitats: Habitat[];
   habitatProvenance?: PokemonHabitatEntry;
+  /** Core Pokémon whose habitats were changed in the app, overriding the reference data. */
+  habitatsEdited?: boolean;
   hash: string | null;
   campaign: Campaign | null;
   abilityOne: Ability | null;
