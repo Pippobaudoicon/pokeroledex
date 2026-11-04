@@ -117,6 +117,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     if (name === 'pokemon' && action && id === 'send' && method === 'POST') {
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
       if (email === owner) fail(400, 'This Pokemon is already yours.');
+      // Reserved owners such as 'global' and 'city:<id>' hold records too, but are not players.
+      if (!email.includes('@')) fail(400, 'Enter the email address of the player to send it to.');
       const { results: known } = await env.DB.prepare(`SELECT 1 FROM records WHERE owner = ?
         UNION ALL SELECT 1 FROM city_members WHERE email = ? LIMIT 1`).bind(email, email).all();
       if (!known.length) fail(404, `No player uses ${email || 'that email'} here.`);
