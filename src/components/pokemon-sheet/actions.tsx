@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, ClipboardCheck, Dna, Lock, Unlock, MoreHorizontal, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { ArrowUpCircle, ClipboardCheck, Dna, Lock, Unlock, MoreHorizontal, Pencil, Plus, Send, Swords, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
@@ -182,8 +182,8 @@ export const MenuItem = ({ icon, children, onClick, destructive = false, disable
   </button>
 );
 
-/** View mode: Edit, plus a menu with Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
-export const SheetActions = () => {
+/** View mode: Fight and Edit, plus a menu with Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
+export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
   const { updatedPokemon, editingMode, setEditingMode, savePokemon, cancelEdit } = usePokemon();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -205,6 +205,12 @@ export const SheetActions = () => {
     );
   return (
     <>
+      {onFight && (
+        <button type="button" onClick={onFight} className={button({ variant: "filled" })}>
+          <Swords aria-hidden className="size-4" />
+          Fight
+        </button>
+      )}
       <button type="button" onClick={() => setEditingMode("edit")} className={button({ variant: "tinted" })}>
         <Pencil aria-hidden className="size-4" />
         Edit

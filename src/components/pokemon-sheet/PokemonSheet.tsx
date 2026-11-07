@@ -1,4 +1,4 @@
-import { Minus, Plus, X } from "lucide-react";
+import { Minus, Plus, RotateCcw, X } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
 import { Gender } from "@/api/schemas";
@@ -14,6 +14,8 @@ import { Sprite } from "@/components/kit/Sprite";
 import { AddMoveSheet, useCanAddMove } from "@/components/pokemon-sheet/AddMoveSheet";
 import { AddToMyPokemon, LockButton, SheetActions } from "@/components/pokemon-sheet/actions";
 import { usePokemon } from "@/components/pokemon-sheet/context";
+import { fightBoosts, FightProvider, type SheetFight, TempStats, useFight, useLocalFight, withBoosts } from "@/components/pokemon-sheet/fight";
+import { hasStatuses, NewRoundAlert, nextRoundStatuses, roundEffects, StatusPicker } from "@/components/pokemon-sheet/status";
 import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
 import { StatGroups, usePointsLeft } from "@/components/pokemon-sheet/stats";
 import { Hint } from "@/components/move-dice";
@@ -168,41 +170,36 @@ const Vital = ({ property, label, max, color }: { property: "currentHp" | "curre
 };
 
 /** Turn tracking for encounters: the Nth action in a round needs N successes, up to 5 actions. */
-export interface SheetTurn {
-  value: number;
-  onChange: (value: number) => void;
-}
-
 const MIN_TURN = 1;
 const MAX_TURN = 5;
 
 const turnHint = (turn: number) => `Needs ${turn} ${turn === 1 ? "success" : "successes"}`;
 
 /** Sits next to HP and Will: the action this round (1–5), as − value + with one segment per action. */
-const TurnCard = ({ turn, name }: { turn: SheetTurn; name: string }) => (
+const TurnCard = ({ fight, name }: { fight: SheetFight; name: string }) => (
   <div title="The Nth action in a round needs N successes" className="flex h-full flex-col gap-2 rounded-2xl bg-surface p-3 shadow-card">
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-footnote font-semibold tracking-wide text-label-2 uppercase">Turn</span>
-      <span className="truncate text-footnote text-label-2">{turnHint(turn.value)}</span>
+      <span className="truncate text-footnote text-label-2">{turnHint(fight.turn)}</span>
     </div>
     <div className="flex items-center gap-2">
       <button
         type="button"
         aria-label={`Decrease turn for ${name}`}
-        disabled={turn.value <= MIN_TURN}
-        onClick={() => turn.onChange(Math.max(MIN_TURN, turn.value - 1))}
+        disabled={fight.turn <= MIN_TURN}
+        onClick={() => fight.setTurn(Math.max(MIN_TURN, fight.turn - 1))}
         className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}
       >
         <Minus aria-hidden className="size-5 lg:size-4" />
       </button>
       <output aria-live="polite" aria-label={`Turn for ${name}`} className="flex-1 text-center font-display text-title-1 tabular-nums">
-        {turn.value}
+        {fight.turn}
       </output>
       <button
         type="button"
         aria-label={`Increase turn for ${name}`}
-        disabled={turn.value >= MAX_TURN}
-        onClick={() => turn.onChange(Math.min(MAX_TURN, turn.value + 1))}
+        disabled={fight.turn >= MAX_TURN}
+        onClick={() => fight.setTurn(Math.min(MAX_TURN, fight.turn + 1))}
         className={cn(button({ variant: "gray", size: "icon" }), "lg:size-8")}
       >
         <Plus aria-hidden className="size-5 lg:size-4" />
@@ -210,43 +207,51 @@ const TurnCard = ({ turn, name }: { turn: SheetTurn; name: string }) => (
     </div>
     <div aria-hidden className="grid h-1.5 grid-cols-5 gap-1">
       {Array.from({ length: MAX_TURN }, (_, index) => (
-        <span key={index} className={cn("rounded-full transition-colors duration-150", index < turn.value ? "bg-tint" : "bg-fill")} />
+        <span key={index} className={cn("rounded-full transition-colors duration-150", index < fight.turn ? "bg-tint" : "bg-fill")} />
       ))}
     </div>
   </div>
 );
 
-/** Pools rolled every round, worked out from the sheet (corebook p. 51). */
-const Pools = ({ pokemon }: { pokemon: T.Pokemon }) => {
+const poolValues = (pokemon: T.Pokemon) => {
   const stat = (key: keyof T.Stats) => pokemon.stats[key];
   const strength = getTotalStat(pokemon, "strength");
   const special = getTotalStat(pokemon, "special");
   const dexterity = getTotalStat(pokemon, "dexterity");
-  const pools: [string, string, string][] = [
+  return [
     ["Initiative", String(dexterity + stat("alert")), "Dexterity + Alert"],
     ["Evasion", String(dexterity + stat("evasion")), "Dexterity + Evasion"],
     ["Clash", `${strength + stat("clash")}/${special + stat("clash")}`, "Strength or Special + Clash"],
     ["Defense", String(getTotalStat(pokemon, "vitality")), "Vitality"],
     ["Sp. Def", String(getTotalStat(pokemon, "insight")), "Insight"],
-  ];
+  ] as const;
+};
+
+/** Pools rolled every round, worked out from the sheet (corebook p. 51). Values changed by temporary stats are highlighted. */
+const Pools = ({ pokemon, base = pokemon }: { pokemon: T.Pokemon; base?: T.Pokemon }) => {
+  const before = poolValues(base);
   return (
     <dl className="grid grid-cols-5 overflow-hidden rounded-2xl bg-surface shadow-card">
-      {pools.map(([label, value, formula]) => (
-        <div
-          key={label}
-          title={formula}
-          className="flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0"
-        >
-          <dt className="text-caption font-medium text-label-2">{label}</dt>
-          <dd className="text-headline font-semibold tabular-nums">{value}</dd>
-        </div>
-      ))}
+      {poolValues(pokemon).map(([label, value, formula], index) => {
+        const changed = value !== before[index][1];
+        return (
+          <div
+            key={label}
+            title={changed ? `${formula} (was ${before[index][1]})` : formula}
+            className="flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0"
+          >
+            <dt className="text-caption font-medium text-label-2">{label}</dt>
+            <dd className={cn("text-headline font-semibold tabular-nums", changed && "text-tint")}>{value}</dd>
+          </div>
+        );
+      })}
     </dl>
   );
 };
 
 const Moves = ({ generated }: { generated: boolean }) => {
   const { updatedPokemon: pokemon, editingMode, updatePokemon } = usePokemon();
+  const fight = useFight();
   const canAdd = useCanAddMove();
   const [adding, setAdding] = React.useState(false);
   const [changing, setChanging] = React.useState(false);
@@ -254,6 +259,8 @@ const Moves = ({ generated }: { generated: boolean }) => {
   const slots = generated ? 6 : getTotalStat(pokemon, "insight") + 3;
   const editing = editingMode !== "view" || changing;
   const canAddGenerated = generated && changing && pokemon.moves.length < slots;
+  const boosted = withBoosts(pokemon, fightBoosts(fight));
+  const tracking = editing ? undefined : fight;
   return (
     <Group
       title="Moves"
@@ -277,9 +284,11 @@ const Moves = ({ generated }: { generated: boolean }) => {
       footer={
         changing
           ? "Remove a move, then add its replacement. Changes stay with this generated Pokémon."
-          : !editing && pokemon.moves.length > 0
-            ? "Tap a move, then its dice button to roll. Pools include this Pokémon’s stats; ★ is S.T.A.B."
-            : undefined
+          : tracking && pokemon.moves.length > 0
+            ? "Check a move once it’s used this round. Tap a move, then its dice button to roll; pools include temporary stats. ★ is S.T.A.B."
+            : !editing && pokemon.moves.length > 0
+              ? "Tap a move, then its dice button to roll. Pools include this Pokémon’s stats; ★ is S.T.A.B."
+              : undefined
       }
     >
       {pokemon.moves.length === 0 && !canAdd && (
@@ -292,7 +301,13 @@ const Moves = ({ generated }: { generated: boolean }) => {
           <MoveRow
             key={move.id}
             move={move}
-            pokemon={pokemon}
+            pokemon={boosted}
+            used={tracking?.usedMoves.includes(move.id)}
+            onUsedChange={
+              tracking
+                ? (used) => tracking.setUsedMoves(used ? [...tracking.usedMoves, move.id] : tracking.usedMoves.filter((id) => id !== move.id))
+                : undefined
+            }
             action={
               editing && (
                 <button
@@ -365,7 +380,7 @@ export const PokemonSheet = ({
   embedded = false,
   showHeader = true,
   showActions = true,
-  turn,
+  fight: externalFight,
 }: {
   showButtons?: SheetButtons;
   showTyping?: boolean;
@@ -376,11 +391,18 @@ export const PokemonSheet = ({
   showHeader?: boolean;
   /** Edit/menu for saved Pokémon, Add to My Pokémon for generated ones. */
   showActions?: boolean;
-  /** Adds a turn counter next to HP and Will. */
-  turn?: SheetTurn;
+  /**
+   * Fight state kept by the caller (encounters): adds a turn counter, temporary stats and used-move checks.
+   * Without it, saved Pokémon get a Fight button that keeps this state until the fight ends or the sheet unmounts.
+   */
+  fight?: SheetFight;
 }) => {
-  const { updatedPokemon: pokemon, isLoading, isError, editingMode } = usePokemon();
+  const { updatedPokemon: pokemon, isLoading, isError, editingMode, updatePokemon } = usePokemon();
   const [section, setSection] = React.useState<Section>("battle");
+  const localFight = useLocalFight();
+  const [fighting, setFighting] = React.useState(false);
+  const [confirmingRound, setConfirmingRound] = React.useState(false);
+  const fight = externalFight ?? (fighting ? localFight : undefined);
   if (!pokemon)
     return isLoading ? (
       <div aria-busy className="flex flex-col gap-4 p-4">
@@ -399,10 +421,55 @@ export const PokemonSheet = ({
       </div>
     );
 
+  const name = pokemon.nickname || pokemon.pokemonTemplate.name;
+  const startRound = () => {
+    const damage = roundEffects(localFight.statuses).reduce((sum, effect) => sum + effect.damage, 0);
+    if (damage > 0) updatePokemon({ currentHp: Math.max(0, pokemon.currentHp - damage) });
+    localFight.setStatuses(nextRoundStatuses(localFight.statuses));
+    localFight.setTurn(1);
+    localFight.setUsedMoves([]);
+  };
   // Generated Pokémon get "Add to My Pokémon" at the bottom of the sheet instead.
-  const actions = !showActions ? null : showButtons === "edit" ? <SheetActions /> : showButtons === "addAndLock" && <LockButton />;
+  const fightActions = (
+    <>
+      <button
+        type="button"
+        disabled={localFight.turn === 1 && localFight.usedMoves.length === 0 && !hasStatuses(localFight.statuses)}
+        onClick={() => (hasStatuses(localFight.statuses) ? setConfirmingRound(true) : startRound())}
+        className={button({ variant: "gray" })}
+      >
+        <RotateCcw aria-hidden className="size-4" />
+        New round
+      </button>
+      <NewRoundAlert
+        open={confirmingRound}
+        onOpenChange={setConfirmingRound}
+        subjects={[{ key: pokemon.id, name, hp: pokemon.currentHp, statuses: localFight.statuses }]}
+        onConfirm={startRound}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          localFight.reset();
+          setFighting(false);
+        }}
+        className={button({ variant: "filled" })}
+      >
+        <X aria-hidden className="size-4" />
+        End fight
+      </button>
+    </>
+  );
+  const actions = !showActions
+    ? null
+    : showButtons === "edit"
+      ? fighting && !externalFight
+        ? fightActions
+        : <SheetActions onFight={externalFight ? undefined : () => setFighting(true)} />
+      : showButtons === "addAndLock" && <LockButton />;
   const sectionClass = (name: Section) => cn("flex flex-col gap-6 @3xl:gap-5", section !== name && "@max-3xl:hidden");
   return (
+    <FightProvider fight={fight}>
     <article className="@container min-h-full bg-canvas" aria-label={`${pokemon.nickname || pokemon.pokemonTemplate.name} sheet`}>
       {embedded ? (
         showHeader && (
@@ -435,11 +502,11 @@ export const PokemonSheet = ({
         <div
           className={cn(
             "grid gap-3",
-            !turn && "@3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] @3xl:items-stretch",
+            !fight && "@3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] @3xl:items-stretch",
           )}
         >
           <Identity pokemon={pokemon} showTyping={showTyping} />
-          <div className={cn("grid grid-cols-2 gap-3", turn ? "@xl:grid-cols-3" : "@3xl:contents")}>
+          <div className={cn("grid grid-cols-2 gap-3", fight ? "@xl:grid-cols-3" : "@3xl:contents")}>
             <Vital
               property="currentHp"
               label="HP"
@@ -447,14 +514,14 @@ export const PokemonSheet = ({
               color="var(--color-hp)"
             />
             <Vital property="currentWill" label="Will" max={getTotalStat(pokemon, "insight") + 3} color="var(--color-will)" />
-            {turn && (
+            {fight && (
               <div className="col-span-2 @xl:col-span-1">
-                <TurnCard turn={turn} name={pokemon.nickname || pokemon.pokemonTemplate.name} />
+                <TurnCard fight={fight} name={pokemon.nickname || pokemon.pokemonTemplate.name} />
               </div>
             )}
           </div>
         </div>
-        <Pools pokemon={pokemon} />
+        <Pools pokemon={withBoosts(pokemon, fightBoosts(fight))} base={pokemon} />
         <Segmented
           label="Sheet section"
           idPrefix={`sheet-${pokemon.id}`}
@@ -472,6 +539,8 @@ export const PokemonSheet = ({
             {...segmentPanelProps(`sheet-${pokemon.id}`, "battle")}
             className={cn(sectionClass("battle"), "@3xl:col-start-1 @3xl:row-start-1")}
           >
+            {fight && <StatusPicker pokemon={pokemon} statuses={fight.statuses} setStatuses={fight.setStatuses} />}
+            {fight && <TempStats pokemon={pokemon} />}
             <Moves generated={showButtons !== "edit"} />
           </div>
           <div
@@ -494,5 +563,6 @@ export const PokemonSheet = ({
         )}
       </div>
     </article>
+    </FightProvider>
   );
 };
