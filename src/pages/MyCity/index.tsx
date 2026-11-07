@@ -1,6 +1,6 @@
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, Building2, MoreHorizontal, Plus, Tag, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Building2, Info, MoreHorizontal, Plus, Tag, Trash2 } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CITY_SKILLS, CRAFTING_SKILLS, POKEMON_TYPES, RANKS, SUPPORT_SKILLS, type Campaign, type City, type CityAssignment, type CityBody, type CitySkill, type NamedEntry, type Pokemon, type ProfileSkill, type Rank, type Trainer, type UpdatePokemonBody } from "../../../shared/types";
@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
 import { CityCrafting } from "./Crafting";
-import { SkillHelp } from "./SkillHelp";
+import { SkillHelpSheet } from "./SkillHelp";
 import { SkillIcon, errorText, field, panel, skillLabel } from "./common";
 
 /** What cityValues needs per resident: the city's bonus and profile, and the species' types. */
@@ -312,6 +312,15 @@ const targetLabel = (target: WorkTarget) =>
 const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }) => {
   const work = useCityWork(city, residents);
   const [selected, setSelected] = React.useState<string | null>(null);
+  // `from` is the skill open before, so switching can slide in from that side.
+  const [opened, setOpened] = React.useState<{ target: WorkTarget; from: WorkTarget | null } | null>(null);
+  const open = opened?.target ?? null;
+  const setOpen = (target: WorkTarget | null) =>
+    setOpened(current => current?.target === target ? current : target && { target, from: current?.target ?? null });
+  const lastShown = React.useRef(new Map<string, WorkTarget>());
+  const [help, setHelp] = React.useState<{ skill: CitySkill; open: boolean } | null>(null);
+  const hoverOpened = React.useRef<WorkTarget | null>(null);
+  const beforeDrag = React.useRef<WorkTarget | null>(null);
   const [drag, setDrag] = React.useState<{ id: string; x: number; y: number; over: WorkTarget | null } | null>(null);
   const press = React.useRef<{ id: string; x: number; y: number; dragged: boolean; clientY?: number } | null>(null);
   const allowed = (id: string, target: WorkTarget) => !target.startsWith("skill:") || canWork(city.profiles[id] ?? {}, target.slice(6) as CitySkill);
@@ -322,11 +331,6 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   };
   const totals = new Map<WorkTarget, number>();
   for (const [id, target] of Object.entries(city.assignments)) totals.set(target, (totals.get(target) ?? 0) + contribution(id, target));
-  const groups: [string, WorkTarget[]][] = [
-    ["Crafting skills", CRAFTING_SKILLS.map(skill => `skill:${skill}` as const)],
-    ["Support skills", SUPPORT_SKILLS.map(skill => `skill:${skill}` as const)],
-    ["Actions", city.tags.map(tag => `tag:${tag}` as const)],
-  ];
   const placed = (target: WorkTarget) => residents.filter(resident => (city.assignments[resident.id] ?? "unassigned") === target);
   const name = (resident: Pokemon) => resident.nickname || resident.pokemonTemplate.name;
 
@@ -344,6 +348,13 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
     window.addEventListener("keydown", cancel);
     return () => window.removeEventListener("keydown", cancel);
   }, [selected]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented && !selected) setOpen(null); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [open, selected]);
 
   // Scroll the page while a dragged resident is held near the top or bottom edge.
   const dragging = !!drag;
@@ -364,6 +375,17 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
     });
     return () => cancelAnimationFrame(frame);
   }, [dragging]);
+
+  // Open a skill once a resident that can work it rests over it, so passing over other tiles does not shift the layout.
+  const dragOver = drag?.over;
+  React.useEffect(() => {
+    if (!drag || !dragOver?.startsWith("skill:") || !allowed(drag.id, dragOver)) return;
+    const timer = window.setTimeout(() => {
+      hoverOpened.current = null;
+      setOpen(dragOver);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [dragOver]);
 
   const chip = (resident: Pokemon) => {
     const current = city.assignments[resident.id] ?? "unassigned";
@@ -387,6 +409,7 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
         if (!start.dragged && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 6) return;
         if (!start.dragged) {
           start.dragged = true;
+          beforeDrag.current = open;
           setSelected(null);
         }
         start.clientY = event.clientY;
@@ -396,10 +419,17 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
         if (press.current?.dragged) {
           const target = targetAt(event.clientX, event.clientY);
           if (target) move(resident.id, target);
+          // Keep the skill it landed in open; otherwise put back what was open before the drag.
+          hoverOpened.current = null;
+          setOpen(target?.startsWith("skill:") && allowed(resident.id, target) ? target : beforeDrag.current);
         }
         setDrag(null);
       }}
-      onPointerCancel={() => { press.current = null; setDrag(null); }}
+      onPointerCancel={() => {
+        if (press.current?.dragged) setOpen(beforeDrag.current);
+        press.current = null;
+        setDrag(null);
+      }}
       onClick={() => {
         if (press.current?.dragged) { press.current = null; return; }
         press.current = null;
@@ -413,15 +443,25 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   };
 
   const active = drag?.id ?? selected;
+  const activeName = active ? name(residents.find(resident => resident.id === active)!) : "";
   const zone = (target: WorkTarget, header: React.ReactNode) => {
     const members = placed(target);
     const blocked = !!active && !allowed(active, target);
-    const activeName = active ? name(residents.find(resident => resident.id === active)!) : "";
-    return <div key={target} data-city-target={target}
-      className={cn("flex min-w-0 flex-col gap-2 rounded-xl bg-fill p-3 transition-[box-shadow,opacity]",
+    const skill = target.startsWith("skill:") ? target.slice(6) as CitySkill : null;
+    return <div key={target} id={skill ? `city-skill-${skill}` : undefined} data-city-target={target}
+      className={cn("relative flex min-w-0 flex-col gap-2 rounded-xl bg-fill p-3 transition-[box-shadow,opacity]",
         blocked ? "opacity-40" : [drag?.over === target && "ring-2 ring-tint", selected && "ring-1 ring-tint/40"])}>
-      <div className="flex items-center gap-2">
-        {target.startsWith("skill:") ? <SkillHelp skill={target.slice(6) as CitySkill} limit={city.limits.skill} />
+      {skill && <button type="button" aria-label={`About ${skillLabel(skill)}`} aria-haspopup="dialog" title={`What ${skillLabel(skill)} does and how to increase it`}
+        onClick={() => setHelp({ skill, open: true })}
+        className="absolute top-1 right-1 grid size-9 place-items-center rounded-full text-label-2 outline-none hover:bg-fill-strong hover:text-label focus-visible:outline-2 focus-visible:outline-focus lg:size-7">
+        <Info aria-hidden className="size-4" />
+      </button>}
+      <div className={cn("flex items-center gap-2", skill && "pr-8")}>
+        {skill ? <button type="button" tabIndex={-1} aria-hidden title={`What ${skillLabel(skill)} does and how to increase it`}
+          onClick={() => setHelp({ skill, open: true })}
+          className="-m-1 grid size-9 shrink-0 place-items-center rounded-lg outline-none hover:bg-fill-strong">
+          <SkillIcon skill={skill} className="size-6" />
+        </button>
           : target.startsWith("tag:") && <Tag aria-hidden className="size-5 shrink-0 text-tint" />}
         <button type="button" disabled={!selected || blocked} onClick={() => selected && move(selected, target)}
           aria-label={blocked ? `${activeName} cannot work ${targetLabel(target)}` : selected ? `Move ${activeName} to ${targetLabel(target)}` : targetLabel(target)}
@@ -451,24 +491,101 @@ const CityWorkBoard = ({ city, residents }: { city: City; residents: Pokemon[] }
   };
 
   const dragged = drag && residents.find(resident => resident.id === drag.id);
+
+  /** A skill as its icon, with its resident count above and its value below; tapping or hovering it opens its detail panel. */
+  const tile = (target: WorkTarget) => {
+    const skill = target.slice(6) as CitySkill;
+    const count = placed(target).length;
+    const blocked = !!active && !allowed(active, target);
+    const expanded = open === target;
+    const types = skill === "catalyst" ? POKEMON_TYPES.filter(type => city.catalysts[type]).length : 0;
+    const total = totals.get(target) ?? 0;
+    const shortValue = skill === "catalyst" ? `${types} ${types === 1 ? "type" : "types"}` : `value ${Math.min(total, city.limits.skill)} of ${city.limits.skill}`;
+    return <button key={target} type="button" data-city-target={target} aria-expanded={expanded} aria-controls={expanded ? `city-skill-${skill}` : undefined}
+      title={skillLabel(skill)}
+      aria-label={blocked ? `${activeName} cannot work ${skillLabel(skill)}` : selected ? `Move ${activeName} to ${skillLabel(skill)}`
+        : `${skillLabel(skill)}, ${count} ${count === 1 ? "resident" : "residents"}, ${shortValue}`}
+      onPointerEnter={event => {
+        if (event.pointerType !== "mouse" || drag || open === target) return;
+        hoverOpened.current = target;
+        setOpen(target);
+      }}
+      onClick={() => {
+        if (selected) {
+          if (!blocked) move(selected, target);
+          hoverOpened.current = null;
+          setOpen(target);
+          return;
+        }
+        // The first click on a panel opened by hover pins it instead of closing it.
+        if (hoverOpened.current === target) hoverOpened.current = null;
+        else setOpen(expanded ? null : target);
+      }}
+      className={cn("flex min-w-0 flex-col items-center gap-1 rounded-xl bg-fill px-1 pt-1 pb-1.5 outline-none transition-[box-shadow,opacity,background-color] duration-200 hover:bg-fill-strong focus-visible:outline-2 focus-visible:outline-focus",
+        expanded && "bg-fill-strong ring-2 ring-tint",
+        blocked ? "opacity-40" : [drag?.over === target && "ring-2 ring-tint", selected && !expanded && "ring-1 ring-tint/40"])}>
+      <span className={cn("min-w-5 rounded-full px-1.5 text-center text-caption font-semibold tabular-nums transition-colors", count ? "bg-tint text-on-tint" : "bg-surface text-label-2")}>{count}</span>
+      <SkillIcon skill={skill} className={cn("size-7 transition-transform duration-200", expanded && "scale-110")} />
+      <span className="hidden w-full truncate text-center text-caption font-semibold sm:block">{skillLabel(skill)}</span>
+      <span className="text-caption whitespace-nowrap tabular-nums text-label-2" title={skill !== "catalyst" && total > city.limits.skill ? `Residents add ${total}; the city rank caps it at ${city.limits.skill}.` : undefined}>
+        {skill === "catalyst" ? <><span className="font-semibold text-label">{types}</span> {types === 1 ? "type" : "types"}</>
+          : <><span className="font-semibold text-label">{Math.min(total, city.limits.skill)}</span>/{city.limits.skill}</>}
+      </span>
+    </button>;
+  };
+
+  const skillGroup = (title: string, targets: WorkTarget[]) => {
+    const current = open && targets.includes(open) ? open : null;
+    if (current) lastShown.current.set(title, current);
+    // Keep the last skill on screen while the panel closes.
+    const shown = current ?? lastShown.current.get(title);
+    const from = opened?.from && targets.includes(opened.from) ? opened.from : null;
+    const direction = current && from ? Math.sign(targets.indexOf(current) - targets.indexOf(from)) : 0;
+    return <div key={title} className="min-w-0"
+      onPointerLeave={event => {
+        if (event.pointerType !== "mouse" || drag || !hoverOpened.current || !targets.includes(hoverOpened.current)) return;
+        hoverOpened.current = null;
+        setOpen(null);
+      }}>
+      <h3 className="mb-3 text-subhead font-semibold text-label-2">{title}</h3>
+      <div className="grid grid-cols-5 gap-2">{targets.map(tile)}</div>
+      <div className={cn("-mx-1 grid transition-[grid-template-rows,visibility] duration-200 ease-out", current ? "grid-rows-[1fr]" : "invisible grid-rows-[0fr]")}>
+        <div className="min-h-0 overflow-hidden">
+          {shown && <div key={shown} className={cn("px-1 pt-2 pb-1", current && "animate-in fade-in-0 [--tw-duration:200ms] [--tw-ease:ease-out]",
+            direction > 0 ? "slide-in-from-right-6" : direction < 0 ? "slide-in-from-left-6" : "slide-in-from-top-2")}>
+            {zone(shown, <>
+              <span className="min-w-0 truncate">{targetLabel(shown)}</span>
+              {value(shown)}
+            </>)}
+          </div>}
+        </div>
+      </div>
+    </div>;
+  };
+
   return <section className={`${panel} space-y-4`}>
     <div>
       <h2 className="text-title-3 font-semibold">Skills & actions</h2>
-      <p className="mt-1 text-footnote text-label-2">Tap a colored skill icon to learn what it does and how to increase it.</p>
+      <p className="mt-1 text-footnote text-label-2">Each skill shows how many residents work it above its icon and its value below. Tap a skill to see its residents, then tap its icon or ⓘ to learn what it does and how to increase it.</p>
       <p className="mt-1 text-footnote text-label-2">Drag a resident onto a skill or action, or tap it and then tap where it works. A resident's species decides which skills it can work, at full or half bonus (see its Pokédex page; a pale badge marks half). The full bonus is: first stage +1, second +2, third +3, species that never evolve +2, legendaries +5. Catalyst takes any resident and adds no value: it provides its types to recipes that need them. {formatEnumName(city.rank)} cities cap every skill at {city.limits.skill}.</p>
     </div>
     {!residents.length ? <p>No residents yet. Add a Pokémon to put it to work.</p>
       : zone("unassigned", <><span>Unassigned</span><span className="ml-auto text-footnote font-normal text-label-2">{placed("unassigned").length} of {residents.length}</span></>)}
-    {groups.filter(([, targets]) => targets.length).map(([title, targets]) => <div key={title} className="space-y-2">
-      <h3 className="text-subhead font-semibold text-label-2">{title}</h3>
+    <div className="grid items-start gap-4 lg:grid-cols-2 lg:gap-6">
+      {skillGroup("Crafting skills", CRAFTING_SKILLS.map(skill => `skill:${skill}` as const))}
+      {skillGroup("Support skills", SUPPORT_SKILLS.map(skill => `skill:${skill}` as const))}
+    </div>
+    {city.tags.length > 0 && <div className="space-y-2">
+      <h3 className="text-subhead font-semibold text-label-2">Actions</h3>
       <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {targets.map(target => zone(target, <>
+        {city.tags.map(tag => `tag:${tag}` as const).map(target => zone(target, <>
           <span className="min-w-0 truncate">{targetLabel(target)}</span>
           {value(target)}
         </>))}
       </div>
-    </div>)}
+    </div>}
     {!city.tags.length && <p className="text-footnote text-label-2">Add custom actions in City settings below to assign residents to them too.</p>}
+    {help && <SkillHelpSheet skill={help.skill} limit={city.limits.skill} open={help.open} onOpenChange={open => setHelp({ ...help, open })} />}
     {dragged && <div aria-hidden className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2" style={{ left: drag.x, top: drag.y }}>
       <Sprite image={dragged.pokemonTemplate.image} set="box" className="h-14 w-17 drop-shadow-lg" />
     </div>}
