@@ -1,6 +1,7 @@
 // Read-only reference data, served as static assets by scripts/build-reference.ts and
 // parsed once per isolate. Templates are hydrated back to their full shape;
 // they share the move and ability objects, so this costs little extra memory.
+import { charmToAllure } from '../shared/moves.ts';
 import type { Ability, CompactPokemonTemplate, Item, Move, Nature, PokemonTemplate, RankUpTable } from '../shared/types.ts';
 
 export interface Reference {
@@ -28,6 +29,7 @@ async function load(assets: Fetcher, origin: string): Promise<Reference> {
     get<CompactPokemonTemplate[]>('pokemon-templates'), get<Move[]>('moves'), get<Item[]>('items'),
     get<Ability[]>('abilities'), get<Nature[]>('natures'), get<RankUpTable>('rankup-attributes'),
   ]);
+  moves.forEach(charmToAllure);
   const moveById = new Map(moves.map(move => [move.id, move]));
   const abilityById = new Map(abilities.map(ability => [ability.id, ability]));
   const ability = (id: string | null) => id === null ? null : abilityById.get(id)!;

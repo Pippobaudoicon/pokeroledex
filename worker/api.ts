@@ -9,6 +9,7 @@ import { canWork, checkCityRecipe, checkFaces, cityRecipe, countSuccesses, craft
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
 import type { City, CityOrder, CityResearched, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
+import { charmToAllure } from '../shared/moves.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
 import type { Env } from './index.ts';
 import { askRulebook } from './ask.ts';
@@ -151,6 +152,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           if (Array.isArray(record.habitats)) habitatOverrides.set(record.id, record.habitats.filter(isHabitat));
           continue;
         }
+        if (row.collection === 'moves') charmToAllure(record);
         db[row.collection].push(record);
         partitions.set(record, row.owner);
         if (row.collection === 'cities') loaded.set(record, row.data);
@@ -208,6 +210,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const key = `${row.collection}\0${record.id}`;
         if (known.has(key)) continue;
         known.add(key);
+        if (row.collection === 'moves') charmToAllure(record);
         (foreign[row.collection] ??= []).push(record);
         pending.push({ name: row.collection, record, owner: row.owner });
       }
@@ -978,7 +981,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         natureId: null, inventory: [], ...record, stats: { ...blankStats(), ...body.stats }, currentHp: 5, currentWill: 4 };
       if (name === 'campaigns') record = { allowedUserIds: [], ...record, isCore: false };
       if (name === 'feedback') record.createdAt = new Date().toISOString();
-      if (name === 'moves') record.category = body.category ?? body.Category;
+      if (name === 'moves') charmToAllure(Object.assign(record, { category: body.category ?? body.Category }));
       if (name === 'items') record.pmdPrice = body.pmdPrice ?? body.PMDPrice;
       if (referenceNames.includes(name) && !find('campaigns', body.campaignId)) fail(400, 'Choose a local campaign.');
       if (find(name, record.id)) fail(409, 'A record with that ID already exists.');
@@ -1043,6 +1046,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'campaigns') update.isCore = false;
       if (name === 'items' && body.PMDPrice !== undefined) update.pmdPrice = body.PMDPrice;
       Object.assign(record, update);
+      if (name === 'moves') charmToAllure(record);
       put(name, record);
       return reply(hydrate(name, record));
     }
