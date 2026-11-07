@@ -5,9 +5,9 @@
 // changed by someone else meanwhile makes the request run again (migrations/0007).
 import { ATTRIBUTES, CRAFTING_SKILLS, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
-import { canWork, checkCityRecipe, checkFaces, cityRecipe, countSuccesses, craftBlockers, itemRecipe, orderCost, orderRoom, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
+import { canWork, checkCityRecipe, checkFaces, cityRecipe, countSuccesses, craftBlockers, isUnlocked, itemRecipe, orderCost, orderRoom, orderSteps, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
-import type { City, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
+import type { City, CityOrder, CityResearched, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
 import type { Env } from './index.ts';
@@ -342,6 +342,26 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       } as Trainer;
     }
 
+    /**
+     * Current members' crafting orders, with lines for reference items only. The shared order of
+     * older cities (`order`) becomes the leader's draft.
+     */
+    function cityOrders(city: Row): Record<string, CityOrder> {
+      const list = members.get(city.id) ?? [];
+      const known = (line: Json) => reference.items.some(item => item.id === line.itemId);
+      const stored = { ...(city.orders ?? {}) } as Record<string, Json>;
+      if (Array.isArray(city.order) && city.order.length && list[0] && !stored[list[0]]) stored[list[0]] = { items: city.order };
+      const orders: Record<string, CityOrder> = {};
+      for (const email of list) {
+        const order = stored[email];
+        if (!order) continue;
+        const items = ((order.items ?? []) as Json[]).filter(known).map(line => ({ itemId: line.itemId, quantity: line.quantity }));
+        const research = ((order.research ?? []) as Json[]).filter(known).map(line => ({ itemId: line.itemId, steps: line.steps }));
+        if (items.length || research.length) orders[email] = { items, research, submitted: !!order.submitted };
+      }
+      return orders;
+    }
+
     function hydrate(name: string, record: Row) {
       if (name === 'pokemon') return pokemon(record);
       if (name === 'trainers') return trainer(record);
@@ -354,10 +374,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const assignments = Object.fromEntries(residents.filter(p => canAssign(stored[p.id], tags, work[p.id].profile)).map(p => [p.id, stored[p.id]]));
         const bonuses = Object.fromEntries(residents.map(p => [p.id, work[p.id].bonus]));
         const profiles = Object.fromEntries(residents.map(p => [p.id, work[p.id].profile]));
-        const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, ...rest } = record;
+        const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, order: _order, ...rest } = record;
         return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
           ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory, true), research: record.research ?? {},
-          order: ((record.order ?? []) as Json[]).filter(line => reference.items.some(item => item.id === line.itemId)),
+          orders: cityOrders(record),
           recipes: Object.fromEntries(Object.entries((record.recipes ?? {}) as Json).filter(([itemId]) => reference.items.some(item => item.id === itemId))),
           members: members.get(record.id) ?? [] };
       }
@@ -644,10 +664,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (!current.includes(member)) fail(404, `${member} is not a member of this city.`);
       writes.push(env.DB.prepare('DELETE FROM city_members WHERE city_id = ? AND email = ?').bind(city.id, member));
       members.set(city.id, current.filter(email => email !== member));
+      if (city.orders?.[member]) {
+        const { [member]: _removed, ...orders } = city.orders;
+        city.orders = orders;
+        put(name, city);
+      }
       return reply(hydrate(name, city));
     }
-    // Crafting (docs/crafting-plan.md). Any member fills the crafting order within the city's skills;
-    // the leader crafts it into storage and rolls research, whose dice may come from a physical roll.
+    // Crafting (docs/crafting-plan.md). Each member fills their own crafting order within the city's
+    // skills and submits it; the leader edits, approves (crafts it into storage and adds its research
+    // steps) or sends it back. The leader also rolls research, whose dice may come from a physical roll.
     // Recipes include the city's own edits (`recipes`), unless `base` asks for the default.
     function referenceRecipe(itemId: unknown, city: Row, base = false): { item: Row; recipe: Recipe } | null {
       const item = typeof itemId === 'string' ? reference.items.find(entry => entry.id === itemId) : undefined;
@@ -655,66 +681,161 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const recipe = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
       return { item, recipe: base ? recipe : cityRecipe(recipe, city.recipes?.[item.id]) };
     }
-    function orderLines(city: Row) {
-      return ((city.order ?? []) as Json[]).flatMap(line => {
+    function orderLines(city: Row, order: CityOrder) {
+      return order.items.flatMap(line => {
         const found = referenceRecipe(line.itemId, city);
-        return found ? [{ ...found, quantity: line.quantity as number }] : [];
+        return found ? [{ ...found, quantity: line.quantity }] : [];
       });
+    }
+    function researchLines(city: Row, order: CityOrder) {
+      return order.research.flatMap(line => {
+        const found = referenceRecipe(line.itemId, city);
+        return found ? [{ ...found, steps: line.steps }] : [];
+      });
+    }
+    /** Stores the members' orders, dropping empty ones and the shared order of older cities. */
+    function saveOrders(city: Row, orders: Record<string, CityOrder>) {
+      city.orders = Object.fromEntries(Object.entries(orders).filter(([, order]) => order.items.length || order.research.length));
+      delete city.order;
+      put('cities', city);
+    }
+    /** The order a request changes: your own, or as the leader a member's submitted one. */
+    function changeableOrder(city: Row, orders: Record<string, CityOrder>, requested: unknown) {
+      const member = requested ?? owner;
+      if (typeof member !== 'string' || !(members.get(city.id) ?? []).includes(member)) fail(400, 'Choose a member of this city.');
+      const order: CityOrder = orders[member] ?? { items: [], research: [], submitted: false };
+      if (member !== owner) {
+        if (!isLeader(city)) fail(403, 'Only the city leader can change another member\'s order.');
+        if (!order.submitted) fail(409, `${member} has not submitted their order yet.`);
+      } else if (order.submitted && !isLeader(city)) fail(409, 'Your order is waiting for the leader. Withdraw it to change it.');
+      return { member, order };
     }
     const craftingState = (current: City) => ({ rank: current.rank, skills: current.skills, catalysts: current.catalysts, research: current.research });
     const isLeader = (city: Row) => (members.get(city.id) ?? [])[0] === owner;
+    const capitalized = (skill: string) => `${skill[0].toUpperCase()}${skill.slice(1)}`;
 
     if (name === 'cities' && action && id === 'order' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       const found = referenceRecipe(body.itemId, city);
       if (!found) fail(400, 'Choose a reference item.');
-      if (!Number.isInteger(body.quantity) || body.quantity < 0 || body.quantity > 999) fail(400, 'Choose a quantity from 0 to 999.');
+      const research = 'steps' in body;
+      const value = research ? body.steps : body.quantity;
+      if (!Number.isInteger(value) || value < 0 || value > 999) fail(400, research ? 'Choose from 0 to 999 research steps.' : 'Choose a quantity from 0 to 999.');
+      const orders = cityOrders(city);
+      const { member, order } = changeableOrder(city, orders, body.member);
       const { item, recipe } = found;
-      const lines = orderLines(city);
-      const before = lines.find(line => line.item.id === item.id)?.quantity ?? 0;
-      // Lowering a line is always allowed, so an order that no longer fits can be trimmed.
-      if (body.quantity > before) {
-        const current = hydrate(name, city) as City;
-        const blockers = craftBlockers(recipe, craftingState(current));
-        if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
-        const used = orderUsage(lines.filter(line => line.item.id !== item.id));
-        const short = CRAFTING_SKILLS.find(skill => used[skill] + orderCost(recipe, skill) * body.quantity > current.skills[skill]);
-        if (short) {
-          const fits = orderRoom(recipe, current.skills, used);
-          fail(409, `${item.name}: the order can hold ${fits} with ${short[0].toUpperCase()}${short.slice(1)} ${current.skills[short]} (each uses ${orderCost(recipe, short)}).`);
+      const current = hydrate(name, city) as City;
+      if (research) {
+        const before = order.research.find(line => line.itemId === item.id)?.steps ?? 0;
+        // Lowering is always allowed. Steps past what the recipe still needs are allowed too, and lost on approval.
+        if (value > before) {
+          const blockers = researchBlockers(recipe, craftingState(current));
+          if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
+          const used = orderSteps(order.research.filter(line => line.itemId !== item.id));
+          if (used + value > current.skills.research) {
+            fail(409, `${item.name}: the order can hold ${Math.max(0, current.skills.research - used)} research steps with Research ${current.skills.research}.`);
+          }
         }
+        order.research = order.research.some(line => line.itemId === item.id)
+          ? order.research.map(line => line.itemId === item.id ? { ...line, steps: value } : line)
+          : [...order.research, { itemId: item.id, steps: value }];
+        order.research = order.research.filter(line => line.steps > 0);
+      } else {
+        const lines = orderLines(city, order);
+        const before = lines.find(line => line.item.id === item.id)?.quantity ?? 0;
+        // Lowering a line is always allowed, so an order that no longer fits can be trimmed.
+        if (value > before) {
+          const blockers = craftBlockers(recipe, craftingState(current));
+          if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
+          const used = orderUsage(lines.filter(line => line.item.id !== item.id));
+          const short = CRAFTING_SKILLS.find(skill => used[skill] + orderCost(recipe, skill) * value > current.skills[skill]);
+          if (short) {
+            const fits = orderRoom(recipe, current.skills, used);
+            fail(409, `${item.name}: the order can hold ${fits} with ${capitalized(short)} ${current.skills[short]} (each uses ${orderCost(recipe, short)}).`);
+          }
+        }
+        order.items = order.items.some(line => line.itemId === item.id)
+          ? order.items.map(line => line.itemId === item.id ? { ...line, quantity: value } : line)
+          : [...order.items, { itemId: item.id, quantity: value }];
+        order.items = order.items.filter(line => line.quantity > 0);
       }
-      const order = ((city.order ?? []) as Json[]).filter(line => referenceRecipe(line.itemId, city));
-      const existing = order.find(line => line.itemId === item.id);
-      if (existing) existing.quantity = body.quantity;
-      else order.push({ itemId: item.id, quantity: body.quantity });
-      city.order = order.filter(line => line.quantity > 0);
-      put(name, city);
+      orders[member] = order;
+      saveOrders(city, orders);
       return reply(hydrate(name, city));
     }
-    if (name === 'cities' && action && id === 'craft' && method === 'POST') {
+    if (name === 'cities' && action && id === 'submit' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
-      if (!isLeader(city)) fail(403, 'Only the city leader can craft the order.');
-      const lines = orderLines(city);
-      if (!lines.length) fail(409, 'The crafting order is empty.');
+      if (typeof body.submitted !== 'boolean') fail(400, 'Choose to submit or withdraw your order.');
+      const orders = cityOrders(city);
+      const order = orders[owner];
+      if (!order) fail(409, 'The crafting order is empty.');
+      order.submitted = body.submitted;
+      saveOrders(city, orders);
+      return reply(hydrate(name, city));
+    }
+    // Sending an order back returns it to its member as a draft to change.
+    if (name === 'cities' && action && id === 'reject' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can send orders back.');
+      const orders = cityOrders(city);
+      const order = typeof body.member === 'string' ? orders[body.member] : undefined;
+      if (!order?.submitted) fail(409, 'That order is not waiting for approval.');
+      order.submitted = false;
+      saveOrders(city, orders);
+      return reply(hydrate(name, city));
+    }
+    // Approving adds the order's research steps first (capped at what each recipe needs; the rest is
+    // lost), then crafts its items into storage. The leader approves their own order without submitting it.
+    if (name === 'cities' && action && id === 'approve' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can approve orders.');
+      const member = body.member ?? owner;
+      if (typeof member !== 'string' || !(members.get(city.id) ?? []).includes(member)) fail(400, 'Choose a member of this city.');
+      const orders = cityOrders(city);
+      const order = orders[member];
+      if (!order) fail(409, 'The crafting order is empty.');
+      if (member !== owner && !order.submitted) fail(409, `${member} has not submitted their order yet.`);
       const current = hydrate(name, city) as City;
       const state = craftingState(current);
+
+      const steps = researchLines(city, order);
+      const requested = orderSteps(steps);
+      if (requested > current.skills.research) fail(409, `The order asks for ${requested} research steps; Research is ${current.skills.research}.`);
+      const research: Record<string, number> = { ...current.research };
+      const researched: CityResearched[] = [];
+      for (const { item, recipe, steps: count } of steps) {
+        const needed = TIERS[recipe.tier].research?.steps ?? 0;
+        const before = research[item.id] ?? 0;
+        if (!isUnlocked(recipe, research)) {
+          const blockers = researchBlockers(recipe, { ...state, research });
+          if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
+          research[item.id] = Math.min(needed, before + count);
+        }
+        const total = research[item.id] ?? 0;
+        researched.push({ itemId: item.id, steps: count, added: total - before, total, needed, unlocked: isUnlocked(recipe, research) });
+      }
+
+      const lines = orderLines(city, order);
       for (const { item, recipe } of lines) {
-        const blockers = craftBlockers(recipe, state);
+        const blockers = craftBlockers(recipe, { ...state, research });
         if (blockers.length) fail(409, `${item.name}: ${blockers.join(' ')}`);
       }
       const usage = orderUsage(lines);
       const over = overCapacity(current.skills, usage);
-      if (over.length) fail(409, `The order needs more than the city has: ${over.map(skill => `${skill[0].toUpperCase()}${skill.slice(1)} ${usage[skill]} of ${current.skills[skill]}`).join(', ')}.`);
+      if (over.length) fail(409, `The order needs more than the city has: ${over.map(skill => `${capitalized(skill)} ${usage[skill]} of ${current.skills[skill]}`).join(', ')}.`);
+
+      city.research = research;
       city.inventory ??= [];
       // Order lines count crafts; each craft makes the recipe's yield.
       const crafted = lines.map(({ item, recipe, quantity }) => ({ itemId: item.id, quantity: quantity * recipe.yield }));
       for (const { itemId, quantity } of crafted) addToInventory(city.inventory, { itemId }, quantity);
-      city.order = [];
-      put(name, city);
-      return reply({ city: hydrate(name, city), crafted });
+      delete orders[member];
+      saveOrders(city, orders);
+      return reply({ city: hydrate(name, city), member, crafted, researched });
     }
     // The leader edits a recipe for the city: its tier, the skills one craft uses and how many items it makes.
     if (name === 'cities' && action && id === 'recipe' && method === 'POST') {
@@ -849,7 +970,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'cities') {
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
-        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, inventory: [], research: {}, order: [], ...fields };
+        record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, inventory: [], research: {}, orders: {}, ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
       }

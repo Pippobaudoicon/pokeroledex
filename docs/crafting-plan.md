@@ -11,8 +11,8 @@ A "Crafting" tab in My city.
 Scope: only the reference items (`data/reference/items.json`, 394 items) under the item filters (pockets and categories). Campaign items are ignored for now.
 
 ## Who does what
-- **Leader (GM)** = `city.members[0]`. Only the leader crafts the order, researches, and adds items to or removes items from storage directly, with no attempt limit.
-- **Any member** can add items to and take items out of the crafting order, and deposit items into and withdraw items from the city inventory.
+- **Leader (GM)** = `city.members[0]`. Only the leader approves (and can edit or send back) crafting orders, rolls research, and adds items to or removes items from storage directly, with no attempt limit.
+- **Any member** fills and submits their own crafting order (items and research steps), and deposits items into and withdraws items from the city inventory.
 - Crafting and research cost nothing. Skills, catalysts and rank are the only gates.
 
 ## City skills (replace the current 8 work skills)
@@ -161,10 +161,11 @@ Unpriced items use a category default:
 `data/crafting-items.json` holds per-item changes to skill, tier, catalyst and assist, plus the "not craftable" list (Masterball, Soul Dew, Adamant/Lustrous/Griseous Orb, legendary Mega stones and Z-crystals).
 
 ### Crafting order
-- Members fill one shared **crafting order** per city (`city.order`, `{ itemId, quantity }[]`). Only craftable recipes can be added.
-- **Capacity:** each item uses its tier's effort of its crafting skill, and each skill's order lines together may use at most the skill's value. Example: Apothecary 4 holds four tier 1 Potions, or one tier 4 item and two tier 1 items.
+- Each member fills their own **crafting order** (`city.orders[email]`, `{ items: { itemId, quantity }[], research: { itemId, steps }[], submitted }`). Only craftable recipes can be added.
+- **Capacity:** each item uses its tier's effort of its crafting skill, and each skill's lines in one order together may use at most the skill's value. Example: Apothecary 4 holds four tier 1 Potions, or one tier 4 item and two tier 1 items. Each order is checked on its own.
+- **Research steps:** an order can also hold steps on researchable recipes, up to the Research value in total. Steps beyond what a recipe still needs are lost on approval, so a member may ask for more than needed.
 - Lowering a line is always allowed, so an order that no longer fits (a resident moved off the skill) can be trimmed.
-- The leader **crafts** the order: if every recipe is still craftable and every skill fits, all items go to the city inventory, with no dice, and the order empties.
+- Members **submit** their order (and can withdraw it to change it). The leader can edit a submitted order, send it back, or **approve** it; the leader's own order needs no submission. Approval adds the research steps first, then, if every recipe is craftable and every skill fits, all items go to the city inventory, with no dice, and the order is removed.
 
 ### Research roll
 - **Pool:** the Research value, in d6. A die showing 4 or more is a success (same as `DiceRoll`), and each success adds one step to the chosen recipe.
@@ -187,14 +188,16 @@ Unpriced items use a category default:
    - `City` gains `inventory`, `research` and `catalysts` (the types present in Catalyst, each with its best strength).
 4. **`shared/cities.ts`**: `cityValues` applies each resident's work profile (full or half bonus) and collects the catalyst types and strengths.
 5. **Worker API**:
-   - `POST /cities/:id/order { itemId, quantity }` (any member)
-   - `POST /cities/:id/craft` (leader only; crafts the whole order)
+   - `POST /cities/:id/order { itemId, quantity | steps, member? }` (any member on their own order; the leader on a submitted one)
+   - `POST /cities/:id/submit { submitted }` (any member, their own order)
+   - `POST /cities/:id/reject { member }` (leader only; sends a submitted order back)
+   - `POST /cities/:id/approve { member? }` (leader only; researches and crafts one order)
    - `POST /cities/:id/research { itemId, faces? }` (leader only)
    - `POST /cities/:id/steps { itemId, steps }` (leader only; GM override that skips the research gates)
    - `POST /cities/:id/inventory { trainerId, entryId, quantity, direction }` (any member)
    - `POST /cities/:id/stock { itemId, quantity }` (leader only; a reference item or one from the leader's collection, campaign items are copied inline)
    - `POST /cities/:id/discard { entryId, quantity }` (leader only)
-   - The city response includes the hydrated inventory, the research steps and the order. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers`/`orderRoom` the server enforces (409 with the reasons).
+   - The city response includes the hydrated inventory, the research steps and the members' orders. Recipe status is not sent: the app computes it with the same `craftBlockers`/`researchBlockers`/`orderRoom` the server enforces (409 with the reasons).
 6. **UI**:
    - In `src/pages/MyCity/index.tsx`, the work board only offers each resident the skills in its work profile (Catalyst always), showing full or half.
    - A new **Crafting** tab has three parts: Craft (the crafting order and the recipes; selecting an item opens its description), Research and Storage.
