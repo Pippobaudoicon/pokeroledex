@@ -37,6 +37,7 @@ export const TRAINER_SKILLS = [
   "athletic",
   "nature",
   "stealth",
+  "allure",
   "empathy",
   "etiquette",
   "intimidate",
