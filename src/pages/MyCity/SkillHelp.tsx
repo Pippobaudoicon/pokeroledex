@@ -1,4 +1,3 @@
-import * as React from "react";
 import type { CitySkill } from "../../../shared/types";
 import { APTITUDE, SKILL_AFFINITIES } from "../../../shared/crafting";
 import { Sheet } from "@/components/kit/Sheet";
@@ -17,17 +16,10 @@ const descriptions: Record<CitySkill, string> = {
   catalyst: "Provides the Pokémon types required by some recipes, not dice or crafting capacity. The displayed value counts distinct types; each type also has its own strength.",
 };
 
-export const SkillHelp = ({ skill, limit }: { skill: CitySkill; limit: number }) => {
-  const [open, setOpen] = React.useState(false);
+/** What a skill does and how to increase it. */
+export const SkillHelpSheet = ({ skill, limit, open, onOpenChange }: { skill: CitySkill; limit: number; open: boolean; onOpenChange: (open: boolean) => void }) => {
   const affinity = skill === "catalyst" ? null : SKILL_AFFINITIES[skill];
-  return <>
-    <button type="button" aria-label={`About ${skillLabel(skill)}`} aria-haspopup="dialog" aria-expanded={open}
-      title={`What ${skillLabel(skill)} does and how to increase it`}
-      onClick={() => setOpen(true)}
-      className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-surface shadow-card hover:bg-raised outline-none focus-visible:outline-2 focus-visible:outline-focus">
-      <SkillIcon skill={skill} />
-    </button>
-    <Sheet open={open} onOpenChange={setOpen} title={skillLabel(skill)} initialExpanded>
+  return <Sheet open={open} onOpenChange={onOpenChange} title={skillLabel(skill)} initialExpanded>
       <div className="space-y-5 p-4 text-body">
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 text-headline font-semibold"><SkillIcon skill={skill} />What it does</h3>
@@ -36,7 +28,7 @@ export const SkillHelp = ({ skill, limit }: { skill: CitySkill; limit: number })
         <section className="space-y-2">
           <h3 className="text-headline font-semibold">How to increase it</h3>
           {affinity ? <>
-            <p>Drag an eligible Pokémon onto {skillLabel(skill)}, or select the Pokémon and then tap the skill name. Each Pokémon can work on only one skill or action at a time.</p>
+            <p>Drag an eligible Pokémon onto {skillLabel(skill)}, or select the Pokémon and then tap the skill icon. Each Pokémon can work on only one skill or action at a time.</p>
             <p>Assign more eligible Pokémon, or use Pokémon with a higher bonus. Full workers add their whole bonus; half workers add half, rounded down, with a minimum of 1.</p>
             <p>The total is capped at <strong>{limit}</strong> for this city's rank. Raise the city rank to raise the cap; values cannot be edited by hand.</p>
           </> : <>
@@ -54,6 +46,5 @@ export const SkillHelp = ({ skill, limit }: { skill: CitySkill; limit: number })
           <p>Check <strong>City work</strong> on the species' Pokédex page for its actual work profile.</p>
         </section>}
       </div>
-    </Sheet>
-  </>;
+    </Sheet>;
 };
