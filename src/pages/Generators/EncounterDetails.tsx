@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCcw, X } from "lucide-react";
 import type * as T from "../../../shared/types";
 import { apiFetch } from "@/api/client";
@@ -11,6 +12,8 @@ import { Sheet } from "@/components/kit/Sheet";
 import { Sprite } from "@/components/kit/Sprite";
 import { ShinyMark } from "@/components/kit/Shiny";
 import { PokemonProvider, StaticPokemonProvider } from "@/components/pokemon-sheet/context";
+import type { SheetFight } from "@/components/pokemon-sheet/fight";
+import { hasStatuses, NewRoundAlert, nextRoundStatuses, roundEffects, type RoundSubject } from "@/components/pokemon-sheet/status";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { useDex } from "@/hooks/use-dex";
@@ -138,7 +141,11 @@ export const EncounterDetails = ({
   onSelect: (id: string | null) => void;
   showTyping: boolean;
 }) => {
-  const { entries, setEntries, isGenerating, allies, setAllies, turns, setTurns } = React.useContext(EncounterContext);
+  const { entries, setEntries, isGenerating, allies, setAllies, turns, setTurns, boosts, setBoosts, usedMoves, setUsedMoves, statuses, setStatuses } =
+    React.useContext(EncounterContext);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [confirmingRound, setConfirmingRound] = React.useState(false);
   const idPrefix = React.useId();
   const [adding, setAdding] = React.useState(false);
   const selectedEnemy = entries.find((entry) => entry.pokemon.id === selectedId);
@@ -164,14 +171,63 @@ export const EncounterDetails = ({
     const rest = allies.filter((ally) => ally.key !== key);
     setAllies(rest);
     setTurns(({ [key]: _removed, ...turns }) => turns);
+    setBoosts(({ [key]: _removed, ...boosts }) => boosts);
+    setUsedMoves(({ [key]: _removed, ...usedMoves }) => usedMoves);
+    setStatuses(({ [key]: _removed, ...statuses }) => statuses);
     onSelect(rest[Math.min(index, rest.length - 1)]?.key ?? entries[0]?.pokemon.id ?? null);
   };
   const turnOf = (key: string) => turns[key] ?? 1;
-  const turnControl = (key: string) => ({
-    value: turnOf(key),
-    onChange: (value: number) => setTurns((turns) => ({ ...turns, [key]: value })),
+  const fightOf = (key: string): SheetFight => ({
+    turn: turnOf(key),
+    setTurn: (value) => setTurns((turns) => ({ ...turns, [key]: value })),
+    boosts: boosts[key] ?? {},
+    setBoosts: (value) => setBoosts((boosts) => ({ ...boosts, [key]: value })),
+    usedMoves: usedMoves[key] ?? [],
+    setUsedMoves: (ids) => setUsedMoves((usedMoves) => ({ ...usedMoves, [key]: ids })),
+    statuses: statuses[key] ?? {},
+    setStatuses: (value) => setStatuses((statuses) => ({ ...statuses, [key]: value })),
   });
   const allyName = (ally: AllyEntry) => (ally.kind === "owned" ? ally.name : ally.pokemon.pokemonTemplate.name);
+  const roundSubjects: RoundSubject[] = [
+    ...allies.map((ally) => ({
+      key: ally.key,
+      name: allyName(ally),
+      hp: ally.kind === "species" ? ally.pokemon.currentHp : queryClient.getQueryData<T.Pokemon>(["pokemon", ally.pokemonId])?.currentHp,
+      statuses: statuses[ally.key] ?? {},
+    })),
+    ...entries.map((entry) => ({
+      key: entry.pokemon.id,
+      name: entry.pokemon.pokemonTemplate.name,
+      hp: entry.pokemon.currentHp,
+      statuses: statuses[entry.pokemon.id] ?? {},
+    })),
+  ].filter((subject) => hasStatuses(subject.statuses));
+  const roundStarted =
+    roundSubjects.length > 0 || Object.values(turns).some((turn) => turn !== 1) || Object.values(usedMoves).some((ids) => ids.length > 0);
+  const damageOf = (key: string) => roundEffects(statuses[key]).reduce((sum, effect) => sum + effect.damage, 0);
+  const hurt = (pokemon: T.Pokemon, damage: number) => (damage > 0 ? { ...pokemon, currentHp: Math.max(0, pokemon.currentHp - damage) } : pokemon);
+  /** Saved Pokémon take their damage on the server; an open sheet picks it up when the query refreshes. */
+  const hurtOwned = async (pokemonId: string, damage: number) => {
+    try {
+      const pokemon = await apiFetch<T.Pokemon>({ url: "/pokemon/{id}", method: "get", pathParams: { id: pokemonId } });
+      await apiFetch<T.Pokemon>({
+        url: "/pokemon",
+        method: "patch",
+        body: { id: pokemonId, currentHp: Math.max(0, pokemon.currentHp - damage) } satisfies T.UpdatePokemonBody,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["pokemon", pokemonId] });
+    } catch {
+      toast({ title: "Couldn’t update HP", description: "Check your connection and try again." });
+    }
+  };
+  const refreshRound = () => {
+    setEntries((entries) => entries.map((entry) => ({ ...entry, pokemon: hurt(entry.pokemon, damageOf(entry.pokemon.id)) })));
+    setAllies((allies) => allies.map((ally) => (ally.kind === "species" ? { ...ally, pokemon: hurt(ally.pokemon, damageOf(ally.key)) } : ally)));
+    for (const ally of allies) if (ally.kind === "owned" && damageOf(ally.key) > 0) void hurtOwned(ally.pokemonId, damageOf(ally.key));
+    setStatuses((statuses) => Object.fromEntries(Object.entries(statuses).map(([key, value]) => [key, nextRoundStatuses(value)])));
+    setTurns({});
+    setUsedMoves({});
+  };
   return (
     <Sheet
       open={selectedEnemy !== undefined || selectedAlly !== undefined}
@@ -181,7 +237,7 @@ export const EncounterDetails = ({
         setAdding(false);
       }}
       title="Encounter details"
-      description="Switch Pokémon using the tabs. Tap a move to roll accuracy or damage. Track each Pokémon's turn: the Nth action in a round needs N successes."
+      description="Switch Pokémon using the tabs. Tap a move to roll accuracy or damage. Track each Pokémon's turn (the Nth action in a round needs N successes), check moves as they're used, adjust temporary stats and set statuses. Refresh round applies statuses and resets turns and used moves."
       initialExpanded
       className="lg:max-w-5xl"
     >
@@ -202,13 +258,14 @@ export const EncounterDetails = ({
                 </button>
                 <button
                   type="button"
-                  disabled={Object.values(turns).every((turn) => turn === 1)}
-                  onClick={() => setTurns({})}
+                  disabled={!roundStarted}
+                  onClick={() => (roundSubjects.length > 0 ? setConfirmingRound(true) : refreshRound())}
                   className={button({ variant: "gray", size: "sm" })}
                 >
                   <RotateCcw aria-hidden className="size-3.5" />
                   Refresh round
                 </button>
+                <NewRoundAlert open={confirmingRound} onOpenChange={setConfirmingRound} subjects={roundSubjects} onConfirm={refreshRound} />
               </div>
             </div>
             {adding && (
@@ -296,7 +353,7 @@ export const EncounterDetails = ({
                   showTyping={showTyping}
                   embedded
                   showHeader={false}
-                  turn={turnControl(selectedEnemy.pokemon.id)}
+                  fight={fightOf(selectedEnemy.pokemon.id)}
                 />
               </StaticPokemonProvider>
             </div>
@@ -305,11 +362,11 @@ export const EncounterDetails = ({
             <div key={selectedAlly.key} {...segmentPanelProps(idPrefix, selectedAlly.key)}>
               {selectedAlly.kind === "owned" ? (
                 <PokemonProvider id={selectedAlly.pokemonId}>
-                  <PokemonSheet embedded showHeader={false} showActions={false} turn={turnControl(selectedAlly.key)} />
+                  <PokemonSheet embedded showHeader={false} showActions={false} fight={fightOf(selectedAlly.key)} />
                 </PokemonProvider>
               ) : (
                 <StaticPokemonProvider pokemon={selectedAlly.pokemon} onChange={updateAlly}>
-                  <PokemonSheet showButtons="add" embedded showHeader={false} showActions={false} turn={turnControl(selectedAlly.key)} />
+                  <PokemonSheet showButtons="add" embedded showHeader={false} showActions={false} fight={fightOf(selectedAlly.key)} />
                 </StaticPokemonProvider>
               )}
             </div>

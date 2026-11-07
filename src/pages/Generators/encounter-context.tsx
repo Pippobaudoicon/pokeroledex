@@ -1,6 +1,8 @@
 import * as React from "react";
 import type * as T from "../../../shared/types";
 import { LegendaryFilter, RankUpMethod } from "@/api/schemas";
+import type { Boosts } from "@/components/pokemon-sheet/fight";
+import type { Statuses } from "@/components/pokemon-sheet/status";
 
 export interface EncounterEntry {
   pokemon: T.Pokemon;
@@ -52,7 +54,22 @@ export const EncounterContext = React.createContext<{
   /** Current turn (1–5) per tab key (encounter Pokémon id or ally key); missing means 1. */
   turns: Record<string, number>;
   setTurns: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  /** Temporary stat changes per tab key, for the whole encounter. */
+  boosts: Record<string, Boosts>;
+  setBoosts: React.Dispatch<React.SetStateAction<Record<string, Boosts>>>;
+  /** Moves used this round per tab key. */
+  usedMoves: Record<string, string[]>;
+  setUsedMoves: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
+  /** Status ailments per tab key, applied on Refresh round. */
+  statuses: Record<string, Statuses>;
+  setStatuses: React.Dispatch<React.SetStateAction<Record<string, Statuses>>>;
 }>(null!);
+
+/** Keeps only the keys of `record` that `keep` accepts, returning the same object when nothing is dropped. */
+const pick = <V,>(record: Record<string, V>, keep: (key: string) => boolean) => {
+  const kept = Object.entries(record).filter(([key]) => keep(key));
+  return kept.length === Object.keys(record).length ? record : Object.fromEntries(kept);
+};
 
 export const EncounterProvider = ({ children }: { children: React.ReactNode }) => {
   const [entries, setEntries] = React.useState<EncounterEntry[]>([]);
@@ -63,14 +80,18 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
   const [status, setStatus] = React.useState("Choose filters and generate an encounter.");
   const [allies, setAllies] = React.useState<AllyEntry[]>([]);
   const [turns, setTurns] = React.useState<Record<string, number>>({});
+  const [boosts, setBoosts] = React.useState<Record<string, Boosts>>({});
+  const [usedMoves, setUsedMoves] = React.useState<Record<string, string[]>>({});
+  const [statuses, setStatuses] = React.useState<Record<string, Statuses>>({});
   const encounterEmpty = entries.length === 0;
   React.useEffect(() => {
-    // Once the last encounter Pokémon is gone, drop the turns left behind by removed ones; allies keep theirs.
+    // Once the last encounter Pokémon is gone, drop the fight state left behind by removed ones; allies keep theirs.
     if (!encounterEmpty) return;
-    setTurns((turns) => {
-      const kept = Object.entries(turns).filter(([key]) => allies.some((ally) => ally.key === key));
-      return kept.length === Object.keys(turns).length ? turns : Object.fromEntries(kept);
-    });
+    const isAlly = (key: string) => allies.some((ally) => ally.key === key);
+    setTurns((turns) => pick(turns, isAlly));
+    setBoosts((boosts) => pick(boosts, isAlly));
+    setUsedMoves((usedMoves) => pick(usedMoves, isAlly));
+    setStatuses((statuses) => pick(statuses, isAlly));
   }, [encounterEmpty]);
   return (
     <EncounterContext.Provider
@@ -91,6 +112,12 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
         setAllies,
         turns,
         setTurns,
+        boosts,
+        setBoosts,
+        usedMoves,
+        setUsedMoves,
+        statuses,
+        setStatuses,
       }}
     >
       {children}
