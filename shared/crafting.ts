@@ -278,6 +278,9 @@ export function orderUsage(lines: { recipe: CostLike; quantity: number }[]): Rec
   return usage;
 }
 
+/** Research steps an order asks for in total; the city's Research value caps them. */
+export const orderSteps = (lines: { steps: number }[]) => lines.reduce((total, line) => total + line.steps, 0);
+
 /** How many more crafts of the recipe fit in the order, given what it already uses, across every skill it uses. */
 export function orderRoom(recipe: CostLike, skills: CitySkills, usage: Record<CraftingSkill, number>) {
   const costs = (Object.entries(recipeCosts(recipe)) as [CraftingSkill, number][]).filter(([, cost]) => cost > 0);

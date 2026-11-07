@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Dices, Hammer, Keyboard, Lock, Minus, Pencil, Plus, RotateCcw, Trash2, Unlock } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Dices, Keyboard, Lock, Minus, Pencil, Plus, RotateCcw, Send, Trash2, Undo2, Unlock } from "lucide-react";
 import * as React from "react";
 import {
-  CRAFTING_SKILLS, type City, type CityCraftResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrderBody,
-  type CityRecipeBody, type CityResearchResult, type CityStepsBody, type CityStockBody, type CraftingSkill, type HydratedInventoryEntry, type Item,
-  type Tier, type Trainer,
+  CRAFTING_SKILLS, type City, type CityApproveResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrder, type CityOrderBody,
+  type CityRecipeBody, type CityResearchResult, type CityReviewBody, type CityStepsBody, type CityStockBody, type CitySubmitBody, type CraftingSkill,
+  type HydratedInventoryEntry, type Item, type Tier, type Trainer,
 } from "../../../shared/types";
 import {
-  RECIPE_LIMITS, TIERS, cityRecipe, craftBlockers, isUnlocked, itemRecipe, orderRoom, orderUsage, overCapacity, researchBlockers,
+  RECIPE_LIMITS, TIERS, cityRecipe, craftBlockers, isUnlocked, itemRecipe, orderRoom, orderSteps, orderUsage, overCapacity, researchBlockers,
   type CraftingCity, type Recipe,
 } from "../../../shared/crafting";
 import { ITEM_EXCEPTIONS } from "../../../shared/crafting-data";
@@ -133,20 +133,22 @@ const RecipeRow = ({ entry, onOpen, children, actions }: { entry: Entry; onOpen:
     {actions}
   </li>;
 
-/** Adds an item to the crafting order, then steps its quantity while there is room. */
-const OrderStepper = ({ name, quantity, room, disabled, onSet }: { name: string; quantity: number; room: number; disabled: boolean; onSet: (quantity: number) => void }) =>
+/** Adds an item to a crafting order, then steps its count while there is room. `what` names one unit for screen readers. */
+const OrderStepper = ({ name, quantity, room, disabled, onSet, add = "Add to order", what = name, full = "The order has no room left for this skill" }: {
+  name: string; quantity: number; room: number; disabled: boolean; onSet: (quantity: number) => void; add?: string; what?: string; full?: string;
+}) =>
   !quantity ?
     <button type="button" className={button({ variant: "tinted", size: "sm" })} disabled={disabled || room < 1} onClick={() => onSet(1)}
-      title={room < 1 ? "The order has no room left for this skill" : undefined}>
-      <Plus aria-hidden className="size-4" />Add to order
+      title={room < 1 ? full : undefined}>
+      <Plus aria-hidden className="size-4" />{add}
     </button> :
     <div className="flex items-center gap-1" role="group" aria-label={`${name} in the order`}>
-      <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label={`One less ${name}`} disabled={disabled} onClick={() => onSet(quantity - 1)}>
+      <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label={`One less ${what}`} disabled={disabled} onClick={() => onSet(quantity - 1)}>
         <Minus aria-hidden className="size-4" />
       </button>
       <span className="w-8 text-center tabular-nums" aria-live="polite">{quantity}</span>
-      <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label={`One more ${name}`} disabled={disabled || room < 1} onClick={() => onSet(quantity + 1)}
-        title={room < 1 ? "The order has no room left for this skill" : undefined}>
+      <button type="button" className={button({ variant: "gray", size: "icon" })} aria-label={`One more ${what}`} disabled={disabled || room < 1} onClick={() => onSet(quantity + 1)}
+        title={room < 1 ? full : undefined}>
         <Plus aria-hidden className="size-4" />
       </button>
     </div>;
@@ -392,54 +394,88 @@ const EditCraftButton = ({ name, disabled, onEdit }: { name: string; disabled: b
     <Pencil aria-hidden className="size-4" />Edit craft
   </button>;
 
-/** The crafting order: what members queued, how much of each skill it uses, and the leader's Craft button. */
-const OrderPanel = ({ city, lines, usage, isLeader, leader, disabled, onSet, onOpen, onCraft, blockersOf }: {
-  city: City; lines: (Entry & { quantity: number })[]; usage: Usage; isLeader: boolean; leader: string | undefined; disabled: boolean;
-  onSet: (itemId: string, quantity: number) => void; onOpen: (entry: Entry) => void; onCraft: () => void; blockersOf: (entry: Entry) => string[];
+type ItemLine = Entry & { quantity: number };
+type StepLine = Entry & { steps: number };
+
+/** Why a research line in an order cannot be approved; steps on a researched recipe are only lost. */
+const stepBlockers = (entry: Entry, state: CraftingCity) => isUnlocked(entry.recipe, state.research) ? [] : researchBlockers(entry.recipe, state);
+
+/**
+ * One member's crafting order: its crafts and research steps, how much of each skill it uses, and
+ * `actions` (submit, approve, send back), which get whether the order can be approved as it is.
+ */
+const OrderPanel = ({ id, title, status, note, city, state, items, research, editable, disabled, onSet, onSetSteps, onOpen, actions }: {
+  id: string; title: string; status?: string; note: React.ReactNode; city: City; state: CraftingCity; items: ItemLine[]; research: StepLine[];
+  editable: boolean; disabled: boolean; onSet: (itemId: string, quantity: number) => void; onSetSteps: (itemId: string, steps: number) => void;
+  onOpen: (entry: Entry) => void; actions: (ready: boolean) => React.ReactNode;
 }) => {
+  const usage = orderUsage(items);
+  const steps = orderSteps(research);
   const over = overCapacity(city.skills, usage);
-  const count = lines.reduce((total, line) => total + line.quantity, 0);
-  const blocked = lines.some(line => blockersOf(line).length);
-  return <section aria-labelledby="crafting-order" className="space-y-3 rounded-xl bg-fill p-3">
+  const tooManySteps = steps > city.skills.research;
+  const crafts = items.reduce((total, line) => total + line.quantity, 0);
+  const blocked = items.some(line => craftBlockers(line.recipe, state).length) || research.some(line => stepBlockers(line, state).length);
+  const empty = !items.length && !research.length;
+  const ready = !empty && !over.length && !tooManySteps && !blocked;
+  const control = (name: string, onRemove: () => void, stepper: React.ReactNode) => editable && <div className="flex items-center gap-1">
+    {stepper}
+    <button type="button" className={button({ variant: "destructive", size: "icon" })} aria-label={`Take ${name} out of the order`} disabled={disabled} onClick={onRemove}>
+      <Trash2 aria-hidden className="size-4" />
+    </button>
+  </div>;
+  return <section aria-labelledby={id} className="space-y-3 rounded-xl bg-fill p-3">
     <div className="flex flex-wrap items-center gap-2">
-      <h3 id="crafting-order" className="flex-1 font-semibold">Crafting order · {count}</h3>
-      {isLeader && <button type="button" className={button({ variant: "filled", size: "sm" })} disabled={disabled || !lines.length || over.length > 0 || blocked} onClick={onCraft}>
-        <Hammer aria-hidden className="size-4" />Craft order
-      </button>}
+      <h3 id={id} className="min-w-0 flex-1 break-words font-semibold">{title} · {crafts} {crafts === 1 ? "craft" : "crafts"}{steps > 0 && `, ${steps} research ${steps === 1 ? "step" : "steps"}`}</h3>
+      {status && <span className="rounded-full bg-surface px-2.5 py-1 text-caption font-medium">{status}</span>}
+      {actions(ready)}
     </div>
-    <p className="text-footnote text-label-2">
-      Every member can add and remove items. Each crafting skill's value is how much of the order its recipes can fill; each craft uses its recipe's skills.
-      {isLeader ? " Crafting puts every item in storage." : ` The leader (${leader}) crafts the order into storage.`}
-    </p>
+    <p className="text-footnote text-label-2">{note}</p>
     <ul className="flex flex-wrap gap-1.5" aria-label="Skill use">
       {CRAFTING_SKILLS.filter(skill => city.skills[skill] || usage[skill]).map(skill =>
         <li key={skill} className={cn("inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-footnote tabular-nums", over.includes(skill) && "text-red-500")}>
           <SkillIcon skill={skill} className="size-3.5" />{skillLabel(skill)} {usage[skill]}/{city.skills[skill]}
         </li>)}
+      {(city.skills.research > 0 || steps > 0) && <li className={cn("inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-footnote tabular-nums", tooManySteps && "text-red-500")}>
+        <SkillIcon skill="research" className="size-3.5" />Research {steps}/{city.skills.research}
+      </li>}
     </ul>
-    {over.length > 0 && <p role="alert" className="text-footnote text-red-500">
-      The order needs more {over.map(skillLabel).join(" and ")} than the city has now. Remove some items before crafting.
+    {(over.length > 0 || tooManySteps) && <p role="alert" className="text-footnote text-red-500">
+      The order needs more {[...over, ...(tooManySteps ? ["research" as const] : [])].map(skillLabel).join(" and ")} than the city has now. Remove some before approving.
     </p>}
-    {!lines.length ? <p className="text-footnote text-label-2">The order is empty. Add items from the recipes below.</p> :
-      <ul className="divide-y divide-hairline">{lines.map(line => {
-        const blockers = blockersOf(line);
-        return <li key={line.item.id} className="flex items-center gap-3 py-2">
-          <ItemTitle item={line.item} size="size-9" onOpen={() => onOpen(line)}>
-            <span className="block text-footnote text-label-2">
-              Uses {costText(line.recipe, line.quantity)}{line.recipe.yield > 1 && ` · makes ${line.recipe.yield * line.quantity}`}
-            </span>
-            <Blockers reasons={blockers} />
-          </ItemTitle>
-          <div className="flex items-center gap-1">
-            <OrderStepper name={line.item.name} quantity={line.quantity} disabled={disabled} onSet={quantity => onSet(line.item.id, quantity)}
-              room={blockers.length ? 0 : orderRoom(line.recipe, city.skills, usage)} />
-            <button type="button" className={button({ variant: "destructive", size: "icon" })} aria-label={`Take ${line.item.name} out of the order`}
-              disabled={disabled} onClick={() => onSet(line.item.id, 0)}>
-              <Trash2 aria-hidden className="size-4" />
-            </button>
-          </div>
-        </li>;
-      })}</ul>}
+    {empty ? <p className="text-footnote text-label-2">The order is empty. Add crafts from the recipes below, or research steps from Research.</p> :
+      <ul className="divide-y divide-hairline">
+        {items.map(line => {
+          const blockers = craftBlockers(line.recipe, state);
+          return <li key={line.item.id} className="flex items-center gap-3 py-2">
+            <ItemTitle item={line.item} size="size-9" onOpen={() => onOpen(line)}>
+              <span className="block text-footnote text-label-2">
+                Uses {costText(line.recipe, line.quantity)}{line.recipe.yield > 1 && ` · makes ${line.recipe.yield * line.quantity}`}
+              </span>
+              <Blockers reasons={blockers} />
+            </ItemTitle>
+            {control(line.item.name, () => onSet(line.item.id, 0),
+              <OrderStepper name={line.item.name} quantity={line.quantity} disabled={disabled} onSet={quantity => onSet(line.item.id, quantity)}
+                room={blockers.length ? 0 : orderRoom(line.recipe, city.skills, usage)} />)}
+          </li>;
+        })}
+        {research.map(line => {
+          const needed = TIERS[line.recipe.tier].research?.steps ?? 0;
+          const done = state.research[line.item.id] ?? 0;
+          const lost = Math.max(0, line.steps - Math.max(0, needed - done));
+          return <li key={`research-${line.item.id}`} className="flex items-center gap-3 py-2">
+            <ItemTitle item={line.item} size="size-9" onOpen={() => onOpen(line)}>
+              <span className="flex items-center gap-1 text-footnote text-label-2">
+                <SkillIcon skill="research" className="size-3.5" />Research {line.steps} {line.steps === 1 ? "step" : "steps"} · {Math.min(needed, done)}/{needed} done
+              </span>
+              {lost > 0 && <span className="block text-footnote text-label-2">{lost} {lost === 1 ? "step is" : "steps are"} more than it needs and will be lost.</span>}
+              <Blockers reasons={stepBlockers(line, state)} />
+            </ItemTitle>
+            {control(`${line.item.name} research`, () => onSetSteps(line.item.id, 0),
+              <OrderStepper name={`${line.item.name} research`} what={`research step for ${line.item.name} in the order`} quantity={line.steps} disabled={disabled}
+                onSet={value => onSetSteps(line.item.id, value)} room={stepBlockers(line, state).length ? 0 : city.skills.research - steps} full="The order has no Research left" />)}
+          </li>;
+        })}
+      </ul>}
   </section>;
 };
 
@@ -496,31 +532,66 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const editButton = (entry: Entry) => isLeader && entry.base.craftable &&
     <EditCraftButton name={entry.item.name} disabled={pending} onEdit={() => edit(entry)} />;
 
-  const orderLines = (city.order ?? []).flatMap(line => {
-    const entry = byId.get(line.itemId);
-    return entry ? [{ ...entry, quantity: line.quantity }] : [];
+  const orders = city.orders ?? {};
+  const linesOf = (order: CityOrder | undefined) => ({
+    items: (order?.items ?? []).flatMap(line => { const entry = byId.get(line.itemId); return entry ? [{ ...entry, quantity: line.quantity }] : []; }),
+    research: (order?.research ?? []).flatMap(line => { const entry = byId.get(line.itemId); return entry ? [{ ...entry, steps: line.steps }] : []; }),
   });
-  const usage = orderUsage(orderLines);
-  const inOrder = (itemId: string) => city.order?.find(line => line.itemId === itemId)?.quantity ?? 0;
+  const mine = me ? orders[me.email] : undefined;
+  const myLines = linesOf(mine);
+  const usage = orderUsage(myLines.items);
+  const usedSteps = orderSteps(myLines.research);
+  // Members cannot change a submitted order until they withdraw it; the leader always can.
+  const locked = !!mine?.submitted && !isLeader;
+  const inOrder = (itemId: string) => mine?.items.find(line => line.itemId === itemId)?.quantity ?? 0;
+  const stepsInOrder = (itemId: string) => mine?.research.find(line => line.itemId === itemId)?.steps ?? 0;
+  const awaiting = isLeader ? city.members.filter(email => email !== me?.email && orders[email]?.submitted) : [];
+  const drafting = isLeader ? city.members.filter(email => email !== me?.email && orders[email] && !orders[email].submitted).length : 0;
 
   const setOrder = useMutation({
     mutationFn: (body: CityOrderBody) => apiFetch<City>({ url: cityUrl(city, "order"), method: "post", body }),
     onSuccess: result => client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result)),
-    onError: (error: ApiFetchError) => toast({ title: "The order could not be changed", description: errorText(error) }),
+    onError: (error: ApiFetchError) => {
+      client.invalidateQueries({ queryKey: ["cities"] });
+      toast({ title: "The order could not be changed", description: errorText(error) });
+    },
   });
-  const craft = useMutation({
-    mutationFn: () => apiFetch<CityCraftResult>({ url: cityUrl(city, "craft"), method: "post", body: {} }),
-    onSuccess: result => {
-      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result.city));
-      const total = result.crafted.reduce((sum, line) => sum + line.quantity, 0);
-      toast({
-        title: `Crafted ${total} ${total === 1 ? "item" : "items"}`,
-        description: result.crafted.map(line => `${line.quantity} × ${byId.get(line.itemId)?.item.name ?? "Item"}`).join(", "),
-      });
+  const submit = useMutation({
+    mutationFn: (body: CitySubmitBody) => apiFetch<City>({ url: cityUrl(city, "submit"), method: "post", body }),
+    onSuccess: (result, body) => {
+      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result));
+      toast({ title: body.submitted ? "Order sent to the leader" : "Order withdrawn", description: body.submitted ? `${leader} can now change and approve it.` : "You can change it again." });
     },
     onError: (error: ApiFetchError) => {
       client.invalidateQueries({ queryKey: ["cities"] });
-      toast({ title: "The order could not be crafted", description: errorText(error) });
+      toast({ title: "The order could not be changed", description: errorText(error) });
+    },
+  });
+  const approve = useMutation({
+    mutationFn: (body: CityReviewBody) => apiFetch<CityApproveResult>({ url: cityUrl(city, "approve"), method: "post", body }),
+    onSuccess: result => {
+      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result.city));
+      const name = (itemId: string) => byId.get(itemId)?.item.name ?? "Item";
+      const parts = [
+        ...result.crafted.map(line => `${line.quantity} × ${name(line.itemId)}`),
+        ...result.researched.map(line => `${name(line.itemId)} +${line.added} research${line.steps > line.added ? ` (${line.steps - line.added} lost)` : ""}${line.unlocked ? ", unlocked!" : ""}`),
+      ];
+      toast({ title: result.member === me?.email ? "Order approved" : `Approved ${result.member}'s order`, description: parts.join(", ") });
+    },
+    onError: (error: ApiFetchError) => {
+      client.invalidateQueries({ queryKey: ["cities"] });
+      toast({ title: "The order could not be approved", description: errorText(error) });
+    },
+  });
+  const reject = useMutation({
+    mutationFn: (body: CityReviewBody) => apiFetch<City>({ url: cityUrl(city, "reject"), method: "post", body }),
+    onSuccess: (result, body) => {
+      client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result));
+      toast({ title: `Sent back to ${body.member}`, description: "They can change it and submit it again." });
+    },
+    onError: (error: ApiFetchError) => {
+      client.invalidateQueries({ queryKey: ["cities"] });
+      toast({ title: "The order could not be sent back", description: errorText(error) });
     },
   });
   const research = useMutation({
@@ -543,9 +614,43 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     },
     onError: (error: ApiFetchError) => toast({ title: "The research steps could not be changed", description: errorText(error) }),
   });
-  const pending = setOrder.isPending || craft.isPending || research.isPending || setSteps.isPending;
-  const stepper = (entry: Entry) => <OrderStepper name={entry.item.name} quantity={inOrder(entry.item.id)} disabled={pending}
+  const pending = setOrder.isPending || submit.isPending || approve.isPending || reject.isPending || research.isPending || setSteps.isPending;
+  const stepper = (entry: Entry) => <OrderStepper name={entry.item.name} quantity={inOrder(entry.item.id)} disabled={pending || locked}
     room={orderRoom(entry.recipe, city.skills, usage)} onSet={quantity => setOrder.mutate({ itemId: entry.item.id, quantity })} />;
+  const stepStepper = (entry: Entry) => <OrderStepper name={`${entry.item.name} research`} what={`research step for ${entry.item.name} in your order`}
+    add="Add steps to order" full="Your order has no Research left" quantity={stepsInOrder(entry.item.id)} disabled={pending || locked}
+    room={city.skills.research - usedSteps} onSet={steps => setOrder.mutate({ itemId: entry.item.id, steps })} />;
+  const orderPanel = (member: string, order: CityOrder | undefined, own: boolean) => {
+    const lines = linesOf(order);
+    const editable = own ? !locked : true;
+    const target = own ? {} : { member };
+    const note = own
+      ? isLeader
+        ? "Approving your own order crafts its items into storage and adds its research steps. Members' orders show below once they submit them."
+        : order?.submitted
+          ? `${leader} can change your order before approving it. Withdraw it to change it yourself.`
+          : `Fill your order within the city's skills, then submit it. ${leader} can change it before approving: its items go to storage and its research steps to their recipes.`
+      : "Change the order if needed, then approve it: its items go to storage and its research steps to their recipes. Sending it back lets them change it.";
+    return <OrderPanel key={member} id={`crafting-order-${member}`} title={own ? "Your crafting order" : `${member}'s order`}
+      status={own && !isLeader && order?.submitted ? "Waiting for approval" : undefined} note={note}
+      city={city} state={state} items={lines.items} research={lines.research} editable={editable} disabled={pending} onOpen={open}
+      onSet={(itemId, quantity) => setOrder.mutate({ itemId, quantity, ...target })} onSetSteps={(itemId, steps) => setOrder.mutate({ itemId, steps, ...target })}
+      actions={ready => <div className="flex flex-wrap gap-2">
+        {isLeader && <button type="button" className={button({ variant: "filled", size: "sm" })} disabled={pending || !ready} onClick={() => approve.mutate({ member })}>
+          <Check aria-hidden className="size-4" />Approve
+        </button>}
+        {!own && <button type="button" className={button({ variant: "gray", size: "sm" })} disabled={pending} onClick={() => reject.mutate({ member })}>
+          <Undo2 aria-hidden className="size-4" />Send back
+        </button>}
+        {own && !isLeader && (order?.submitted
+          ? <button type="button" className={button({ variant: "gray", size: "sm" })} disabled={pending} onClick={() => submit.mutate({ submitted: false })}>
+            <Undo2 aria-hidden className="size-4" />Withdraw
+          </button>
+          : <button type="button" className={button({ variant: "filled", size: "sm" })} disabled={pending || !ready} onClick={() => submit.mutate({ submitted: true })}>
+            <Send aria-hidden className="size-4" />Submit
+          </button>)}
+      </div>} />;
+  };
 
   const craftRows = entries.filter(matches).map(entry => ({ ...entry, blockers: blockersOf(entry) }))
     .filter(row => showLocked || !row.blockers.length)
@@ -572,10 +677,12 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     <div>
       <h2 className="text-title-3 font-semibold">Crafting</h2>
       <p className="mt-1 text-footnote text-label-2">
-        Members fill a crafting order within the city's crafting skills, and the leader crafts it into storage.
-        Higher tiers need research first, rolled with the Research skill's dice (every 4, 5 or 6 is a step), and some recipes need a resident of the right type in Catalyst.
+        Every member fills their own crafting order within the city's crafting skills, and submits it to the leader.
+        Higher tiers need research first: add research steps to your order (up to the Research skill), or the leader rolls Research dice (every 4, 5 or 6 is a step).
+        The leader can change each order before approving it: its items go to storage and its steps to their recipes; steps past what a recipe needs are lost.
+        Some recipes need a resident of the right type in Catalyst.
         Select an item to read its description.
-        {!isLeader && ` Only the city leader (${leader}) can craft the order, roll research and remove stored items.`}
+        {!isLeader && ` Only the city leader (${leader}) can approve orders, roll research and remove stored items.`}
       </p>
     </div>
     <Segmented label="Crafting view" idPrefix="crafting" value={view} onChange={setView} options={[
@@ -587,8 +694,14 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
       {items.isError ? <p role="alert">The item list could not be loaded. <button type="button" className={button({ variant: "tinted", size: "sm" })} onClick={() => items.refetch()}>Try again</button></p> :
         !items.data ? <p role="status">Loading recipes...</p> :
         view === "storage" ? <Storage city={city} trainers={trainers} items={items.data} isLeader={isLeader} /> : <>
-          {view === "craft" && <OrderPanel city={city} lines={orderLines} usage={usage} isLeader={isLeader} leader={leader} disabled={pending}
-            onSet={(itemId, quantity) => setOrder.mutate({ itemId, quantity })} onOpen={open} onCraft={() => craft.mutate()} blockersOf={blockersOf} />}
+          <div className="space-y-3">
+            {me && orderPanel(me.email, mine, true)}
+            {view === "craft" && isLeader && (awaiting.length > 0 || drafting > 0) && <h3 className="pt-1 font-semibold">Orders to approve · {awaiting.length}</h3>}
+            {view === "craft" && awaiting.map(email => orderPanel(email, orders[email], false))}
+            {view === "craft" && drafting > 0 && <p className="text-footnote text-label-2">
+              {drafting} {drafting === 1 ? "member is" : "members are"} still filling an order; it shows here once submitted.
+            </p>}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <input type="search" className={cn(field, "sm:max-w-64")} placeholder="Search items" aria-label="Search items" value={query} onChange={event => setQuery(event.target.value)} />
             <select className={cn(field, "sm:w-48")} aria-label="Crafting skill" value={skill} onChange={event => setSkill(event.target.value as CraftingSkill | "all")}>
@@ -616,15 +729,16 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
                 <Blockers reasons={row.blockers} />
               </RecipeRow>)}</ul>}
           </> : <>
-            <p className="text-footnote text-label-2">Research rolls {dice(city.skills.research)} (the Research skill); each success is one step. Tier 1 and 2 recipes need none. {researchedCount} of {researchable.length} recipes are researched.
+            <p className="text-footnote text-label-2">Add research steps to your order, up to the Research skill ({city.skills.research}) in total; once the leader approves it, each step counts towards its recipe. Steps past what a recipe needs are lost. The leader can also roll {dice(city.skills.research)}, where each success is one step. Tier 1 and 2 recipes need none. {researchedCount} of {researchable.length} recipes are researched.
               {isLeader && " As the leader you can also add or remove steps, or unlock a recipe outright, even if the city could not research it yet."}</p>
             {!researchRows.length ? <p className="text-label-2">{showLocked ? "Nothing left to research that matches." : "Nothing the city can research yet matches. Turn on Show locked recipes to see what each one needs."}</p> :
               <ul className="divide-y divide-hairline">{onPage(researchRows).map(row => <RecipeRow key={row.item.id} entry={row} onOpen={() => open(row)}
-                actions={isLeader && <div className="flex flex-wrap items-center gap-2">
-                  {!row.blockers.length && <RollActions pool={city.skills.research} label="Research" disabled={pending}
+                actions={(!row.blockers.length || isLeader) && <div className="flex flex-wrap items-center gap-2">
+                  {!row.blockers.length && stepStepper(row)}
+                  {isLeader && !row.blockers.length && <RollActions pool={city.skills.research} label="Roll" disabled={pending}
                     onRoll={faces => research.mutate({ itemId: row.item.id, faces })} />}
-                  <StepControls name={row.item.name} steps={row.steps} needed={row.needed} disabled={pending}
-                    onSet={steps => setSteps.mutate({ itemId: row.item.id, steps })} />
+                  {isLeader && <StepControls name={row.item.name} steps={row.steps} needed={row.needed} disabled={pending}
+                    onSet={steps => setSteps.mutate({ itemId: row.item.id, steps })} />}
                 </div>}>
                 <span className="mt-1.5 flex items-center gap-2">
                   <span role="progressbar" aria-label={`${row.item.name} research`} aria-valuemin={0} aria-valuemax={row.needed} aria-valuenow={row.steps}
@@ -640,7 +754,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     </div>
     <ItemDetail entry={detailEntry} open={detailOpen} onOpenChange={setDetailOpen} blockers={detailBlockers}>
       {detailEntry && (!detailBlockers.length || (isLeader && detailEntry.base.craftable)) && <div className="flex flex-wrap items-center gap-3">
-        {!detailBlockers.length && <><span className="text-subhead text-label-2">In the order</span>{stepper(detailEntry)}</>}
+        {!detailBlockers.length && <><span className="text-subhead text-label-2">In your order</span>{stepper(detailEntry)}</>}
         {editButton(detailEntry)}
       </div>}
     </ItemDetail>

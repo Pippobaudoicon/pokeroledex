@@ -8,9 +8,13 @@ The **Crafting** tab in [My City](cities.md) turns the city's skills into items.
 
 **Show locked recipes** adds the others, along with what each still needs. Long lists show 35 recipes per page, with numbered pages to jump between. Select an item to read its description.
 
-Any member can add items to the **crafting order** and take them out again. Each crafting skill's value is how much of the order its recipes can fill: Apothecary 3 holds three tier 1 Apothecary items, or one tier 4 item and one tier 1.
+Every member has their own **crafting order**. Each crafting skill's value is how much of one order its recipes can fill: Apothecary 3 holds three tier 1 Apothecary items, or one tier 4 item and one tier 1. Each order is checked on its own, so two members can each fill the city's skills.
 
-The leader crafts the whole order at once, with no dice, and the items go to city storage. Each craft in the order makes the recipe's items per craft.
+An order can also hold **research steps** (see [Research](#research)), up to the city's Research value in total. Asking for more steps than a recipe still needs is allowed, but the extra steps are lost when the order is approved.
+
+When their order is ready, a member **submits** it, and can **withdraw** it to change it again. The leader sees the submitted orders under **Orders to approve**, and can change them, **send them back** to the member, or **approve** them. The leader's own order needs no submission.
+
+Approving an order, with no dice, adds its research steps first (recipes that are already unlocked lose theirs), then crafts its items into city storage. Each craft makes the recipe's items per craft.
 
 The leader can change a recipe for their city with **Edit craft**, next to **Add to order** (and in the item's details). The editor sets:
 
@@ -23,6 +27,8 @@ Edited recipes show an **Edited** badge. **Reset to default** restores the refer
 ## Research
 
 **Research** unlocks tier 3 and higher recipes. Each roll uses the Research skill's dice, and every success is one step towards what the tier needs. The leader rolls in the app or types in the dice of a physical roll.
+
+Any member can also put research steps in their order: once the leader approves it, the city gets that many steps on the recipe, and any steps beyond what the tier needs are lost.
 
 As GM, the leader can also add or remove steps, or unlock a recipe outright, even a locked one the city couldn't research yet.
 

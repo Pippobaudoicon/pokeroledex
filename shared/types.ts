@@ -53,8 +53,8 @@ export interface City {
   inventory: HydratedInventoryEntry[];
   /** Research steps done per item ID; a recipe unlocks when it reaches its tier's steps. */
   research: Record<string, number>;
-  /** The crafting order members are filling; the leader crafts it into the inventory. */
-  order: CityOrderLine[];
+  /** Each member's own crafting order, keyed by email; the leader approves them one by one. */
+  orders: Record<string, CityOrder>;
   /** The leader's changes to reference recipes, keyed by item ID. */
   recipes: Record<string, CityRecipe>;
   /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
@@ -70,11 +70,27 @@ export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export interface CityRecipe { tier?: Tier; costs?: Partial<Record<CraftingSkill, number>>; yield?: number }
 /** The leader edits a recipe for the city; `null` restores the default. */
 export interface CityRecipeBody { itemId: string; recipe: CityRecipe | null }
-/** A reference item in the crafting order: `quantity` crafts, each using the recipe's costs. */
+/** A reference item in a crafting order: `quantity` crafts, each using the recipe's costs. */
 export interface CityOrderLine { itemId: string; quantity: number }
-/** Sets how many of a reference item are in the crafting order; 0 takes it out. */
-export interface CityOrderBody { itemId: string; quantity: number }
-export interface CityCraftResult { city: City; crafted: CityOrderLine[] }
+/** Research steps a crafting order puts into a recipe; steps past what its tier needs are lost. */
+export interface CityResearchLine { itemId: string; steps: number }
+/**
+ * A member's crafting order. Crafts fit the city's crafting skills and research steps its Research
+ * value, each order on its own. Once `submitted`, only the leader changes it, until approved or sent back.
+ */
+export interface CityOrder { items: CityOrderLine[]; research: CityResearchLine[]; submitted: boolean }
+/**
+ * Sets how many crafts (`quantity`) or research steps (`steps`) of a reference item are in your
+ * order; 0 takes it out. The leader can change a member's submitted order with `member`.
+ */
+export type CityOrderBody = { itemId: string; member?: string } & ({ quantity: number } | { steps: number });
+/** Submits your order for the leader's approval, or withdraws it (`false`) to change it again. */
+export interface CitySubmitBody { submitted: boolean }
+/** The leader approves or sends back a member's order. */
+export interface CityReviewBody { member: string }
+/** Research an approved order added: `added` is at most what the recipe still needed; the rest is lost. */
+export interface CityResearched { itemId: string; steps: number; added: number; total: number; needed: number; unlocked: boolean }
+export interface CityApproveResult { city: City; member: string; crafted: CityOrderLine[]; researched: CityResearched[] }
 /** A research roll: the dice, typed in from a physical roll or rolled by the server. */
 export interface CityRollBody { itemId: string; faces?: number[] }
 export interface CityRoll { itemId: string; pool: number; faces: number[]; successes: number }

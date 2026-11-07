@@ -33,7 +33,7 @@ The response adds these derived fields:
 - each resident's `bonuses` and `profiles`
 - `inventory` (hydrated like a trainer's)
 - `research` (steps per item ID)
-- `order` (the crafting order, `{ itemId, quantity }[]`, where quantity counts crafts)
+- `orders` (each member's crafting order by email, `{ items: { itemId, quantity }[], research: { itemId, steps }[], submitted }`, where quantity counts crafts; empty orders are left out)
 - `recipes` (the city's recipe edits per item ID, `{ tier?, costs?, yield? }`)
 
 ## Crafting endpoints
@@ -42,8 +42,10 @@ The rules are in the [crafting plan](crafting-plan.md) and `shared/crafting.ts`.
 
 | Endpoint | Who | Body | Does |
 | --- | --- | --- | --- |
-| `POST /api/cities/:id/order` | Any member | `{ itemId, quantity }` | Sets how many of a reference item are in the crafting order (0 takes it out). Raising it needs a craftable recipe and room in every skill it uses: each craft uses the recipe's cost of each skill (by default its tier's effort of its own skill) |
-| `POST /api/cities/:id/craft` | Leader | `{}` | Adds quantity × items per craft of each order line to the city inventory and empties the order, if every recipe is still craftable and fits |
+| `POST /api/cities/:id/order` | Any member | `{ itemId, quantity \| steps, member? }` | Sets how many crafts (`quantity`) or research steps (`steps`) of a reference item are in your order, 0 to 999 (0 takes it out). Raising crafts needs a craftable recipe and room in every skill it uses within that order: each craft uses the recipe's cost of each skill (by default its tier's effort of its own skill). Raising steps needs a researchable recipe, and the order's steps may total at most the Research value. A submitted order can't be changed until it's withdrawn. The leader can pass `member` to change a member's submitted order |
+| `POST /api/cities/:id/submit` | Any member | `{ submitted }` | Submits your order for approval (`true`) or withdraws it (`false`) |
+| `POST /api/cities/:id/reject` | Leader | `{ member }` | Sends a submitted order back to its member as a draft |
+| `POST /api/cities/:id/approve` | Leader | `{ member? }` | Approves an order (your own by default; others must be submitted): adds its research steps, capped at what each tier needs, then adds quantity × items per craft of each line to the city inventory and removes the order. Answers `{ city, member, crafted, researched }`, where each `researched` entry has `steps`, `added`, `total`, `needed` and `unlocked` |
 | `POST /api/cities/:id/recipe` | Leader | `{ itemId, recipe: { tier?, costs?, yield? } \| null }` | Edits the city's recipe for a craftable item: tier 1–8, skill costs 0–14 per crafting skill (at least one above 0), items per craft 1–99. Only differences from the default are kept; `null` resets it |
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
 | `POST /api/cities/:id/steps` | Leader | `{ itemId, steps }` | Sets a recipe's research steps (0 to what its tier needs) without the rank or Research gates |
@@ -56,6 +58,8 @@ A few rules worth knowing:
 - `faces` are the dice of a physical research roll. They must match the pool, each 1 to 6. Without them the server rolls.
 - A recipe that can't be ordered, crafted or researched yet answers 409 with the reasons: rank, research, skill, assist, catalyst or room in the order.
 - Lowering an order line is always allowed, so an order that no longer fits (a resident moved off the skill, say) can be trimmed.
+- Research steps beyond what a recipe still needs, including steps on a recipe that was unlocked in the meantime, are lost on approval rather than refused.
+- Removing a member drops their order. A city saved with the old shared `order` shows it as the leader's draft.
 - The last member can't delete a city that still stores items.
 
 ## Pokémon endpoints
