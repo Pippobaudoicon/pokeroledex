@@ -10,7 +10,7 @@ import {
   orderCost, orderRoom, orderSteps, orderUsage, overCapacity, researchBlockers, researchNeeds, rollDice, type Recipe,
 } from '../shared/crafting.ts';
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
-import type { CampaignCraft, City, CityOrder, CityResearched, CraftKind, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, SkillGrants, Stats, Trainer } from '../shared/types.ts';
+import type { CampaignCraft, City, CityOrder, CityResearched, CraftKind, FriendsList, FriendTrainer, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, SkillGrants, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import { charmToAllure } from '../shared/moves.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
@@ -24,6 +24,8 @@ import { loadReference, type Reference } from './reference.ts';
 type Json = Record<string, any>;
 type Row = Json & { id: string };
 type Collections = Record<string, Row[]>;
+/** A friend's trainer receiving items, with its stored JSON to check it is unchanged when written. */
+type Recipient = { email: string; record: Row; data: string };
 
 const referenceNames = ['pokemon-templates', 'moves', 'items', 'abilities', 'natures'];
 /** Campaign entries a campaign city can craft, by the collection they are stored in. */
@@ -117,28 +119,30 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return reply(status === 200 ? result : { status, payload: result.message }, status);
     }
     if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
-    // Give one of your own Pokemon (not a city resident) to a player who already has records or
-    // a city here. It leaves your trainers; it gets a new id if theirs is taken, as two people
-    // can import the same campaign.
+    if (name === 'friends') return await friends(method, action, id, body);
+    // Give one of your own Pokemon (not a city resident) to a friend, optionally to one of their
+    // trainers. It leaves your trainers; it gets a new id if theirs is taken, as two people can
+    // import the same campaign.
     if (name === 'pokemon' && action && id === 'send' && method === 'POST') {
-      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-      if (email === owner) fail(400, 'This Pokemon is already yours.');
-      // Reserved owners such as 'global' and 'city:<id>' hold records too, but are not players.
-      if (!email.includes('@')) fail(400, 'Enter the email address of the player to send it to.');
-      const { results: known } = await env.DB.prepare(`SELECT 1 FROM records WHERE owner = ?
-        UNION ALL SELECT 1 FROM city_members WHERE email = ? LIMIT 1`).bind(email, email).all();
-      if (!known.length) fail(404, `No player uses ${email || 'that email'} here.`);
+      const email = await friendEmail(body.email);
+      let trainerId: string | null = null;
+      if (body.trainerId !== undefined && body.trainerId !== null) {
+        if (typeof body.trainerId !== 'string' || !await friendTrainer(email, body.trainerId)) fail(400, `Choose one of ${email}'s trainers.`);
+        trainerId = body.trainerId;
+      }
       const { results: [row] } = await env.DB.prepare(`SELECT data, EXISTS (SELECT 1 FROM records copy
           WHERE copy.owner = ? AND copy.collection = 'pokemon' AND copy.id = records.id) AS taken
         FROM records WHERE owner = ? AND collection = 'pokemon' AND id = ?`).bind(email, owner, action).all<{ data: string; taken: number }>();
       if (!row) fail(404, 'Pokemon not found. City residents must be taken into My Pokemon first.');
-      const record: Row = { ...JSON.parse(row.data), userId: email, trainerId: null, cityId: null };
+      const record: Row = { ...JSON.parse(row.data), userId: email, trainerId, cityId: null };
       if (row.taken) record.id = crypto.randomUUID();
       await env.DB.prepare('UPDATE records SET owner = ?, id = ?, data = ? WHERE owner = ? AND collection = ? AND id = ?')
         .bind(email, record.id, JSON.stringify(record), owner, 'pokemon', action).run();
       return reply({ id: record.id, email });
     }
     if (!collectionNames.includes(name)) return reply({ payload: 'Unknown local API endpoint.' }, 404);
+    // Items sent to a friend's trainer change a record in the friend's account.
+    const recipientEmail = name === 'trainers' && action && id === 'send' && method === 'POST' ? await friendEmail(body.email) : null;
     // A city another member changed since it was loaded rolls the batch back (migrations/0007);
     // the request then runs again on fresh records, so its checks see the other change.
     for (let attempt = 1; ; attempt++) {
@@ -160,7 +164,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (row.collection === 'moves') charmToAllure(record);
         db[row.collection].push(record);
         partitions.set(record, row.owner);
-        if (row.collection === 'cities') loaded.set(record, row.data);
+        // Item sends also guard the sender's trainers, so parallel sends can't spend one stack twice.
+        if (row.collection === 'cities' || (recipientEmail && row.collection === 'trainers')) loaded.set(record, row.data);
       }
       const members = new Map<string, string[]>();
       const { results: memberRows } = await env.DB.prepare(`SELECT city_id, email FROM city_members
@@ -171,14 +176,20 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
       const checks = new Map<Row, D1PreparedStatement>();
       const writes: D1PreparedStatement[] = [];
-      const response = route({ db, partitions, loaded, checks, members, foreign, templatesInUse, habitatOverrides }, reference, writes, method, name, action, id, member, body);
+      let recipient: Recipient | null = null;
+      if (recipientEmail) {
+        const data = typeof body.trainerId === 'string' ? await friendTrainer(recipientEmail, body.trainerId) : null;
+        if (!data) fail(400, `Choose one of ${recipientEmail}'s trainers.`);
+        recipient = { email: recipientEmail, record: JSON.parse(data), data };
+      }
+      const response = route({ db, partitions, loaded, checks, members, foreign, templatesInUse, habitatOverrides, recipient }, reference, writes, method, name, action, id, member, body);
       if (!writes.length) return response;
       try {
         await env.DB.batch([...checks.values(), ...writes]);
         return response;
       } catch (error) {
         if (!String((error as Error)?.message).includes('STALE_RECORD')) throw error;
-        if (attempt === 5) fail(409, 'Someone else changed this city at the same time. Reload and try again.');
+        if (attempt === 5) fail(409, recipient ? 'One of these trainers changed at the same time. Reload and try again.' : 'Someone else changed this city at the same time. Reload and try again.');
         // A random pause keeps requests that collided from colliding again.
         await new Promise(resolve => setTimeout(resolve, Math.random() * 50 * attempt));
       }
@@ -265,11 +276,91 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       .bind(partition, name, record.id, JSON.stringify(record));
   }
 
+  async function friendRow(other: string) {
+    const { results: [row] } = await env.DB.prepare(`SELECT requester, accepted FROM friends
+      WHERE (requester = ? AND addressee = ?) OR (requester = ? AND addressee = ?)`)
+      .bind(owner, other, other, owner).all<{ requester: string; accepted: number }>();
+    return row ?? null;
+  }
+
+  /** The email in a send request, which must belong to one of your friends. */
+  async function friendEmail(value: unknown) {
+    const email = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (!email) fail(400, 'Choose a friend to send it to.');
+    if (email === owner) fail(400, 'Choose a friend other than yourself.');
+    if (!(await friendRow(email))?.accepted) fail(403, `${email} is not your friend. Send them a friend request in Friends first.`);
+    return email;
+  }
+
+  /** The stored JSON of a friend's trainer, or null if they have no such trainer. */
+  async function friendTrainer(email: string, trainerId: string) {
+    const { results: [row] } = await env.DB.prepare(`SELECT data FROM records WHERE owner = ? AND collection = 'trainers' AND id = ?`)
+      .bind(email, trainerId).all<{ data: string }>();
+    return row?.data ?? null;
+  }
+
+  async function friendsList(): Promise<FriendsList> {
+    const { results } = await env.DB.prepare(`SELECT requester, addressee, accepted FROM friends
+      WHERE requester = ? OR addressee = ? ORDER BY rowid`).bind(owner, owner).all<{ requester: string; addressee: string; accepted: number }>();
+    const other = (row: { requester: string; addressee: string }) => row.requester === owner ? row.addressee : row.requester;
+    const emails = results.filter(row => row.accepted).map(other);
+    const trainers = new Map<string, FriendTrainer[]>(emails.map(email => [email, []]));
+    if (emails.length) {
+      const { results: rows } = await env.DB.prepare(`SELECT owner, id, data ->> 'name' AS name FROM records
+        WHERE collection = 'trainers' AND owner IN (SELECT value FROM json_each(?)) ORDER BY seq`)
+        .bind(JSON.stringify(emails)).all<{ owner: string; id: string; name: string | null }>();
+      for (const row of rows) trainers.get(row.owner)?.push({ id: row.id, name: row.name ?? '' });
+    }
+    return {
+      friends: emails.map(email => ({ email, trainers: trainers.get(email) ?? [] })),
+      incoming: results.filter(row => !row.accepted && row.addressee === owner).map(row => row.requester),
+      outgoing: results.filter(row => !row.accepted && row.requester === owner).map(row => row.addressee),
+    };
+  }
+
+  // Friend requests: send one by email, accept one sent to you, or delete a request or friendship.
+  // Sending a request to someone who already sent you one accepts theirs.
+  async function friends(method: string, action: string | undefined, id: string | undefined, body: Json): Promise<Response> {
+    if (method === 'GET' && !action) return reply(await friendsList());
+    if (method === 'POST' && !action) {
+      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'Enter a valid email address.');
+      if (email === owner) fail(400, 'You cannot send a friend request to yourself.');
+      const row = await friendRow(email);
+      if (row?.accepted) fail(409, `${email} is already your friend.`);
+      if (row?.requester === owner) fail(409, `You already sent ${email} a friend request.`);
+      if (row) {
+        await env.DB.prepare('UPDATE friends SET accepted = 1 WHERE requester = ? AND addressee = ?').bind(email, owner).run();
+        return reply(await friendsList());
+      }
+      const { results: [pending] } = await env.DB.prepare('SELECT COUNT(*) AS count FROM friends WHERE requester = ? AND accepted = 0')
+        .bind(owner).all<{ count: number }>();
+      if (pending.count >= 50) fail(429, 'You have 50 friend requests waiting for an answer. Cancel some before sending more.');
+      await env.DB.prepare('INSERT INTO friends (requester, addressee) VALUES (?, ?)').bind(owner, email).run();
+      return reply(await friendsList(), 201);
+    }
+    const email = action?.trim().toLowerCase() ?? '';
+    if (method === 'POST' && email && id === 'accept') {
+      const row = await friendRow(email);
+      if (!row || row.accepted || row.requester !== email) fail(404, `${email} has not sent you a friend request.`);
+      await env.DB.prepare('UPDATE friends SET accepted = 1 WHERE requester = ? AND addressee = ?').bind(email, owner).run();
+      return reply(await friendsList());
+    }
+    // Declines a request to you, cancels yours, or ends a friendship.
+    if (method === 'DELETE' && email && !id) {
+      if (!await friendRow(email)) fail(404, `${email} is not a friend or a pending request.`);
+      await env.DB.prepare(`DELETE FROM friends WHERE (requester = ? AND addressee = ?) OR (requester = ? AND addressee = ?)`)
+        .bind(owner, email, email, owner).run();
+      return reply(await friendsList());
+    }
+    fail(404, 'Unknown local API endpoint.');
+  }
+
   function route(state: { db: Collections; partitions: Map<Row, string>; loaded: Map<Row, string>; checks: Map<Row, D1PreparedStatement>;
-    members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string>; habitatOverrides: Map<string, Habitat[]> },
+    members: Map<string, string[]>; foreign: Collections; templatesInUse: Set<string>; habitatOverrides: Map<string, Habitat[]>; recipient: Recipient | null },
     reference: Reference, writes: D1PreparedStatement[],
     method: string, name: string, action: string | undefined, id: string | undefined, member: string | undefined, body: Json): Response {
-    const { db, partitions, loaded, checks, members, foreign, templatesInUse, habitatOverrides } = state;
+    const { db, partitions, loaded, checks, members, foreign, templatesInUse, habitatOverrides, recipient } = state;
     const referenceRows = reference as unknown as Collections;
 
     // Cities and their residents are stored under the city; everything else under the person.
@@ -279,16 +370,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return owner;
     }
 
-    /** Writes to a city only apply if nobody changed it since this request loaded it. */
-    function check(record: Row) {
+    /** Writes to a guarded record (a city, or the sender's trainer) only apply if nobody changed it since this request loaded it. */
+    function check(name: string, record: Row) {
       const data = loaded.get(record);
       if (data === undefined || checks.has(record)) return;
       checks.set(record, env.DB.prepare('INSERT INTO record_checks (owner, collection, id, data) VALUES (?, ?, ?, ?)')
-        .bind(partitions.get(record), 'cities', record.id, data));
+        .bind(partitions.get(record), name, record.id, data));
     }
 
     function put(name: string, record: Row) {
-      check(record);
+      check(name, record);
       const target = partitionFor(name, record);
       const current = partitions.get(record);
       if (current && current !== target) {
@@ -302,7 +393,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
 
     function drop(name: string, record: Row) {
-      check(record);
+      check(name, record);
       writes.push(env.DB.prepare('DELETE FROM records WHERE owner = ? AND collection = ? AND id = ?').bind(partitions.get(record) ?? owner, name, record.id));
     }
 
@@ -1089,6 +1180,25 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       put('cities', city);
       put('trainers', trainerRecord);
       return reply({ city: hydrate(name, city), trainer: hydrate('trainers', trainerRecord) });
+    }
+    // Moves items from one of your trainers to a friend's trainer. Custom items arrive as copies;
+    // the friend's trainer is only written if they did not change it meanwhile.
+    if (name === 'trainers' && action && id === 'send' && method === 'POST' && recipient) {
+      const trainerRecord = db.trainers.find(record => record.id === action && partitions.get(record) === owner);
+      if (!trainerRecord) fail(404, 'Trainer not found.');
+      if (!Number.isInteger(body.quantity) || body.quantity < 1) fail(400, 'Choose how many to send.');
+      const entry = (trainerRecord.inventory ?? []).find((candidate: Row) => candidate.id === body.entryId);
+      if (!entry) fail(404, 'That item is not in the trainer\'s inventory.');
+      if (entry.quantity < body.quantity) fail(409, `Only ${entry.quantity} available.`);
+      entry.quantity -= body.quantity;
+      if (!entry.quantity) trainerRecord.inventory = trainerRecord.inventory.filter((candidate: Row) => candidate !== entry);
+      recipient.record.inventory ??= [];
+      addToInventory(recipient.record.inventory, entry, body.quantity);
+      put('trainers', trainerRecord);
+      checks.set(recipient.record, env.DB.prepare('INSERT INTO record_checks (owner, collection, id, data) VALUES (?, ?, ?, ?)')
+        .bind(recipient.email, 'trainers', recipient.record.id, recipient.data));
+      writes.push(upsert(recipient.email, 'trainers', recipient.record));
+      return reply(hydrate('trainers', trainerRecord));
     }
     if (method === 'GET') {
       if (name === 'pokemon' && action === 'all') return reply(db.pokemon.map(pokemon));

@@ -133,6 +133,16 @@ export interface CityDiscardBody { entryId: string; quantity: number }
 export interface CityStockBody { itemId: string; quantity: number }
 /** The leader sets a recipe's research steps directly (0 up to what its tier needs), skipping the research gates. */
 export interface CityStepsBody { itemId: string; steps: number }
+
+/** A friend's trainer, which can receive Pokémon and items. */
+export interface FriendTrainer { id: string; name: string }
+export interface Friend { email: string; trainers: FriendTrainer[] }
+/** Your friends, plus the requests sent to you and the ones you sent that are still pending. */
+export interface FriendsList { friends: Friend[]; incoming: string[]; outgoing: string[] }
+/** Sends a Pokémon to a friend, optionally straight to one of their trainers. */
+export interface SendPokemonBody { email: string; trainerId?: string }
+/** Sends `quantity` of an entry in your trainer's bag to a friend's trainer. */
+export interface SendItemBody { email: string; trainerId: string; entryId: string; quantity: number }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
   /** Only when creating: one of your campaigns. */
   campaignId?: string;

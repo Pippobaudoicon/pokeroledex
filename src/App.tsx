@@ -12,6 +12,7 @@ import { activeNav } from "@/layout/nav";
 import { CampaignsPage } from "@/pages/Campaigns";
 import { GeneratorsPage } from "@/pages/Generators";
 import { EncounterProvider } from "@/pages/Generators/encounter-context";
+import { FriendsPage } from "@/pages/Friends";
 import { HomePage } from "@/pages/Home";
 import { ImportPage } from "@/pages/Import";
 import { ItemsPage } from "@/pages/Items";
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
       { path: "myCity/:id?", element: <MyCityPage /> },
       { path: "myCity/:cityId/pokemon/:id", element: <CityPokemonPage /> },
       { path: "campaigns/:id?", element: <CampaignsPage /> },
+      { path: "friends", element: <FriendsPage /> },
       { path: "import", element: <Legacy><ImportPage /></Legacy> },
       { path: "rulebook", element: <RulebookPage /> },
       { path: "ui-test", element: <UiTestPage /> },

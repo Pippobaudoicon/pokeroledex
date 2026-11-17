@@ -90,7 +90,7 @@ export const usePokemonControllerRemove = (options?: MutationOptions<unknown, Po
   });
 };
 
-export type PokemonControllerSendVariables = { pathParams: { id: string }; body: { email: string } } & FetcherExtraProps;
+export type PokemonControllerSendVariables = { pathParams: { id: string }; body: T.SendPokemonBody } & FetcherExtraProps;
 
 const fetchPokemonControllerSend = (variables: PokemonControllerSendVariables, signal?: AbortSignal) =>
   apiFetch<{ id: string; email: string }>({ url: "/pokemon/{id}/send", method: "post", ...variables, signal });

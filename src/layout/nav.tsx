@@ -1,4 +1,4 @@
-import { Backpack, BookOpen, Building2, Compass, Dices, Download, Home, Swords, Users } from "lucide-react";
+import { Backpack, BookOpen, Building2, Compass, Dices, Download, Home, Swords, UserPlus, Users } from "lucide-react";
 import type * as React from "react";
 import { Pokeball } from "@/components/kit/Pokeball";
 
@@ -40,6 +40,7 @@ export const navSections: { title: string; items: NavItem[] }[] = [
       { to: "/myTrainers", label: "Trainers", hint: "Trainer sheets, party and bag", icon: <Users />, tile: "bg-[#1d4ed8]" },
       { to: "/myCity", label: "My City", hint: "City Pokémon, types, ranks, skills and actions", icon: <Building2 />, tile: "bg-[#0e7490]" },
       { to: "/campaigns", label: "Campaigns", hint: "Custom Pokémon, moves, items and abilities", icon: <Compass />, tile: "bg-[#047857]" },
+      { to: "/friends", label: "Friends", hint: "Friend requests, and who you can send Pokémon and items to", icon: <UserPlus />, tile: "bg-[#be185d]" },
     ],
   },
   {
