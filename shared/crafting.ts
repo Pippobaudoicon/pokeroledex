@@ -3,7 +3,8 @@
 // and data/crafting-species.json and are passed in, so the Worker, the app and the scripts
 // share the same rules.
 import {
-  CRAFTING_SKILLS, POKEMON_TYPES, RANKS, type Attribute, type CityRecipe, type CitySkill, type CitySkills, type CraftingSkill, type Evolution, type Item,
+  CRAFTING_SKILLS, POKEMON_TYPES, RANKS, type Ability, type Attribute, type Campaign, type CityRecipe, type CitySkill, type CitySkills,
+  type CraftKind, type CraftSettings, type CraftingSkill, type Evolution, type Item, type Move, type PokemonTemplate,
   type PokemonType, type ProfileSkill, type Rank, type Tier, type WorkLevel, type WorkProfile,
 } from './types.ts';
 
@@ -100,8 +101,12 @@ export interface Recipe {
   yield: number;
   /** The city changed this recipe (CityRecipe). */
   edited?: boolean;
+  /** Campaign Pokémon, moves and abilities need research even at tiers 1-2 (see `researchNeeds`). */
+  alwaysResearch?: boolean;
+  /** The city's own research steps (CityRecipe `research`); 0 needs no research. */
+  researchSteps?: number;
 }
-type RecipeFields = Partial<Omit<Recipe, 'itemId' | 'costs' | 'yield' | 'edited'>>;
+type RecipeFields = Partial<Omit<Recipe, 'itemId' | 'costs' | 'yield' | 'edited' | 'researchSteps'>>;
 /** Keyed by item name. */
 export type ItemExceptions = Record<string, RecipeFields>;
 
@@ -196,7 +201,7 @@ export function itemRecipe(item: ItemLike, exception: RecipeFields = {}): Recipe
 }
 
 /** Upper bounds for a city's recipe edits: a cost above the highest skill cap could never be crafted. */
-export const RECIPE_LIMITS = { cost: 14, yield: 99 };
+export const RECIPE_LIMITS = { cost: 14, yield: 99, research: 30 };
 
 /**
  * A recipe with the city's changes. Without its own costs the recipe uses the (new) tier's effort of
@@ -207,7 +212,8 @@ export function cityRecipe(recipe: Recipe, override: CityRecipe | undefined): Re
   const tier = override.tier ?? recipe.tier;
   const costs = override.costs ?? { [recipe.skill]: TIERS[tier].effort };
   const skill = costs[recipe.skill] ? recipe.skill : CRAFTING_SKILLS.find(entry => costs[entry]) ?? recipe.skill;
-  return { ...recipe, tier, skill, costs, yield: override.yield ?? recipe.yield, edited: true };
+  const research = override.research === undefined ? {} : { researchSteps: override.research };
+  return { ...recipe, tier, skill, costs, yield: override.yield ?? recipe.yield, ...research, edited: true };
 }
 
 const sameCosts = (a: Recipe['costs'], b: Recipe['costs']) => CRAFTING_SKILLS.every(skill => (a[skill] ?? 0) === (b[skill] ?? 0));
@@ -220,10 +226,13 @@ export function checkCityRecipe(recipe: Recipe, input: unknown): { error: string
   if (input === null) return { recipe: null };
   if (!recipe.craftable) return { error: 'This item cannot be crafted.' };
   if (typeof input !== 'object' || Array.isArray(input)) return { error: 'Send the recipe changes or null.' };
-  const { tier, costs, yield: makes } = input as Record<string, unknown>;
+  const { tier, costs, yield: makes, research } = input as Record<string, unknown>;
   if (tier !== undefined && !(Number.isInteger(tier) && (tier as number) >= 1 && (tier as number) <= 8)) return { error: 'Choose a tier from 1 to 8.' };
   if (makes !== undefined && !(Number.isInteger(makes) && (makes as number) >= 1 && (makes as number) <= RECIPE_LIMITS.yield)) {
     return { error: `Choose from 1 to ${RECIPE_LIMITS.yield} items per craft.` };
+  }
+  if (research !== undefined && !(Number.isInteger(research) && (research as number) >= 0 && (research as number) <= RECIPE_LIMITS.research)) {
+    return { error: `Choose from 0 to ${RECIPE_LIMITS.research} research steps.` };
   }
   let used: Recipe['costs'] | undefined;
   if (costs !== undefined) {
@@ -240,6 +249,8 @@ export function checkCityRecipe(recipe: Recipe, input: unknown): { error: string
   if (tier !== undefined && tier !== recipe.tier) edit.tier = tier as Tier;
   if (used && !sameCosts(used, { [recipe.skill]: TIERS[edit.tier ?? recipe.tier].effort })) edit.costs = used;
   if (makes !== undefined && makes !== recipe.yield) edit.yield = makes as number;
+  const defaultSteps = researchNeeds({ tier: edit.tier ?? recipe.tier, alwaysResearch: recipe.alwaysResearch })?.steps ?? 0;
+  if (research !== undefined && research !== defaultSteps) edit.research = research as number;
   return { recipe: Object.keys(edit).length ? edit : null };
 }
 
@@ -255,9 +266,24 @@ const label = (value: string) => value.toLowerCase().split('_').map(word => word
 const withArticle = (words: string) => `${/^[AEIOU]/.test(words) ? 'an' : 'a'} ${words}`;
 const rankAtLeast = (rank: Rank, minimum: Rank) => RANKS.indexOf(rank) >= RANKS.indexOf(minimum);
 
-/** Tier 1-2 recipes start unlocked; higher tiers once their research steps are done. */
+const LOW_TIER_RESEARCH: Partial<Record<Tier, { steps: number; minResearch: number }>> = {
+  1: { steps: 1, minResearch: 1 },
+  2: { steps: 2, minResearch: 2 },
+};
+
+/**
+ * The research a recipe needs before it can be crafted, or null when it starts unlocked. A city's own
+ * steps (`researchSteps`) replace the tier's; 0 needs none.
+ */
+export function researchNeeds(recipe: Pick<Recipe, 'tier' | 'alwaysResearch' | 'researchSteps'>): { steps: number; minResearch: number } | null {
+  const base = TIERS[recipe.tier].research ?? (recipe.alwaysResearch ? LOW_TIER_RESEARCH[recipe.tier] ?? null : null);
+  if (recipe.researchSteps === undefined) return base;
+  return recipe.researchSteps ? { steps: recipe.researchSteps, minResearch: base?.minResearch ?? 1 } : null;
+}
+
+/** Tier 1-2 recipes start unlocked (unless they always need research); others once their research steps are done. */
 export function isUnlocked(recipe: Recipe, research: Record<string, number>) {
-  const needed = TIERS[recipe.tier].research;
+  const needed = researchNeeds(recipe);
   return !needed || (research[recipe.itemId] ?? 0) >= needed.steps;
 }
 
@@ -316,12 +342,131 @@ export function craftBlockers(recipe: Recipe, city: CraftingCity): string[] {
 export function researchBlockers(recipe: Recipe, city: CraftingCity): string[] {
   if (!recipe.craftable) return [recipe.note ? `${recipe.note}: not craftable.` : 'This item cannot be crafted.'];
   const tier = TIERS[recipe.tier];
-  if (!tier.research) return ['This recipe needs no research.'];
+  const needed = researchNeeds(recipe);
+  if (!needed) return ['This recipe needs no research.'];
   if (isUnlocked(recipe, city.research)) return ['Already researched.'];
   const reasons: string[] = [];
   if (!rankAtLeast(city.rank, tier.minRank)) reasons.push(`Needs ${withArticle(label(tier.minRank))} city.`);
-  if (city.skills.research < tier.research.minResearch) reasons.push(`Needs Research ${tier.research.minResearch}.`);
+  if (city.skills.research < needed.minResearch) reasons.push(`Needs Research ${needed.minResearch}.`);
   return reasons;
+}
+
+// Campaign crafting: a campaign city researches and crafts the campaign's items, moves (as TMs),
+// abilities (as Ability Capsules) and Pokémon (as new residents).
+
+/** Recipe key of a campaign entry: items keep their ID, so core and campaign items share storage rules. */
+export const craftKey = (kind: CraftKind, id: string) => (kind === 'item' ? id : `${kind}:${id}`);
+
+/** The kind and entry ID behind a recipe key. */
+export function parseCraftKey(key: string): { kind: CraftKind; id: string } {
+  const match = /^(move|ability|pokemon):(.+)$/.exec(key);
+  return match ? { kind: match[1] as CraftKind, id: match[2] } : { kind: 'item', id: key };
+}
+
+type CraftEntry = {
+  item: ItemLike & { craft?: CraftSettings | null };
+  move: Pick<Move, 'id' | 'name' | 'type' | 'damagePower' | 'category'> & { craft?: CraftSettings | null };
+  ability: Pick<Ability, 'id' | 'name'> & { craft?: CraftSettings | null };
+  pokemon: Pick<PokemonTemplate, 'id' | 'name' | 'types' | 'recommendedRank' | 'legendary'> & { craft?: CraftSettings | null };
+};
+const clampTier = (tier: number) => Math.min(8, Math.max(1, Math.round(tier))) as Tier;
+/** Moves need Research and Pokémon need Nursing alongside, at half the tier's skill. */
+export const assistFor = (kind: CraftKind, tier: Tier): Recipe['assist'] =>
+  kind === 'move' ? { skill: 'research', min: Math.ceil(TIERS[tier].minSkill / 2) }
+    : kind === 'pokemon' ? { skill: 'nursing', min: Math.ceil(TIERS[tier].minSkill / 2) } : null;
+
+/** A campaign entry's recipe before the campaign editor's changes. */
+export function defaultCraft<K extends CraftKind>(kind: K, entry: CraftEntry[K]): Recipe {
+  const itemId = craftKey(kind, entry.id);
+  let fields: Omit<Recipe, 'itemId' | 'costs' | 'yield'>;
+  if (kind === 'item') {
+    return itemRecipe(entry as CraftEntry['item']);
+  } else if (kind === 'move') {
+    const move = entry as CraftEntry['move'];
+    const power = Number.parseInt(move.damagePower ?? '', 10);
+    const tier = move.category === 'SUPPORT' || !(power > 0) ? 3 : Math.min(7, Math.max(2, 1 + Math.ceil(power / 2)));
+    const catalyst = (POKEMON_TYPES as readonly string[]).includes(move.type) ? [move.type as PokemonType] : null;
+    fields = { skill: 'technology', tier: tier as Tier, catalyst, assist: assistFor('move', tier as Tier), craftable: true };
+  } else if (kind === 'ability') {
+    fields = { skill: 'technology', tier: 5, catalyst: null, assist: null, craftable: true };
+  } else {
+    const pokemon = entry as CraftEntry['pokemon'];
+    const tier = pokemon.legendary ? 8 : clampTier(RANKS.indexOf(pokemon.recommendedRank));
+    const catalyst = pokemon.types.filter(type => (POKEMON_TYPES as readonly string[]).includes(type));
+    fields = {
+      skill: 'archaeology', tier, catalyst: catalyst.length ? catalyst : null, assist: assistFor('pokemon', tier), craftable: true,
+    };
+  }
+  return { ...fields, itemId, costs: { [fields.skill]: TIERS[fields.tier].effort }, yield: 1, alwaysResearch: true };
+}
+
+/** A campaign entry's recipe with the campaign editor's changes (`entry.craft`). */
+export function campaignRecipe<K extends CraftKind>(kind: K, entry: CraftEntry[K]): Recipe {
+  const base = defaultCraft(kind, entry);
+  const craft = entry.craft;
+  if (!craft) return base;
+  const tier = craft.tier ?? base.tier;
+  const skill = craft.skill ?? base.skill;
+  return {
+    ...base, tier, skill, assist: kind === 'item' ? base.assist : assistFor(kind, tier),
+    catalyst: craft.catalyst !== undefined ? (craft.catalyst?.length ? craft.catalyst : null) : base.catalyst,
+    craftable: craft.craftable ?? base.craftable,
+    costs: { [skill]: TIERS[tier].effort },
+  };
+}
+
+/** Checks the campaign editor's recipe changes. Returns the error, or the settings (null for the defaults). */
+export function checkCraftSettings(input: unknown): { error: string } | { craft: CraftSettings | null } {
+  if (input === null || input === undefined) return { craft: null };
+  if (typeof input !== 'object' || Array.isArray(input)) return { error: 'Send the crafting settings or null.' };
+  const { craftable, tier, skill, catalyst } = input as Record<string, unknown>;
+  const craft: CraftSettings = {};
+  if (craftable !== undefined) {
+    if (typeof craftable !== 'boolean') return { error: 'Craftable must be true or false.' };
+    craft.craftable = craftable;
+  }
+  if (tier !== undefined && tier !== null) {
+    if (!(Number.isInteger(tier) && (tier as number) >= 1 && (tier as number) <= 8)) return { error: 'Choose a tier from 1 to 8.' };
+    craft.tier = tier as Tier;
+  }
+  if (skill !== undefined && skill !== null) {
+    if (!(CRAFTING_SKILLS as readonly unknown[]).includes(skill)) return { error: 'Choose a crafting skill.' };
+    craft.skill = skill as CraftingSkill;
+  }
+  if (catalyst !== undefined) {
+    if (catalyst !== null && !(Array.isArray(catalyst) && catalyst.every(type => (POKEMON_TYPES as readonly unknown[]).includes(type)))) {
+      return { error: 'Catalysts must be Pokémon types.' };
+    }
+    craft.catalyst = catalyst ? [...new Set(catalyst as PokemonType[])] : null;
+  }
+  return { craft: Object.keys(craft).length ? craft : null };
+}
+
+/** The labels and pockets of what campaign cities make from moves and abilities. */
+export const CRAFT_OUTPUTS = {
+  move: { prefix: 'TM', pocket: 'TECHNICAL_MACHINE', image: 'tm---basic.png' },
+  ability: { prefix: 'Ability Capsule', pocket: 'TRAINER_ITEMS', image: 'ability-capsule.png' },
+} as const;
+
+/**
+ * How a campaign entry shows in recipes and storage: a campaign item as itself, a move as a TM,
+ * an ability as an Ability Capsule and a Pokémon by name (with its template image).
+ */
+export function craftItem(
+  kind: CraftKind,
+  entry: { id: string; name: string; description?: string; effect?: string; image?: string } & Partial<Item>,
+  campaign: Campaign,
+): Item {
+  const id = craftKey(kind, entry.id);
+  if (kind === 'item') return { ...(entry as Item), id, campaign, craft: undefined };
+  const base: Item = {
+    id, name: entry.name, source: campaign.name, category: null, pocket: 'TRAINER_ITEMS',
+    description: entry.effect || entry.description || '', oneUse: false, PMD: false,
+    trainerPrice: null, pmdPrice: null, image: entry.image ?? '', hash: '', campaign,
+  };
+  if (kind === 'pokemon') return base;
+  const output = CRAFT_OUTPUTS[kind];
+  return { ...base, name: `${output.prefix} · ${entry.name}`, pocket: output.pocket, image: output.image, oneUse: true };
 }
 
 /** Rolls d6s; `random` returns a number in [0, 1). */

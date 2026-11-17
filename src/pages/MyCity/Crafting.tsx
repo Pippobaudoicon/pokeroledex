@@ -4,11 +4,11 @@ import * as React from "react";
 import {
   CRAFTING_SKILLS, type City, type CityApproveResult, type CityDiscardBody, type CityInventoryBody, type CityInventoryResult, type CityOrder, type CityOrderBody,
   type CityRecipeBody, type CityResearchResult, type CityReviewBody, type CityStepsBody, type CityStockBody, type CitySubmitBody, type CraftingSkill,
-  type HydratedInventoryEntry, type Item, type Tier, type Trainer,
+  type HydratedInventoryEntry, type Item, type Tier, type Trainer, type CraftKind,
 } from "../../../shared/types";
 import {
-  RECIPE_LIMITS, TIERS, cityRecipe, craftBlockers, isUnlocked, itemRecipe, orderRoom, orderSteps, orderUsage, overCapacity, researchBlockers,
-  type CraftingCity, type Recipe,
+  RECIPE_LIMITS, TIERS, cityRecipe, craftBlockers, isUnlocked, itemRecipe, orderRoom, orderSteps, orderUsage, overCapacity, parseCraftKey, researchBlockers,
+  researchNeeds, type CraftingCity, type Recipe,
 } from "../../../shared/crafting";
 import { ITEM_EXCEPTIONS } from "../../../shared/crafting-data";
 import { apiFetch, type ApiFetchError } from "@/api/client";
@@ -22,14 +22,15 @@ import { Picker } from "@/components/kit/Picker";
 import { TypePill } from "@/components/kit/Pills";
 import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sheet } from "@/components/kit/Sheet";
+import { Sprite } from "@/components/kit/Sprite";
 import { fold } from "@/hooks/use-dex";
 import { useToast } from "@/hooks/use-toast";
 import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
 import { SkillIcon, errorText, field, panel, skillLabel } from "./common";
 
-/** `recipe` includes the city's edits; `base` is the default recipe. */
-type Entry = { item: Item; recipe: Recipe; base: Recipe };
+/** `recipe` includes the city's edits; `base` is the default recipe. Campaign entries have a `kind` other than core items. */
+export type Entry = { item: Item; recipe: Recipe; base: Recipe; kind: CraftKind; campaign: boolean };
 type View = "craft" | "research" | "storage";
 type Usage = Record<CraftingSkill, number>;
 
@@ -40,6 +41,18 @@ const useReferenceItems = () => useQuery({
   staleTime: Infinity,
 });
 
+/** Everything the city can craft: core items, then its campaign's entries, with the city's recipe edits. Empty while items load. */
+export function useCraftEntries(city: City): Entry[] {
+  const items = useReferenceItems();
+  return React.useMemo<Entry[]>(() => [
+    ...(items.data ?? []).map(item => {
+      const base = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
+      return { item, base, recipe: cityRecipe(base, city.recipes?.[item.id]), kind: "item" as const, campaign: false };
+    }),
+    ...(city.crafts ?? []).map(craft => ({ item: craft.item, base: craft.recipe, recipe: cityRecipe(craft.recipe, city.recipes?.[craft.item.id]), kind: craft.kind, campaign: true })),
+  ], [items.data, city.recipes, city.crafts]);
+}
+
 const PAGE_SIZE = 35;
 
 const replaceCity = (cities: City[] | undefined, city: City) => cities?.map(entry => entry.id === city.id ? city : entry);
@@ -49,7 +62,7 @@ const dice = (count: number) => `${count} ${count === 1 ? "die" : "dice"}`;
 const cityUrl = (city: City, path: string) => `/cities/${encodeURIComponent(city.id)}/${path}`;
 
 /** What `crafts` crafts of a recipe use, e.g. "2 Apothecary + 1 Technology". */
-const costText = (recipe: Recipe, crafts = 1) => CRAFTING_SKILLS.filter(skill => recipe.costs[skill])
+export const costText = (recipe: Recipe, crafts = 1) => CRAFTING_SKILLS.filter(skill => recipe.costs[skill])
   .map(skill => `${recipe.costs[skill]! * crafts} ${skillLabel(skill)}`).join(" + ");
 
 const RecipeFacts = ({ recipe }: { recipe: Recipe }) => {
@@ -115,10 +128,10 @@ const StepControls = ({ name, steps, needed, disabled, onSet }: { name: string; 
     </button>
   </div>;
 
-/** The item's image and name open its details. */
+/** The item's image (a Pokémon's sprite) and name open its details. */
 const ItemTitle = ({ item, size = "size-10", onOpen, children }: { item: Item; size?: string; onOpen: () => void; children?: React.ReactNode }) => <>
   <button type="button" tabIndex={-1} aria-hidden onClick={onOpen} className="shrink-0 rounded-lg">
-    <ItemImage imageFileName={item.image} className={size} />
+    {parseCraftKey(item.id).kind === "pokemon" ? <Sprite image={item.image} set="box" className={size} /> : <ItemImage imageFileName={item.image} className={size} />}
   </button>
   <div className="min-w-0 flex-1 basis-56">
     <button type="button" onClick={onOpen} className="rounded text-left font-semibold outline-none hover:underline focus-visible:outline-2 focus-visible:outline-focus"
@@ -297,97 +310,105 @@ const Storage = ({ city, trainers, items, isLeader }: { city: City; trainers: Tr
 
 const noCosts = (): Usage => ({ apothecary: 0, craftsmanship: 0, technology: 0, metallurgy: 0, archaeology: 0 });
 
-/** The leader's edit of a recipe for this city: its tier, the skills one craft uses and how many items one craft makes. */
-const RecipeEditor = ({ city, entry, open, onOpenChange }: { city: City; entry: Entry | null; open: boolean; onOpenChange: (open: boolean) => void }) => {
+/** The leader's edit of a recipe for this city: its tier, the skills one craft uses, its research steps and how many items one craft makes. */
+export const RecipeForm = ({ city, entry, onDone }: { city: City; entry: Entry; onDone: () => void }) => {
   const client = useQueryClient();
   const { toast } = useToast();
-  const [tier, setTier] = React.useState<Tier>(1);
-  const [costs, setCosts] = React.useState<Usage>(noCosts);
-  // Until the leader changes a skill, the costs follow the tier's effort.
-  const [customCosts, setCustomCosts] = React.useState(false);
-  const [makes, setMakes] = React.useState(1);
-  const itemId = entry?.item.id;
-  React.useEffect(() => {
-    if (!open || !entry) return;
-    setTier(entry.recipe.tier);
-    setCosts({ ...noCosts(), ...entry.recipe.costs });
-    setCustomCosts(!!city.recipes?.[entry.item.id]?.costs);
-    setMakes(entry.recipe.yield);
-    // Only reset when the sheet opens on an item, not when the city refreshes while editing.
-  }, [open, itemId]);
+  const { base } = entry;
+  const override = city.recipes?.[entry.item.id];
+  const [tier, setTier] = React.useState<Tier>(entry.recipe.tier);
+  const [costs, setCosts] = React.useState<Usage>(() => ({ ...noCosts(), ...entry.recipe.costs }));
+  // Until the leader changes a skill or the steps, they follow the tier.
+  const [customCosts, setCustomCosts] = React.useState(!!override?.costs);
+  const [steps, setSteps] = React.useState(researchNeeds(entry.recipe)?.steps ?? 0);
+  const [customSteps, setCustomSteps] = React.useState(override?.research !== undefined);
+  const [makes, setMakes] = React.useState(entry.recipe.yield);
   const save = useMutation({
     mutationFn: (body: CityRecipeBody) => apiFetch<City>({ url: cityUrl(city, "recipe"), method: "post", body }),
     onSuccess: (result, body) => {
       client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result));
-      toast({ title: body.recipe ? `${entry?.item.name ?? "Recipe"} updated` : `${entry?.item.name ?? "Recipe"} reset to the default` });
-      onOpenChange(false);
+      toast({ title: body.recipe ? `${entry.item.name} updated` : `${entry.item.name} reset to the default` });
+      onDone();
     },
     onError: (error: ApiFetchError) => toast({ title: "The recipe could not be saved", description: errorText(error) }),
   });
-  if (!entry) return null;
-  const { base } = entry;
+  const tierSteps = (next: Tier) => researchNeeds({ tier: next, alwaysResearch: base.alwaysResearch })?.steps ?? 0;
   const chooseTier = (next: Tier) => {
     setTier(next);
     if (!customCosts) setCosts({ ...noCosts(), [base.skill]: TIERS[next].effort });
+    if (!customSteps) setSteps(tierSteps(next));
   };
   const setCost = (skill: CraftingSkill, value: number) => {
     setCustomCosts(true);
     setCosts(current => ({ ...current, [skill]: value }));
   };
   const validCost = (value: number) => Number.isInteger(value) && value >= 0 && value <= RECIPE_LIMITS.cost;
+  const validSteps = Number.isInteger(steps) && steps >= 0 && steps <= RECIPE_LIMITS.research;
   const used = CRAFTING_SKILLS.filter(skill => costs[skill] > 0);
-  const valid = CRAFTING_SKILLS.every(skill => validCost(costs[skill])) && used.length > 0 &&
+  const valid = CRAFTING_SKILLS.every(skill => validCost(costs[skill])) && used.length > 0 && validSteps &&
     Number.isInteger(makes) && makes >= 1 && makes <= RECIPE_LIMITS.yield;
   const info = TIERS[tier];
-  const edited = !!city.recipes?.[entry.item.id];
-  return <Sheet open={open} onOpenChange={onOpenChange} title={`Edit craft · ${entry.item.name}`} initialExpanded>
-    <form className="flex flex-col gap-4 p-4" onSubmit={event => {
-      event.preventDefault();
-      if (valid) save.mutate({ itemId: entry.item.id, recipe: { tier, costs: Object.fromEntries(used.map(skill => [skill, costs[skill]])), yield: makes } });
-    }}>
-      <p className="text-footnote text-label-2">
-        Changes apply to {city.name} only. The default is tier {base.tier}, using {costText(base)} per craft and making {base.yield}.
-      </p>
-      <label className="flex flex-col gap-1.5 text-subhead font-medium">Tier
-        <select className={cn(field, "sm:w-64")} value={tier} onChange={event => chooseTier(Number(event.target.value) as Tier)}>
-          {(Object.keys(TIERS).map(Number) as Tier[]).map(value =>
-            <option key={value} value={value}>Tier {value} · {formatEnumName(TIERS[value].minRank)}{value === base.tier ? " (default)" : ""}</option>)}
-        </select>
-        <span className="text-footnote font-normal text-label-2">
-          Needs {formatEnumName(info.minRank)} rank and {info.research ? `${info.research.steps} research steps` : "no research"}; its skill needs at least {info.minSkill}.
-        </span>
-      </label>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1.5 text-subhead font-medium">Skills used per craft</legend>
-        <p className="text-footnote text-label-2">How much of each skill's value one craft takes from the order. Set 0 for skills it does not use.</p>
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {CRAFTING_SKILLS.map(skill => <li key={skill}>
-            <label className="flex items-center gap-2 rounded-xl bg-fill px-3 py-1.5">
-              <SkillIcon skill={skill} className="size-4" />
-              <span className="flex-1 text-subhead">{skillLabel(skill)}{skill === base.skill && <span className="text-label-2"> (default)</span>}</span>
-              <input type="number" min={0} max={RECIPE_LIMITS.cost} value={costs[skill]} aria-label={`${skillLabel(skill)} per craft`}
-                onChange={event => setCost(skill, Number(event.target.value))}
-                className={cn(field, "w-18 bg-surface text-center tabular-nums", !validCost(costs[skill]) && "text-red-500")} />
-            </label>
-          </li>)}
-        </ul>
-        {!used.length && <p role="alert" className="text-footnote text-red-500">The recipe must use at least one skill.</p>}
-      </fieldset>
-      <label className="flex flex-col gap-1.5 text-subhead font-medium">Items per craft
-        <input type="number" min={1} max={RECIPE_LIMITS.yield} value={makes} onChange={event => setMakes(Number(event.target.value))} className={cn(field, "w-24")} />
-        <span className="text-footnote font-normal text-label-2">Crafting it once puts this many in storage.</span>
-      </label>
-      <div className="flex flex-wrap gap-2">
-        <button className={button({ variant: "filled" })} disabled={!valid || save.isPending}>Save</button>
-        {edited && <button type="button" className={button({ variant: "gray" })} disabled={save.isPending}
-          onClick={() => save.mutate({ itemId: entry.item.id, recipe: null })}>
-          <RotateCcw aria-hidden className="size-4" />Reset to default
-        </button>}
-        <button type="button" className={button({ variant: "plain" })} onClick={() => onOpenChange(false)}>Cancel</button>
-      </div>
-    </form>
-  </Sheet>;
+  const baseSteps = researchNeeds(base)?.steps ?? 0;
+  return <form className="flex flex-col gap-4" onSubmit={event => {
+    event.preventDefault();
+    if (valid) save.mutate({ itemId: entry.item.id, recipe: { tier, costs: Object.fromEntries(used.map(skill => [skill, costs[skill]])), yield: makes, research: steps } });
+  }}>
+    <p className="text-footnote text-label-2">
+      Changes apply to {city.name} only. The default is tier {base.tier}, using {costText(base)} per craft, {baseSteps ? `${baseSteps} research ${baseSteps === 1 ? "step" : "steps"}` : "no research"}, and making {base.yield}.
+    </p>
+    <label className="flex flex-col gap-1.5 text-subhead font-medium">Tier
+      <select className={cn(field, "sm:w-64")} value={tier} onChange={event => chooseTier(Number(event.target.value) as Tier)}>
+        {(Object.keys(TIERS).map(Number) as Tier[]).map(value =>
+          <option key={value} value={value}>Tier {value} · {formatEnumName(TIERS[value].minRank)}{value === base.tier ? " (default)" : ""}</option>)}
+      </select>
+      <span className="text-footnote font-normal text-label-2">
+        Needs {formatEnumName(info.minRank)} rank; its skill needs at least {info.minSkill}.
+      </span>
+    </label>
+    <fieldset className="flex min-w-0 flex-col gap-2">
+      <legend className="mb-1.5 text-subhead font-medium">Skills used per craft</legend>
+      <p className="text-footnote text-label-2">How much of each skill's value one craft takes from the order. Set 0 for skills it does not use.</p>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {CRAFTING_SKILLS.map(skill => <li key={skill}>
+          <label className="flex items-center gap-2 rounded-xl bg-fill px-3 py-1.5">
+            <SkillIcon skill={skill} className="size-4" />
+            <span className="flex-1 text-subhead">{skillLabel(skill)}{skill === base.skill && <span className="text-label-2"> (default)</span>}</span>
+            <input type="number" inputMode="numeric" min={0} max={RECIPE_LIMITS.cost} value={costs[skill]} aria-label={`${skillLabel(skill)} per craft`}
+              onChange={event => setCost(skill, Number(event.target.value))}
+              className={cn(field, "w-18 bg-surface text-center tabular-nums", !validCost(costs[skill]) && "text-red-500")} />
+          </label>
+        </li>)}
+      </ul>
+      {!used.length && <p role="alert" className="text-footnote text-red-500">The recipe must use at least one skill.</p>}
+    </fieldset>
+    <label className="flex flex-col gap-1.5 text-subhead font-medium">Research steps
+      <input type="number" inputMode="numeric" min={0} max={RECIPE_LIMITS.research} value={steps}
+        onChange={event => { setCustomSteps(true); setSteps(Number(event.target.value)); }}
+        className={cn(field, "w-24 tabular-nums", !validSteps && "text-red-500")} />
+      <span className="text-footnote font-normal text-label-2">
+        Steps the city researches before it can craft this; 0 starts it unlocked. The tier's default is {tierSteps(tier)}.
+      </span>
+    </label>
+    <label className="flex flex-col gap-1.5 text-subhead font-medium">Items per craft
+      <input type="number" inputMode="numeric" min={1} max={RECIPE_LIMITS.yield} value={makes} onChange={event => setMakes(Number(event.target.value))} className={cn(field, "w-24")} />
+      <span className="text-footnote font-normal text-label-2">Crafting it once puts this many in storage.</span>
+    </label>
+    <div className="flex flex-wrap gap-2">
+      <button className={button({ variant: "filled" })} disabled={!valid || save.isPending}>Save</button>
+      {!!override && <button type="button" className={button({ variant: "gray" })} disabled={save.isPending}
+        onClick={() => save.mutate({ itemId: entry.item.id, recipe: null })}>
+        <RotateCcw aria-hidden className="size-4" />Reset to default
+      </button>}
+      <button type="button" className={button({ variant: "plain" })} onClick={onDone}>Cancel</button>
+    </div>
+  </form>;
 };
+
+const RecipeEditor = ({ city, entry, open, onOpenChange }: { city: City; entry: Entry | null; open: boolean; onOpenChange: (open: boolean) => void }) =>
+  <Sheet open={open} onOpenChange={onOpenChange} title={`Edit craft · ${entry?.item.name ?? ""}`} initialExpanded>
+    {/* Remounts when the sheet opens on an item, not when the city refreshes while editing. */}
+    {entry && <div className="p-4"><RecipeForm key={open ? entry.item.id : "closed"} city={city} entry={entry} onDone={() => onOpenChange(false)} /></div>}
+  </Sheet>;
 
 const EditCraftButton = ({ name, disabled, onEdit }: { name: string; disabled: boolean; onEdit: () => void }) =>
   <button type="button" className={button({ variant: "gray", size: "sm" })} disabled={disabled} onClick={onEdit} aria-label={`Edit craft for ${name}`}>
@@ -400,23 +421,31 @@ type StepLine = Entry & { steps: number };
 /** Why a research line in an order cannot be approved; steps on a researched recipe are only lost. */
 const stepBlockers = (entry: Entry, state: CraftingCity) => isUnlocked(entry.recipe, state.research) ? [] : researchBlockers(entry.recipe, state);
 
+/** Pokémon the lines would add to the city as residents. */
+const newResidents = (lines: ItemLine[]) => lines.reduce((total, line) => total + (line.kind === "pokemon" ? line.quantity * line.recipe.yield : 0), 0);
+/** More crafts of the entry that fit: its skill room, and for Pokémon also the city's free resident slots. */
+const craftRoom = (entry: Entry, skillRoom: number, freeSlots: number) =>
+  entry.kind === "pokemon" ? Math.max(0, Math.min(skillRoom, Math.floor(freeSlots / entry.recipe.yield))) : skillRoom;
+
 /**
  * One member's crafting order: its crafts and research steps, how much of each skill it uses, and
  * `actions` (submit, approve, send back), which get whether the order can be approved as it is.
  */
-const OrderPanel = ({ id, title, status, note, city, state, items, research, editable, disabled, onSet, onSetSteps, onOpen, actions }: {
+const OrderPanel = ({ id, title, status, note, city, state, items, research, editable, disabled, freeSlots, onSet, onSetSteps, onOpen, actions }: {
   id: string; title: string; status?: string; note: React.ReactNode; city: City; state: CraftingCity; items: ItemLine[]; research: StepLine[];
-  editable: boolean; disabled: boolean; onSet: (itemId: string, quantity: number) => void; onSetSteps: (itemId: string, steps: number) => void;
+  editable: boolean; disabled: boolean; freeSlots: number; onSet: (itemId: string, quantity: number) => void; onSetSteps: (itemId: string, steps: number) => void;
   onOpen: (entry: Entry) => void; actions: (ready: boolean) => React.ReactNode;
 }) => {
   const usage = orderUsage(items);
   const steps = orderSteps(research);
   const over = overCapacity(city.skills, usage);
   const tooManySteps = steps > city.skills.research;
+  const arrivals = newResidents(items);
+  const crowded = arrivals > freeSlots;
   const crafts = items.reduce((total, line) => total + line.quantity, 0);
   const blocked = items.some(line => craftBlockers(line.recipe, state).length) || research.some(line => stepBlockers(line, state).length);
   const empty = !items.length && !research.length;
-  const ready = !empty && !over.length && !tooManySteps && !blocked;
+  const ready = !empty && !over.length && !tooManySteps && !blocked && !crowded;
   const control = (name: string, onRemove: () => void, stepper: React.ReactNode) => editable && <div className="flex items-center gap-1">
     {stepper}
     <button type="button" className={button({ variant: "destructive", size: "icon" })} aria-label={`Take ${name} out of the order`} disabled={disabled} onClick={onRemove}>
@@ -442,6 +471,9 @@ const OrderPanel = ({ id, title, status, note, city, state, items, research, edi
     {(over.length > 0 || tooManySteps) && <p role="alert" className="text-footnote text-red-500">
       The order needs more {[...over, ...(tooManySteps ? ["research" as const] : [])].map(skillLabel).join(" and ")} than the city has now. Remove some before approving.
     </p>}
+    {crowded && <p role="alert" className="text-footnote text-red-500">
+      The order makes {arrivals} Pokémon, but the city has room for {Math.max(0, freeSlots)} more residents. Remove some, raise the city rank or move residents out.
+    </p>}
     {empty ? <p className="text-footnote text-label-2">The order is empty. Add crafts from the recipes below, or research steps from Research.</p> :
       <ul className="divide-y divide-hairline">
         {items.map(line => {
@@ -455,11 +487,11 @@ const OrderPanel = ({ id, title, status, note, city, state, items, research, edi
             </ItemTitle>
             {control(line.item.name, () => onSet(line.item.id, 0),
               <OrderStepper name={line.item.name} quantity={line.quantity} disabled={disabled} onSet={quantity => onSet(line.item.id, quantity)}
-                room={blockers.length ? 0 : orderRoom(line.recipe, city.skills, usage)} />)}
+                room={blockers.length ? 0 : craftRoom(line, orderRoom(line.recipe, city.skills, usage), freeSlots - newResidents(items))} />)}
           </li>;
         })}
         {research.map(line => {
-          const needed = TIERS[line.recipe.tier].research?.steps ?? 0;
+          const needed = researchNeeds(line.recipe)?.steps ?? 0;
           const done = state.research[line.item.id] ?? 0;
           const lost = Math.max(0, line.steps - Math.max(0, needed - done));
           return <li key={`research-${line.item.id}`} className="flex items-center gap-3 py-2">
@@ -497,7 +529,7 @@ const Pager = ({ page, pages, onChange }: { page: number; pages: number; onChang
 };
 
 /** Crafting tab of My City: the crafting order, research and storage (docs/crafting-plan.md). */
-export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer[] }) => {
+export const CityCrafting = ({ city, trainers, residentCount }: { city: City; trainers: Trainer[]; residentCount: number }) => {
   const client = useQueryClient();
   const { toast } = useToast();
   const { data: me } = useMe();
@@ -505,11 +537,12 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const [view, setView] = React.useState<View>("craft");
   const [query, setQuery] = React.useState("");
   const [skill, setSkill] = React.useState<CraftingSkill | "all">("all");
+  const [campaignOnly, setCampaignOnly] = React.useState(false);
   const [showLocked, setShowLocked] = React.useState(false);
   const [pockets, setPockets] = React.useState<ItemPocket[]>([]);
   const [page, setPage] = React.useState(0);
   const listTop = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => setPage(0), [view, query, skill, showLocked, pockets]);
+  React.useEffect(() => setPage(0), [view, query, skill, showLocked, pockets, campaignOnly]);
   const [shown, setShown] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
   const [detail, setDetail] = React.useState<Entry | null>(null);
   const [editing, setEditing] = React.useState<string | null>(null);
@@ -518,13 +551,11 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   const leader = city.members[0];
   const isLeader = !!me && me.email === leader;
   const state: CraftingCity = { rank: city.rank, skills: city.skills, catalysts: city.catalysts, research: city.research };
-  const entries = React.useMemo(() => (items.data ?? []).map(item => {
-    const base = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
-    return { item, base, recipe: cityRecipe(base, city.recipes?.[item.id]) };
-  }), [items.data, city.recipes]);
+  const freeSlots = city.limits.residents - residentCount;
+  const entries = useCraftEntries(city);
   const byId = React.useMemo(() => new Map(entries.map(entry => [entry.item.id, entry])), [entries]);
   const matches = (entry: Entry) => (skill === "all" || entry.recipe.skill === skill) && (!query || fold(entry.item.name).includes(fold(query))) &&
-    (!pockets.length || (!!entry.item.pocket && pockets.includes(entry.item.pocket)));
+    (!campaignOnly || entry.campaign) && (!pockets.length || (entry.kind !== "pokemon" && !!entry.item.pocket && pockets.includes(entry.item.pocket)));
   const byTier = (a: Entry, b: Entry) => a.recipe.tier - b.recipe.tier || a.item.name.localeCompare(b.item.name);
   const blockersOf = (entry: Entry) => craftBlockers(entry.recipe, state);
   const open = (entry: Entry) => { setDetail(entry); setDetailOpen(true); };
@@ -571,6 +602,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     mutationFn: (body: CityReviewBody) => apiFetch<CityApproveResult>({ url: cityUrl(city, "approve"), method: "post", body }),
     onSuccess: result => {
       client.setQueryData<City[]>(["cities"], cities => replaceCity(cities, result.city));
+      if (result.crafted.some(line => byId.get(line.itemId)?.kind === "pokemon")) client.invalidateQueries({ queryKey: ["pokemon"] });
       const name = (itemId: string) => byId.get(itemId)?.item.name ?? "Item";
       const parts = [
         ...result.crafted.map(line => `${line.quantity} × ${name(line.itemId)}`),
@@ -616,7 +648,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
   });
   const pending = setOrder.isPending || submit.isPending || approve.isPending || reject.isPending || research.isPending || setSteps.isPending;
   const stepper = (entry: Entry) => <OrderStepper name={entry.item.name} quantity={inOrder(entry.item.id)} disabled={pending || locked}
-    room={orderRoom(entry.recipe, city.skills, usage)} onSet={quantity => setOrder.mutate({ itemId: entry.item.id, quantity })} />;
+    room={craftRoom(entry, orderRoom(entry.recipe, city.skills, usage), freeSlots - newResidents(myLines.items))} onSet={quantity => setOrder.mutate({ itemId: entry.item.id, quantity })} />;
   const stepStepper = (entry: Entry) => <OrderStepper name={`${entry.item.name} research`} what={`research step for ${entry.item.name} in your order`}
     add="Add steps to order" full="Your order has no Research left" quantity={stepsInOrder(entry.item.id)} disabled={pending || locked}
     room={city.skills.research - usedSteps} onSet={steps => setOrder.mutate({ itemId: entry.item.id, steps })} />;
@@ -633,7 +665,7 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
       : "Change the order if needed, then approve it: its items go to storage and its research steps to their recipes. Sending it back lets them change it.";
     return <OrderPanel key={member} id={`crafting-order-${member}`} title={own ? "Your crafting order" : `${member}'s order`}
       status={own && !isLeader && order?.submitted ? "Waiting for approval" : undefined} note={note}
-      city={city} state={state} items={lines.items} research={lines.research} editable={editable} disabled={pending} onOpen={open}
+      city={city} state={state} items={lines.items} research={lines.research} editable={editable} disabled={pending} freeSlots={freeSlots} onOpen={open}
       onSet={(itemId, quantity) => setOrder.mutate({ itemId, quantity, ...target })} onSetSteps={(itemId, steps) => setOrder.mutate({ itemId, steps, ...target })}
       actions={ready => <div className="flex flex-wrap gap-2">
         {isLeader && <button type="button" className={button({ variant: "filled", size: "sm" })} disabled={pending || !ready} onClick={() => approve.mutate({ member })}>
@@ -656,9 +688,9 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
     .filter(row => showLocked || !row.blockers.length)
     .sort((a, b) => Number(a.blockers.length > 0) - Number(b.blockers.length > 0) || byTier(a, b));
   const craftableCount = entries.filter(entry => !blockersOf(entry).length).length;
-  const researchable = entries.filter(entry => entry.recipe.craftable && TIERS[entry.recipe.tier].research);
+  const researchable = entries.filter(entry => entry.recipe.craftable && researchNeeds(entry.recipe));
   const researchRows = researchable.filter(entry => matches(entry) && !isUnlocked(entry.recipe, city.research))
-    .map(entry => ({ ...entry, blockers: researchBlockers(entry.recipe, state), steps: city.research[entry.item.id] ?? 0, needed: TIERS[entry.recipe.tier].research!.steps }))
+    .map(entry => ({ ...entry, blockers: researchBlockers(entry.recipe, state), steps: city.research[entry.item.id] ?? 0, needed: researchNeeds(entry.recipe)!.steps }))
     .filter(row => showLocked || !row.blockers.length)
     .sort((a, b) => Number(a.blockers.length > 0) - Number(b.blockers.length > 0) || Number(b.steps > 0) - Number(a.steps > 0) || byTier(a, b));
   const researchedCount = researchable.filter(entry => isUnlocked(entry.recipe, city.research)).length;
@@ -713,6 +745,9 @@ export const CityCrafting = ({ city, trainers }: { city: City; trainers: Trainer
             </label>
           </div>
           <div role="group" aria-label="Filter by pocket" className="no-scrollbar flex gap-1.5 overflow-x-auto">
+            {city.crafts.length > 0 && <Chip pressed={campaignOnly} onClick={() => setCampaignOnly(!campaignOnly)}>
+              {city.campaign?.name ?? "Campaign"} · {city.crafts.length}
+            </Chip>}
             {Object.values(ItemPocket).map(pocket => <Chip key={pocket} pressed={pockets.includes(pocket)}
               onClick={() => setPockets(pockets.includes(pocket) ? pockets.filter(entry => entry !== pocket) : [...pockets, pocket])}>
               {formatEnumName(pocket)}

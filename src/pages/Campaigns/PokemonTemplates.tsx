@@ -1,121 +1,81 @@
-import { useQuery } from "@tanstack/react-query";
-import { FaPenToSquare, FaPlus, FaTrash } from "react-icons/fa6";
-import { fetchPokemonTemplatesControllerFindAllByCampaign } from "@/api/components";
-import { useApiContext } from "@/api/context";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { RankIcon } from "@/components/RankIcon";
-import { Text } from "@/components/Text";
-import { TypeBadge } from "@/components/TypeBadge";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { PawPrint, Plus } from "lucide-react";
+import * as React from "react";
+import type * as T from "../../../shared/types";
+import { button } from "@/components/kit/button";
+import { Group, Row } from "@/components/kit/List";
+import { RankBall, TypeDot } from "@/components/kit/Pills";
+import { Sprite } from "@/components/kit/Sprite";
+import { formatEnumName } from "@/lib/utils";
+import { EmptyEntries, EntriesState, matches, SearchField, useCampaignEntries } from "@/pages/Campaigns/common";
 import { useCampaign } from "@/pages/Campaigns/context";
-import {
-  CreatePokemonTemplateDialog,
-  DeletePokemonTemplateDialog,
-  EditPokemonTemplateDialog,
-} from "@/pages/Campaigns/templates/dialogs";
+import { TemplateEditor } from "@/pages/Campaigns/templates/TemplateEditor";
 
 export const CampaignPokemonTemplates = () => {
   const { campaign } = useCampaign();
-  const { fetcherOptions } = useApiContext();
-  const { data, isLoading } = useQuery({
-    queryKey: ["pokemon-templates", "all", campaign?.id ?? "", { includeCore: false }],
-    queryFn: () =>
-      fetchPokemonTemplatesControllerFindAllByCampaign({
-        ...fetcherOptions,
-        pathParams: { id: campaign?.id ?? "" },
-        body: { includeCore: false },
-      }),
-    enabled: !!campaign?.id,
-  });
-  if (campaign === undefined) return <div>No campaign selected</div>;
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-8">
-        <LoadingSpinner />
-      </div>
-    );
-  const templates = (data ?? []).slice().sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+  const campaignId = campaign?.id ?? "";
+  const { data, isError, refetch } = useCampaignEntries<T.PokemonTemplate>("pokemon-templates", campaignId);
+  const [query, setQuery] = React.useState("");
+  const [editing, setEditing] = React.useState<T.PokemonTemplate | undefined>();
+  const [open, setOpen] = React.useState(false);
+  const edit = (template?: T.PokemonTemplate) => {
+    setEditing(template);
+    setOpen(true);
+  };
+  const templates = data
+    ?.filter((template) => matches(query, template.name, template.dexCategory, ...(template.types ?? [])))
+    .sort((first, second) => (first.number ?? 0) - (second.number ?? 0) || first.name.localeCompare(second.name));
   return (
-    <div className="flex flex-col gap-2 mt-2">
-      <div className="flex flex-row items-center justify-between">
-        <Text size="text-2xl" className="font-bold">
-          Pokemon
-        </Text>
-        <CreatePokemonTemplateDialog
-          trigger={
-            <Button variant="green" size="sm">
-              <FaPlus size={20} className="mr-1" />
-              Add Pokemon Template
-            </Button>
+    <div className="flex flex-col gap-4">
+      {!data || !templates ? (
+        <EntriesState isError={isError} onRetry={() => refetch()} noun="Pokémon" />
+      ) : data.length === 0 ? (
+        <EmptyEntries
+          icon={<PawPrint />}
+          title="No Pokémon yet"
+          text="Pokémon you add here appear in the Pokédex and the generators when this campaign is shown."
+          action={
+            <button type="button" className={button({ variant: "tinted" })} onClick={() => edit()}>
+              <Plus aria-hidden className="size-4" />
+              Add Pokémon
+            </button>
           }
         />
-      </div>
-      <div className="rounded-2xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>No.</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Types</TableHead>
-              <TableHead>Recommended Rank</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {templates.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8">
-                  <Text color="text-pokerole-black-light">
-                    No Pokemon templates yet. Click "Add Pokemon Template" to create one.
-                  </Text>
-                </TableCell>
-              </TableRow>
-            ) : (
-              templates.map((template) => (
-                <TableRow key={template.id}>
-                  <TableCell>{template.number}</TableCell>
-                  <TableCell>{template.name}</TableCell>
-                  <TableCell className="flex flex-row gap-1">
-                    {template.types?.map((type) => (
-                      <TypeBadge key={type} type={type} className="flex-1" />
+      ) : (
+        <>
+          {data.length > 6 && <SearchField value={query} onChange={setQuery} label="Search Pokémon" />}
+          <Group
+            title={`${templates.length} Pokémon`}
+            action={
+              <button type="button" className={button({ variant: "plain", size: "sm" })} onClick={() => edit()}>
+                <Plus aria-hidden className="size-4" />
+                Add
+              </button>
+            }
+          >
+            {templates.length === 0 && <Row title={<span className="text-label-2">No Pokémon match “{query}”.</span>} />}
+            {templates.map((template) => (
+              <Row
+                key={template.id}
+                icon={<Sprite image={template.image} set="box" className="-my-1 h-10 w-12" />}
+                title={template.name}
+                subtitle={
+                  <span className="flex items-center gap-1.5">
+                    {(template.types ?? []).map((type) => (
+                      <TypeDot key={type} type={type} className="size-4.5" />
                     ))}
-                  </TableCell>
-                  <TableCell>
-                    <div className="max-h-8 max-w-8">
-                      <RankIcon rank={template.recommendedRank} size="md" />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-row justify-end">
-                      <EditPokemonTemplateDialog
-                        trigger={
-                          <Button variant="ghost" size="icon">
-                            <FaPenToSquare size={16} />
-                          </Button>
-                        }
-                        pokemonTemplate={template}
-                      />
-                      <DeletePokemonTemplateDialog pokemonTemplate={template}>
-                        <Button variant="ghost" size="icon">
-                          <FaTrash size={16} />
-                        </Button>
-                      </DeletePokemonTemplateDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                    <span className="truncate">
+                      #{template.dexID || template.number} · {formatEnumName(template.recommendedRank)}
+                    </span>
+                  </span>
+                }
+                value={<RankBall rank={template.recommendedRank} className="size-5" />}
+                onClick={() => edit(template)}
+              />
+            ))}
+          </Group>
+        </>
+      )}
+      <TemplateEditor campaignId={campaignId} template={editing} open={open} onOpenChange={setOpen} />
     </div>
   );
 };

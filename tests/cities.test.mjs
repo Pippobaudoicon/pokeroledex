@@ -889,6 +889,82 @@ test('the leader edits a recipe for the city: tier, skills per craft and items p
   } finally { h.close(); }
 });
 
+test('the leader overrides what a species grants and the research a recipe needs', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Workshop' })).body;
+    assert.deepEqual(city.grants, {});
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const tauros = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'tauros', cityId: city.id })).body.id;
+    const herd = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'tauros', cityId: city.id })).body.id;
+    let result = await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER', assignments: { [tauros]: 'skill:technology' } });
+    assert.equal(result.body.skills.technology, 1, 'Tauros works Technology at half its +2');
+    const grant = (grants, owner, templateId = 'tauros') => h.request(`cities/${city.id}/grants`, 'POST', { templateId, grants }, owner);
+
+    const defaults = await h.request(`cities/${city.id}/grant-defaults`, 'POST', { templateIds: ['tauros', 'missing'] }, bob);
+    assert.equal(defaults.status, 200, 'members read the defaults');
+    assert.equal(defaults.body.tauros.technology, 1, 'half of +2');
+    assert.equal(defaults.body.tauros.craftsmanship, 2);
+    assert.equal(defaults.body.missing, undefined);
+    assert.equal((await h.request(`cities/${city.id}/grant-defaults`, 'POST', { templateIds: 'tauros' })).status, 400);
+
+    assert.equal((await grant({ technology: 4 }, bob)).status, 403, 'only the leader overrides grants');
+    assert.equal((await grant({ technology: 4 }, undefined, 'missing')).status, 400);
+    assert.equal((await h.request(`cities/${city.id}/grants`, 'POST', { templateId: 'tauros' })).status, 400, 'grants are required');
+    for (const grants of [{ catalyst: 1 }, { cooking: 1 }, { technology: 15 }, { technology: -1 }, { technology: 1.5 }, [1], 'x']) {
+      assert.equal((await grant(grants)).status, 400, JSON.stringify(grants));
+    }
+
+    result = await grant({ technology: 4, research: 3, nursing: 0 });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.grants, { tauros: { technology: 4, research: 3 } }, 'skills at 0 are left out');
+    assert.equal(result.body.skills.technology, 4);
+    assert.equal(result.body.profiles[tauros].craftsmanship, 'full', 'profiles stay the species ones');
+
+    // The override applies to every Tauros: it opens Research and closes Craftsmanship.
+    result = await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: 'skill:research', [herd]: 'skill:research' } });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.skills.research, 6);
+    assert.match((await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [herd]: 'skill:craftsmanship' } })).body.payload, /cannot work Craftsmanship/);
+
+    // Closing the skill they work unassigns them; null restores the species.
+    result = await grant({ technology: 2 });
+    assert.deepEqual(result.body.assignments, {});
+    assert.equal(result.body.skills.research, 0);
+    result = await grant(null);
+    assert.deepEqual(result.body.grants, {});
+
+    // A species the city doesn't have yet can be overridden, and the override applies once one moves in.
+    result = await grant({ nursing: 2 }, undefined, 'charmander');
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.grants, { charmander: { nursing: 2 } });
+    const charmander = (await h.request('pokemon', 'POST', { pokemonTemplateId: 'charmander', cityId: city.id })).body.id;
+    assert.match((await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [charmander]: 'skill:technology' } })).body.payload, /cannot work Technology/);
+    result = await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [charmander]: 'skill:nursing' } });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.skills.nursing, 2);
+    result = await grant(null, undefined, 'charmander');
+    assert.deepEqual(result.body.assignments, {}, 'Charmander cannot work Nursing by default');
+
+    // Recipes can need more, fewer or no research steps in this city.
+    const edit = (itemId, recipe) => h.request(`cities/${city.id}/recipe`, 'POST', { itemId, recipe });
+    await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: 'skill:technology' } });
+    assert.equal((await edit('pokeball', { research: 31 })).status, 400);
+    result = await edit('pokeball', { research: 2 });
+    assert.deepEqual(result.body.recipes, { pokeball: { research: 2 } });
+    assert.match((await h.request(`cities/${city.id}/order`, 'POST', { itemId: 'pokeball', quantity: 1 })).body.payload, /Needs research/);
+    assert.equal((await h.request(`cities/${city.id}/steps`, 'POST', { itemId: 'pokeball', steps: 3 })).status, 400, 'at most the 2 steps it now needs');
+    assert.equal((await h.request(`cities/${city.id}/steps`, 'POST', { itemId: 'pokeball', steps: 2 })).status, 200);
+    assert.equal((await h.request(`cities/${city.id}/order`, 'POST', { itemId: 'pokeball', quantity: 1 })).status, 200);
+    result = await edit('pokeball', { research: 0 });
+    assert.deepEqual(result.body.recipes, {}, 'the default steps are not kept');
+    result = await edit('ultraball', { research: 0 });
+    assert.deepEqual(result.body.recipes, { ultraball: { research: 0 } });
+    assert.match((await h.request(`cities/${city.id}/steps`, 'POST', { itemId: 'ultraball', steps: 1 })).body.payload, /needs no research/);
+  } finally { h.close(); }
+});
+
 test('the leader sets research steps directly, even where the city could not research', async () => {
   const h = harness();
   const bob = 'bob@example.com';
@@ -913,6 +989,90 @@ test('the leader sets research steps directly, even where the city could not res
     assert.equal((await steps('missing', 1)).status, 400);
     assert.match((await steps('pokeball', 1)).body.payload, /needs no research/);
     assert.match((await steps('masterball', 1)).body.payload, /not craftable/);
+  } finally { h.close(); }
+});
+
+test('a campaign city researches and crafts its campaign\'s items, moves, abilities and Pokemon', async () => {
+  const h = harness();
+  const bob = 'bob@example.com';
+  try {
+    const campaign = (await h.request('campaigns', 'POST', { name: 'Johto Plus' })).body;
+    const tier1 = { tier: 1, skill: 'technology', catalyst: null };
+    const move = (await h.request('moves', 'POST', {
+      campaignId: campaign.id, name: 'Ember Rush', type: 'FIRE', Category: 'PHYSICAL', target: 'FOE', damagePower: '4',
+      damage1: '', damage2: '', accuracy1: '', accuracy2: '', description: 'd', effect: 'e', craft: tier1,
+    })).body;
+    const ability = (await h.request('abilities', 'POST', { campaignId: campaign.id, name: 'Warm Up', description: 'd', effect: 'e', craft: tier1 })).body;
+    const template = (await h.request('pokemon-templates', 'POST', {
+      ...species, id: undefined, dexID: 'X1', number: 9001, name: 'Emberling', campaignId: campaign.id, recommendedRank: 'STARTER',
+      legendary: false, genderType: 'N', habitats: [], possibleMoves: [], evolutions: [], craft: tier1,
+    })).body;
+    const relic = (await h.request('items', 'POST', { campaignId: campaign.id, name: 'Relic', pocket: 'TRAINER_ITEMS', category: null, trainerPrice: 100 })).body;
+    assert.deepEqual(move.craft, tier1);
+    assert.equal(relic.craft, null);
+    assert.equal((await h.request('moves', 'PATCH', { id: move.id, craft: { tier: 9 } })).status, 400);
+    assert.equal((await h.request('abilities', 'PATCH', { id: ability.id, craft: { catalyst: ['NOPE'] } })).status, 400);
+
+    assert.equal((await h.request('cities', 'POST', { name: 'Nowhere', campaignId: 'missing' })).status, 400);
+    assert.equal((await h.request('cities', 'POST', { name: 'Stolen', campaignId: campaign.id }, bob)).status, 400, 'only the campaign owner');
+    let city = (await h.request('cities', 'POST', { name: 'Ecruteak', campaignId: campaign.id })).body;
+    assert.equal(city.campaignId, campaign.id);
+    assert.deepEqual(city.campaign, { id: campaign.id, name: 'Johto Plus' });
+    assert.equal(city.campaignOwner, undefined);
+    const keys = city.crafts.map(craft => craft.item.id).sort();
+    assert.deepEqual(keys, [`ability:${ability.id}`, `move:${move.id}`, `pokemon:${template.id}`, relic.id].sort());
+    const crafts = Object.fromEntries(city.crafts.map(craft => [craft.kind, craft]));
+    assert.equal(crafts.move.item.name, 'TM · Ember Rush');
+    assert.equal(crafts.ability.item.name, 'Ability Capsule · Warm Up');
+    assert.equal(crafts.pokemon.recipe.alwaysResearch, true);
+    assert.equal(crafts.item.recipe.alwaysResearch, undefined, 'campaign items follow the core item rules');
+    assert.deepEqual((await h.request('cities', 'POST', { name: 'Plain' })).body.crafts, [], 'other cities only craft core items');
+
+    await h.request(`cities/${city.id}/members`, 'POST', { email: bob });
+    const shared = (await h.request('cities', 'GET', undefined, bob)).body.find(entry => entry.id === city.id);
+    assert.equal(shared.crafts.length, 4, 'members see the campaign entries without owning the campaign');
+
+    await h.request(`cities/${city.id}`, 'PATCH', { rank: 'STARTER' });
+    const resident = async id => (await h.request('pokemon', 'POST', { pokemonTemplateId: id, cityId: city.id })).body.id;
+    const tauros = await resident('tauros');
+    const mew = await resident('mew');
+    const magikarp = await resident('magikarp');
+    // Campaign moves also need Research and Pokemon also need Nursing, at half the tier's skill.
+    await h.request(`cities/${city.id}`, 'PATCH', { assignments: { [tauros]: 'skill:technology', [mew]: 'skill:research', [magikarp]: 'skill:nursing' } });
+    const order = (itemId, quantity) => h.request(`cities/${city.id}/order`, 'POST', { itemId, quantity });
+    const approve = () => h.request(`cities/${city.id}/approve`, 'POST', {});
+    const steps = (itemId, value) => h.request(`cities/${city.id}/steps`, 'POST', { itemId, steps: value });
+
+    // Campaign moves, abilities and Pokemon always need research, even at tier 1.
+    assert.match((await order(`move:${move.id}`, 1)).body.payload, /research/i);
+    let result = await steps(`move:${move.id}`, 1);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    result = await order(`move:${move.id}`, 1);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    result = await approve();
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.deepEqual(result.body.crafted, [{ itemId: `move:${move.id}`, quantity: 1 }]);
+    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]), [['TM · Ember Rush', 1]]);
+
+    await steps(`ability:${ability.id}`, 1);
+    await order(`ability:${ability.id}`, 1);
+    result = await approve();
+    assert.deepEqual(result.body.city.inventory.map(entry => [entry.item.name, entry.quantity]).sort(),
+      [['Ability Capsule · Warm Up', 1], ['TM · Ember Rush', 1]]);
+
+    // A crafted Pokemon becomes a new resident and needs a free slot.
+    await steps(`pokemon:${template.id}`, 1);
+    assert.equal((await order(`pokemon:${template.id}`, 1)).status, 200);
+    result = await approve();
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    const residents = (await h.request('pokemon/all')).body.filter(entry => entry.cityId === city.id);
+    assert.equal(residents.length, 4);
+    assert.ok(residents.some(entry => entry.pokemonTemplateId === template.id || entry.pokemonTemplate?.id === template.id));
+
+    // Campaign items follow the core rules: tier 1 needs no research.
+    city = (await h.request('cities', 'GET')).body.find(entry => entry.id === city.id);
+    const relicRecipe = city.crafts.find(craft => craft.kind === 'item').recipe;
+    if (relicRecipe.craftable && relicRecipe.tier === 1) assert.match((await steps(relic.id, 1)).body.payload, /needs no research/);
   } finally { h.close(); }
 });
 
