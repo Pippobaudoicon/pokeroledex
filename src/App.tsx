@@ -71,7 +71,7 @@ const router = createBrowserRouter([
       { path: "myTrainers/:id?", element: <MyTrainersPage /> },
       { path: "myCity/:id?", element: <MyCityPage /> },
       { path: "myCity/:cityId/pokemon/:id", element: <CityPokemonPage /> },
-      { path: "campaigns/:id?", element: <Legacy><CampaignsPage /></Legacy> },
+      { path: "campaigns/:id?", element: <CampaignsPage /> },
       { path: "import", element: <Legacy><ImportPage /></Legacy> },
       { path: "rulebook", element: <RulebookPage /> },
       { path: "ui-test", element: <UiTestPage /> },

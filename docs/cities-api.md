@@ -26,15 +26,24 @@ City `PATCH` accepts `name`, `rank`, `tags` and `assignments`:
 
 Assignments are merged into the stored ones, so members' changes don't overwrite each other. A skill the resident's species can't work is refused.
 
+City `POST` also accepts `campaignId`, one of your own non-core campaigns, to make a [campaign city](crafting.md#campaign-cities). It can't be changed afterwards.
+
 The response adds these derived fields:
 
 - `limits`, `skills` and `tagValues`
 - `catalysts` (type → strongest Catalyst bonus)
-- each resident's `bonuses` and `profiles`
+- each resident's `bonuses` and species `profiles`
+- `grants` (the leader's overrides of what a species adds to each skill, per Pokémon template ID, `{ [skill]: amount }`; they apply to every resident of that species, and skills left out are closed to it)
 - `inventory` (hydrated like a trainer's)
 - `research` (steps per item ID)
 - `orders` (each member's crafting order by email, `{ items: { itemId, quantity }[], research: { itemId, steps }[], submitted }`, where quantity counts crafts; empty orders are left out)
-- `recipes` (the city's recipe edits per item ID, `{ tier?, costs?, yield? }`)
+- `recipes` (the city's recipe edits per item ID, `{ tier?, costs?, yield?, research? }`)
+- `campaignId` and `campaign` (`{ id, name }`, or `null` once the campaign is deleted)
+- `crafts` (the campaign's craftable entries, `{ kind, entryId, item, recipe }[]`; empty outside campaign cities)
+
+In a campaign city, every crafting endpoint's `itemId` can also be a recipe key: a campaign item's ID, `move:<id>`, `ability:<id>` or `pokemon:<id>`. Approving moves and abilities stores a TM or Ability Capsule copy; approving a Pokémon creates new residents, and the order needs that many free slots.
+
+Campaign moves, abilities, items and Pokémon templates accept `craft: { craftable?, tier?, skill?, catalyst? } | null` to change their default recipe.
 
 ## Crafting endpoints
 
@@ -46,9 +55,11 @@ The rules are in the [crafting plan](crafting-plan.md) and `shared/crafting.ts`.
 | `POST /api/cities/:id/submit` | Any member | `{ submitted }` | Submits your order for approval (`true`) or withdraws it (`false`) |
 | `POST /api/cities/:id/reject` | Leader | `{ member }` | Sends a submitted order back to its member as a draft |
 | `POST /api/cities/:id/approve` | Leader | `{ member? }` | Approves an order (your own by default; others must be submitted): adds its research steps, capped at what each tier needs, then adds quantity × items per craft of each line to the city inventory and removes the order. Answers `{ city, member, crafted, researched }`, where each `researched` entry has `steps`, `added`, `total`, `needed` and `unlocked` |
-| `POST /api/cities/:id/recipe` | Leader | `{ itemId, recipe: { tier?, costs?, yield? } \| null }` | Edits the city's recipe for a craftable item: tier 1–8, skill costs 0–14 per crafting skill (at least one above 0), items per craft 1–99. Only differences from the default are kept; `null` resets it |
+| `POST /api/cities/:id/recipe` | Leader | `{ itemId, recipe: { tier?, costs?, yield?, research? } \| null }` | Edits the city's recipe for a craftable item: tier 1–8, skill costs 0–14 per crafting skill (at least one above 0), items per craft 1–99, research steps 0–30 (0 starts it unlocked). Only differences from the default are kept; `null` resets it |
+| `POST /api/cities/:id/grants` | Leader | `{ templateId, grants: { [skill]: amount } \| null }` | Overrides what a species adds to each city skill except Catalyst, 0–14 each, for every resident of it, including any that move in later; the species doesn't need to live in the city. Skills at 0 are closed to it, and residents of it working one are unassigned. Overrides equal to the species' defaults are dropped; `null` resets it |
+| `POST /api/cities/:id/grant-defaults` | Any member | `{ templateIds }` (up to 100) | Answers what each species adds to each skill by default, `{ [templateId]: { [skill]: amount } }`, skipping unknown species |
 | `POST /api/cities/:id/research` | Leader | `{ itemId, faces? }` | Rolls Research and adds one step per success, up to what the tier needs |
-| `POST /api/cities/:id/steps` | Leader | `{ itemId, steps }` | Sets a recipe's research steps (0 to what its tier needs) without the rank or Research gates |
+| `POST /api/cities/:id/steps` | Leader | `{ itemId, steps }` | Sets a recipe's research steps (0 to what the recipe needs) without the rank or Research gates |
 | `POST /api/cities/:id/inventory` | Any member | `{ trainerId, entryId, quantity, direction: "deposit" \| "withdraw" }` | Moves items between one of your trainers and the city; reference items stack |
 | `POST /api/cities/:id/stock` | Leader | `{ itemId, quantity }` | Adds 1 to 999 of a reference item or an item from the leader's collection straight to the city inventory (no recipe needed); custom items are copied inline |
 | `POST /api/cities/:id/discard` | Leader | `{ entryId, quantity }` | Removes items from the city inventory for good |

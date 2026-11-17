@@ -1,6 +1,7 @@
 // Domain and API types shared by the frontend and the Worker. Shapes are taken from
 // data/reference/*.json and the local API in worker/api.ts.
 import type { Habitat, HabitatFilter, PokemonHabitatEntry } from './habitats.ts';
+import type { Recipe } from './crafting.ts';
 export type { Habitat } from './habitats.ts';
 
 export const RANKS = ['UNRANKED', 'STARTER', 'ROOKIE', 'STANDARD', 'ADVANCED', 'EXPERT', 'ACE', 'MASTER', 'CHAMPION'] as const;
@@ -27,6 +28,8 @@ export type ProfileSkill = Exclude<CitySkill, 'catalyst'>;
 export type WorkLevel = 'full' | 'half';
 /** What a species can work: `full` adds its whole bonus, `half` half of it, absent skills are closed. */
 export type WorkProfile = Partial<Record<ProfileSkill, WorkLevel>>;
+/** A city's override of what a resident adds to each skill; skills it leaves out are closed to the resident. */
+export type SkillGrants = Partial<Record<ProfileSkill, number>>;
 /** Where a resident works: `skill:<city skill>` or `tag:<action tag text>`. */
 export type CityAssignment = `skill:${CitySkill}` | `tag:${string}`;
 export interface City {
@@ -45,8 +48,13 @@ export interface City {
   assignments: Record<string, CityAssignment>;
   /** Each current resident's full bonus (evolution stage), keyed by Pokemon ID. */
   bonuses: Record<string, number>;
-  /** Each current resident's species work profile, keyed by Pokemon ID. */
+  /** Each current resident's species work profile, keyed by Pokemon ID; `grants` overrides it (shared/cities.ts `effectiveProfile`). */
   profiles: Record<string, WorkProfile>;
+  /**
+   * The leader's overrides of what a species adds to each skill, keyed by Pokémon template (species) ID
+   * (shared/cities.ts `skillGrant`). They apply to every resident of that species, present or future.
+   */
+  grants: Record<string, SkillGrants>;
   /** Types the Catalyst residents provide, with the strongest bonus of each. */
   catalysts: Partial<Record<PokemonType, number>>;
   /** Items the city has crafted or members deposited; any member can withdraw them. */
@@ -59,17 +67,38 @@ export interface City {
   recipes: Record<string, CityRecipe>;
   /** Emails of everyone who shares the city, the leader (longest-standing member) first. */
   members: string[];
+  /** The campaign the city belongs to; its entries can be researched and crafted there. Absent for other cities. */
+  campaignId?: string | null;
+  /** Null when the campaign was deleted. */
+  campaign?: { id: string; name: string } | null;
+  /** The campaign entries the city can research and craft, besides the core items. */
+  crafts: CampaignCraft[];
 }
+/**
+ * What a campaign entry becomes when a campaign city crafts it: a copy of the item, a TM for a
+ * move, an Ability Capsule for an ability, or a new resident for a Pokémon.
+ */
+export const CRAFT_KINDS = ['item', 'move', 'ability', 'pokemon'] as const;
+export type CraftKind = typeof CRAFT_KINDS[number];
+/** A campaign entry's recipe from the campaign editor; absent fields keep the default (shared/crafting.ts). */
+export interface CraftSettings { craftable?: boolean; tier?: Tier; skill?: CraftingSkill; catalyst?: PokemonType[] | null }
+/**
+ * A campaign entry a campaign city can research and craft. `item` is how it shows in recipes and
+ * storage; its `id` and the recipe's `itemId` are the recipe key (see `craftKey`).
+ */
+export interface CampaignCraft { kind: CraftKind; entryId: string; item: Item; recipe: Recipe }
 /** Recipe tier: tier N needs city rank N (1 Starter … 8 Champion). */
 export type Tier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 /**
  * A city's own version of a recipe; absent fields keep the default. `costs` is how much of each
  * crafting skill's value one craft uses (instead of the tier's effort of the recipe's skill), and
- * `yield` how many items one craft makes.
+ * `yield` how many items one craft makes, and `research` the research steps it needs (0 for none).
  */
-export interface CityRecipe { tier?: Tier; costs?: Partial<Record<CraftingSkill, number>>; yield?: number }
+export interface CityRecipe { tier?: Tier; costs?: Partial<Record<CraftingSkill, number>>; yield?: number; research?: number }
 /** The leader edits a recipe for the city; `null` restores the default. */
 export interface CityRecipeBody { itemId: string; recipe: CityRecipe | null }
+/** The leader overrides what a resident adds to each skill; `null` restores its species' profile. */
+export interface CityGrantsBody { templateId: string; grants: SkillGrants | null }
 /** A reference item in a crafting order: `quantity` crafts, each using the recipe's costs. */
 export interface CityOrderLine { itemId: string; quantity: number }
 /** Research steps a crafting order puts into a recipe; steps past what its tier needs are lost. */
@@ -105,6 +134,8 @@ export interface CityStockBody { itemId: string; quantity: number }
 /** The leader sets a recipe's research steps directly (0 up to what its tier needs), skipping the research gates. */
 export interface CityStepsBody { itemId: string; steps: number }
 export type CityBody = Partial<Pick<City, 'name' | 'rank' | 'tags'>> & {
+  /** Only when creating: one of your campaigns. */
+  campaignId?: string;
   /** Merged into the stored assignments; `null` unassigns a resident. */
   assignments?: Record<string, CityAssignment | null>;
 };
@@ -162,6 +193,8 @@ export interface Ability {
   description: string;
   effect: string;
   hash: string;
+  /** Campaign abilities only: how campaign cities craft them. */
+  craft?: CraftSettings | null;
 }
 
 export interface MoveAttributes {
@@ -208,6 +241,8 @@ export interface Move {
   attributes: MoveAttributes;
   addedEffects: MoveAddedEffects;
   hash: string;
+  /** Campaign moves only: how campaign cities craft them. */
+  craft?: CraftSettings | null;
 }
 
 export interface Item {
@@ -225,6 +260,8 @@ export interface Item {
   image: string;
   hash: string;
   campaign: Campaign;
+  /** Campaign items only: how campaign cities craft them. */
+  craft?: CraftSettings | null;
 }
 
 export interface Evolution {
@@ -276,6 +313,8 @@ export interface PokemonTemplate {
   hiddenAbility: Ability | null;
   eventAbility: Ability | null;
   possibleMoves: PossibleMove[];
+  /** Campaign Pokémon only: how campaign cities craft them. */
+  craft?: CraftSettings | null;
 }
 
 /** List endpoints (`filtered`, `campaigns`) omit the nested moves. */

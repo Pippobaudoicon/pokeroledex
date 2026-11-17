@@ -1,6 +1,6 @@
 # Crafting
 
-The **Crafting** tab in [My City](cities.md) turns the city's skills into items. Recipes come from the reference items only. The full rules are in the [crafting plan](crafting-plan.md), and the endpoints are in [City API](cities-api.md#crafting-endpoints).
+The **Crafting** tab in [My City](cities.md) turns the city's skills into items. Recipes come from the reference items, plus the campaign's entries in a [campaign city](#campaign-cities). The full rules are in the [crafting plan](crafting-plan.md), and the endpoints are in [City API](cities-api.md#crafting-endpoints).
 
 ## Craft
 
@@ -20,9 +20,20 @@ The leader can change a recipe for their city with **Edit craft**, next to **Add
 
 - the **tier** (this changes the city rank and research the recipe needs)
 - how much of each crafting skill one craft uses (raise the main skill or add other skills; each skill used needs at least that value)
+- the **research steps** it needs (by default the tier's; 0 starts it unlocked)
 - **items per craft**, for example 1 Apothecary makes 2 Potions
 
 Edited recipes show an **Edited** badge. **Reset to default** restores the reference recipe. Edits only apply to that city.
+
+## Overrides
+
+The **Overrides** card on a city's **Overview** lists the city's own rules. The leader adds or changes them with **New override**, a wizard:
+
+1. Choose **A Pokémon** or **An item**.
+2. Pick a species, or search for a craftable item. Without a search, the city's own species are listed; searching looks through the whole Pokédex, so you can set up a species before any moves in.
+3. For a Pokémon, set what every Pokémon of that species adds to each city skill (0 to 14; skills at 0 are closed to it). This replaces the species' full or half bonus in that city only; Catalyst and actions keep its bonus. Any of it working a skill set to 0 stops working there. For an item, the same editor as **Edit craft** opens.
+
+**Reset to species** or **Reset to default** removes an override. Other members see the overrides but can't change them.
 
 ## Research
 
@@ -41,3 +52,22 @@ The leader can also add any reference item directly (**Add item**) and remove it
 Reference items stack. Custom items are self-contained copies that stay separate, even when different accounts use the same item ID, and members can withdraw and edit them without access to the campaign they came from.
 
 Older stored campaign items are turned into copies by `migrations/0008_city_inventory_copies.sql`, using a current member's item. Any that no member has any more show as **Unavailable item** for the leader to remove.
+
+## Campaign cities
+
+A campaign owner can create cities inside a campaign, from the campaign's **Cities** tab. Campaign cities also show in My City, with a link back to their campaign, and work like any other city: members, residents, skills, orders and storage. Core items stay craftable there.
+
+On top of the core items, a campaign city can research and craft its campaign's entries:
+
+| Entry | Crafting makes | Default recipe |
+| --- | --- | --- |
+| Item | the item, in storage | as a core item of the same pocket and price |
+| Move | a **TM · move** item, in storage | Technology, tier 3 for support or powerless moves, else 1 + half the power (2 to 7); the move's type as Catalyst; Research at half the tier's skill |
+| Ability | an **Ability Capsule · ability** item, in storage | Technology, tier 5 |
+| Pokémon | a new resident of the city (it needs a free slot) | Archaeology, the tier of its recommended rank (8 for legendaries); its types as Catalyst; Nursing at half the tier's skill |
+
+Campaign moves, abilities and Pokémon always need research: tier 1 needs 1 step and tier 2 needs 2, and higher tiers follow the usual table. Campaign items follow the core rules.
+
+Each campaign editor (Pokémon, moves, abilities and items) has a **City crafting** section to turn crafting off, or to change the tier, skill or Catalyst types. Cities can still edit the recipe further with **Edit craft**. The **campaign** chip in Crafting shows only the campaign's entries.
+
+Members who don't own the campaign still see and craft its entries. Deleting a campaign keeps its cities, but they can only craft core items afterwards.

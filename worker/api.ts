@@ -4,10 +4,13 @@
 // records, works on them in memory and writes back only the records it changed; a city
 // changed by someone else meanwhile makes the request run again (migrations/0007).
 import { ATTRIBUTES, CRAFTING_SKILLS, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
-import { canAssign, cityLimits, cityValues, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
-import { canWork, checkCityRecipe, checkFaces, cityRecipe, countSuccesses, craftBlockers, isUnlocked, itemRecipe, orderCost, orderRoom, orderSteps, orderUsage, overCapacity, researchBlockers, rollDice, TIERS, type Recipe } from '../shared/crafting.ts';
+import { canAssign, checkGrants, cityLimits, cityValues, defaultGrants, effectiveProfile, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
+import {
+  campaignRecipe, canWork, checkCityRecipe, checkCraftSettings, checkFaces, cityRecipe, countSuccesses, craftBlockers, craftItem, isUnlocked, itemRecipe,
+  orderCost, orderRoom, orderSteps, orderUsage, overCapacity, researchBlockers, researchNeeds, rollDice, type Recipe,
+} from '../shared/crafting.ts';
 import { ITEM_EXCEPTIONS, speciesWorkProfile } from '../shared/crafting-data.ts';
-import type { City, CityOrder, CityResearched, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, Stats, Trainer } from '../shared/types.ts';
+import type { CampaignCraft, City, CityOrder, CityResearched, CraftKind, GenerateEncounterBody, Habitat, Pokemon, PokemonTemplate, Rank, SkillGrants, Stats, Trainer } from '../shared/types.ts';
 import { matchesEncounterFilters } from '../shared/encounters.ts';
 import { charmToAllure } from '../shared/moves.ts';
 import { isHabitat, isHabitatFilter, matchesHabitats, normalizeHabitats } from '../shared/habitats.ts';
@@ -23,6 +26,8 @@ type Row = Json & { id: string };
 type Collections = Record<string, Row[]>;
 
 const referenceNames = ['pokemon-templates', 'moves', 'items', 'abilities', 'natures'];
+/** Campaign entries a campaign city can craft, by the collection they are stored in. */
+const craftCollections: [CraftKind, string][] = [['item', 'items'], ['move', 'moves'], ['ability', 'abilities'], ['pokemon', 'pokemon-templates']];
 const collectionNames = ['pokemon', 'trainers', 'cities', 'campaigns', 'feedback', 'issues', ...referenceNames];
 const blankStats = () => Object.fromEntries([...ATTRIBUTES, ...SOCIALS, ...SKILLS, ...TRAINER_SKILLS, 'happiness', 'loyalty', 'will'].map(key => [key, 0])) as Stats;
 
@@ -162,6 +167,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         WHERE city_id IN (SELECT city_id FROM city_members WHERE email = ?) ORDER BY rowid`).bind(owner).all<{ city_id: string; email: string }>();
       for (const row of memberRows) members.set(row.city_id, [...members.get(row.city_id) ?? [], row.email]);
       const foreign = await loadForeign(db, reference as unknown as Collections);
+      await loadCampaignEntries(db, foreign);
       const templatesInUse = method === 'DELETE' && ['campaigns', 'pokemon-templates'].includes(name) ? await templatesUsedElsewhere() : new Set<string>();
       const checks = new Map<Row, D1PreparedStatement>();
       const writes: D1PreparedStatement[] = [];
@@ -216,6 +222,31 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       }
     }
     return foreign;
+  }
+
+  // A campaign city crafts its campaign's entries, which stay in the campaign owner's account.
+  // Members who do not own the campaign load the campaign and its entries read-only.
+  async function loadCampaignEntries(db: Collections, foreign: Collections) {
+    const wanted = new Map<string, string>();
+    for (const city of db.cities) {
+      if (typeof city.campaignId === 'string' && typeof city.campaignOwner === 'string' && city.campaignOwner !== owner) wanted.set(city.campaignId, city.campaignOwner);
+    }
+    if (!wanted.size) return;
+    const known = new Set<string>();
+    for (const source of [db, foreign]) for (const [name, records] of Object.entries(source)) for (const record of records) known.add(`${name}\0${record.id}`);
+    const { results } = await env.DB.prepare(`SELECT records.collection, records.data FROM records
+      JOIN json_each(?) wanted ON records.owner = wanted.value ->> '$[1]'
+        AND ((records.collection = 'campaigns' AND records.id = wanted.value ->> '$[0]')
+          OR (records.collection IN ('items', 'moves', 'abilities', 'pokemon-templates') AND records.data ->> 'campaignId' = wanted.value ->> '$[0]'))
+      ORDER BY records.seq`).bind(JSON.stringify([...wanted])).all<{ collection: string; data: string }>();
+    for (const row of results) {
+      const record: Row = JSON.parse(row.data);
+      const key = `${row.collection}\0${record.id}`;
+      if (known.has(key)) continue;
+      known.add(key);
+      if (row.collection === 'moves') charmToAllure(record);
+      (foreign[row.collection] ??= []).push(record);
+    }
   }
 
   // Custom species of this person that sheets elsewhere (other accounts, cities they left)
@@ -345,13 +376,46 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       } as Trainer;
     }
 
+    /** The campaign entries a campaign city can craft, from the campaign owner's records. */
+    const craftCache = new Map<string, CampaignCraft[]>();
+    function cityCrafts(city: Row): CampaignCraft[] {
+      if (typeof city.campaignId !== 'string') return [];
+      const cached = craftCache.get(city.id);
+      if (cached) return cached;
+      const source = city.campaignOwner === owner ? db : foreign;
+      const campaign = source.campaigns?.find(record => record.id === city.campaignId);
+      const crafts: CampaignCraft[] = [];
+      if (campaign) for (const [kind, collection] of craftCollections) {
+        for (const record of source[collection] ?? []) {
+          if (record.campaignId !== city.campaignId) continue;
+          const item = craftItem(kind, record as never, campaign as never);
+          crafts.push({ kind, entryId: record.id, item, recipe: campaignRecipe(kind, record as never) });
+        }
+      }
+      craftCache.set(city.id, crafts);
+      return crafts;
+    }
+
     /**
-     * Current members' crafting orders, with lines for reference items only. The shared order of
+     * What a city can craft under a recipe key: a reference item, or one of its campaign's entries.
+     * Recipes include the city's own edits (`recipes`), unless `base` asks for the default.
+     */
+    function craftRecipe(key: unknown, city: Row, base = false): { item: Row; recipe: Recipe; craft?: CampaignCraft } | null {
+      if (typeof key !== 'string') return null;
+      const item = reference.items.find(entry => entry.id === key);
+      const craft = item ? undefined : cityCrafts(city).find(entry => entry.item.id === key);
+      if (!item && !craft) return null;
+      const recipe = item ? itemRecipe(item, ITEM_EXCEPTIONS[item.name]) : craft!.recipe;
+      return { item: (item ?? craft!.item) as Row, recipe: base ? recipe : cityRecipe(recipe, city.recipes?.[key]), craft };
+    }
+
+    /**
+     * Current members' crafting orders, with lines for what the city can still craft. The shared order of
      * older cities (`order`) becomes the leader's draft.
      */
     function cityOrders(city: Row): Record<string, CityOrder> {
       const list = members.get(city.id) ?? [];
-      const known = (line: Json) => reference.items.some(item => item.id === line.itemId);
+      const known = (line: Json) => !!craftRecipe(line.itemId, city, true);
       const stored = { ...(city.orders ?? {}) } as Record<string, Json>;
       if (Array.isArray(city.order) && city.order.length && list[0] && !stored[list[0]]) stored[list[0]] = { items: city.order };
       const orders: Record<string, CityOrder> = {};
@@ -373,16 +437,21 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         const rank = (RANKS as readonly unknown[]).includes(record.rank) ? record.rank : 'UNRANKED';
         const stored = (record.assignments ?? {}) as Json;
         const residents = db.pokemon.filter(p => p.cityId === record.id);
-        const work = Object.fromEntries(residents.map(p => [p.id, residentWork(p)]));
-        const assignments = Object.fromEntries(residents.filter(p => canAssign(stored[p.id], tags, work[p.id].profile)).map(p => [p.id, stored[p.id]]));
+        const work = Object.fromEntries(residents.map(p => [p.id, cityResidentWork(p, record)]));
+        const assignments = Object.fromEntries(residents.filter(p => canAssign(stored[p.id], tags, effectiveProfile(work[p.id]))).map(p => [p.id, stored[p.id]]));
         const bonuses = Object.fromEntries(residents.map(p => [p.id, work[p.id].bonus]));
         const profiles = Object.fromEntries(residents.map(p => [p.id, work[p.id].profile]));
-        const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, order: _order, ...rest } = record;
-        return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles,
+        const grants = (record.grants ?? {}) as Json;
+        const { skills: _skills, tagValues: _tagValues, catalysts: _catalysts, order: _order, campaignOwner: _campaignOwner, ...rest } = record;
+        const campaign = typeof record.campaignId === 'string'
+          ? (record.campaignOwner === owner ? db : foreign).campaigns?.find(entry => entry.id === record.campaignId) : null;
+        return { ...rest, rank, limits: cityLimits(rank), tags, assignments, bonuses, profiles, grants,
           ...cityValues(rank, tags, assignments, work), inventory: inventory(record.inventory, true), research: record.research ?? {},
           orders: cityOrders(record),
-          recipes: Object.fromEntries(Object.entries((record.recipes ?? {}) as Json).filter(([itemId]) => reference.items.some(item => item.id === itemId))),
-          members: members.get(record.id) ?? [] };
+          recipes: Object.fromEntries(Object.entries((record.recipes ?? {}) as Json).filter(([key]) => craftRecipe(key, record, true))),
+          members: members.get(record.id) ?? [],
+          campaignId: record.campaignId ?? null, campaign: campaign ? { id: campaign.id, name: campaign.name } : null,
+          crafts: cityCrafts(record) };
       }
       return referenceRecord(name, record);
     }
@@ -419,13 +488,23 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
     /** A resident's bonus, the work profile of its species and its types; see shared/cities.ts. */
     function residentWork(p: Row): ResidentWork {
-      const species = lookup('pokemon-templates', p.pokemonTemplateId) as PokemonTemplate | null;
+      return speciesWork(lookup('pokemon-templates', p.pokemonTemplateId) as PokemonTemplate | null);
+    }
+
+    function speciesWork(species: PokemonTemplate | null): ResidentWork {
       if (!species) return { bonus: 0, profile: {}, types: [] };
       return {
         bonus: residentBonus(species, id => lookup('pokemon-templates', id) as PokemonTemplate | null),
         profile: speciesWorkProfile(species, reference['pokemon-templates']),
         types: species.types,
       };
+    }
+
+    /** A resident's work in a city, with the leader's grant override for its species if any. */
+    function cityResidentWork(p: Row, city: Row | null | undefined): ResidentWork {
+      const work = residentWork(p);
+      const grants = city?.grants?.[p.pokemonTemplateId] as SkillGrants | undefined;
+      return grants ? { ...work, grants } : work;
     }
 
     function customInventoryFields(item: Json): Json {
@@ -451,6 +530,13 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       }
       const { id: _id, item: _item, quantity: _quantity, ...fields } = entry;
       entries.push({ ...fields, id: crypto.randomUUID(), quantity });
+    }
+
+    /** What a campaign city crafts from a campaign item, move or ability: a self-contained copy, stacked by recipe key. */
+    function addCrafted(entries: Row[], item: Json, quantity: number) {
+      const same = entries.find(candidate => candidate.craftKey === item.id && !candidate.itemId);
+      if (same) same.quantity += quantity;
+      else entries.push({ ...customInventoryFields(item), craftKey: item.id, id: crypto.randomUUID(), quantity });
     }
 
     function residentLimit(rank: unknown) {
@@ -485,7 +571,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           const resident = city && db.pokemon.find(p => p.id === id && p.cityId === city.id);
           if (!resident) fail(400, 'Only residents of this city can be assigned to its skills and actions.');
           if (target !== null) {
-            const { profile } = residentWork(resident);
+            const profile = effectiveProfile(cityResidentWork(resident, city));
             const skill = typeof target === 'string' && target.startsWith('skill:') ? target.slice(6) : null;
             if (skill && isCitySkill(skill) && !canWork(profile, skill)) {
               const species = lookup('pokemon-templates', resident.pokemonTemplateId);
@@ -500,7 +586,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if ('assignments' in body || 'tags' in body) {
         fields.assignments = Object.fromEntries(Object.entries(assignments).filter(([id, target]) => {
           const resident = db.pokemon.find(p => p.id === id);
-          return canAssign(target, tags, resident ? residentWork(resident).profile : {});
+          return canAssign(target, tags, resident ? effectiveProfile(cityResidentWork(resident, city)) : {});
         }));
       }
       return fields;
@@ -677,25 +763,22 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     // Crafting (docs/crafting-plan.md). Each member fills their own crafting order within the city's
     // skills and submits it; the leader edits, approves (crafts it into storage and adds its research
     // steps) or sends it back. The leader also rolls research, whose dice may come from a physical roll.
-    // Recipes include the city's own edits (`recipes`), unless `base` asks for the default.
-    function referenceRecipe(itemId: unknown, city: Row, base = false): { item: Row; recipe: Recipe } | null {
-      const item = typeof itemId === 'string' ? reference.items.find(entry => entry.id === itemId) : undefined;
-      if (!item) return null;
-      const recipe = itemRecipe(item, ITEM_EXCEPTIONS[item.name]);
-      return { item, recipe: base ? recipe : cityRecipe(recipe, city.recipes?.[item.id]) };
-    }
     function orderLines(city: Row, order: CityOrder) {
       return order.items.flatMap(line => {
-        const found = referenceRecipe(line.itemId, city);
+        const found = craftRecipe(line.itemId, city);
         return found ? [{ ...found, quantity: line.quantity }] : [];
       });
     }
     function researchLines(city: Row, order: CityOrder) {
       return order.research.flatMap(line => {
-        const found = referenceRecipe(line.itemId, city);
+        const found = craftRecipe(line.itemId, city);
         return found ? [{ ...found, steps: line.steps }] : [];
       });
     }
+    /** Pokémon an order's lines would add to the city as residents. */
+    const newResidents = (lines: { recipe: Recipe; quantity: number; craft?: CampaignCraft }[]) =>
+      lines.reduce((total, line) => total + (line.craft?.kind === 'pokemon' ? line.quantity * line.recipe.yield : 0), 0);
+    const freeResidentSlots = (city: Row) => residentLimit(city.rank) - db.pokemon.filter(p => p.cityId === city.id).length;
     /** Stores the members' orders, dropping empty ones and the shared order of older cities. */
     function saveOrders(city: Row, orders: Record<string, CityOrder>) {
       city.orders = Object.fromEntries(Object.entries(orders).filter(([, order]) => order.items.length || order.research.length));
@@ -716,12 +799,18 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     const craftingState = (current: City) => ({ rank: current.rank, skills: current.skills, catalysts: current.catalysts, research: current.research });
     const isLeader = (city: Row) => (members.get(city.id) ?? [])[0] === owner;
     const capitalized = (skill: string) => `${skill[0].toUpperCase()}${skill.slice(1)}`;
+    /** A campaign entry's crafting settings from a create or update body. */
+    function craftSettings(body: Json) {
+      const checked = checkCraftSettings(body.craft);
+      if ('error' in checked) fail(400, checked.error);
+      return checked.craft;
+    }
 
     if (name === 'cities' && action && id === 'order' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
-      const found = referenceRecipe(body.itemId, city);
-      if (!found) fail(400, 'Choose a reference item.');
+      const found = craftRecipe(body.itemId, city);
+      if (!found) fail(400, 'Choose something this city can craft.');
       const research = 'steps' in body;
       const value = research ? body.steps : body.quantity;
       if (!Number.isInteger(value) || value < 0 || value > 999) fail(400, research ? 'Choose from 0 to 999 research steps.' : 'Choose a quantity from 0 to 999.');
@@ -756,6 +845,11 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           if (short) {
             const fits = orderRoom(recipe, current.skills, used);
             fail(409, `${item.name}: the order can hold ${fits} with ${capitalized(short)} ${current.skills[short]} (each uses ${orderCost(recipe, short)}).`);
+          }
+          if (found.craft?.kind === 'pokemon') {
+            const others = newResidents(lines.filter(line => line.item.id !== item.id));
+            const free = freeResidentSlots(city) - others;
+            if (value * recipe.yield > free) fail(409, `${item.name}: the city has room for ${Math.max(0, free)} more residents.`);
           }
         }
         order.items = order.items.some(line => line.itemId === item.id)
@@ -811,7 +905,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const research: Record<string, number> = { ...current.research };
       const researched: CityResearched[] = [];
       for (const { item, recipe, steps: count } of steps) {
-        const needed = TIERS[recipe.tier].research?.steps ?? 0;
+        const needed = researchNeeds(recipe)?.steps ?? 0;
         const before = research[item.id] ?? 0;
         if (!isUnlocked(recipe, research)) {
           const blockers = researchBlockers(recipe, { ...state, research });
@@ -830,12 +924,27 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const usage = orderUsage(lines);
       const over = overCapacity(current.skills, usage);
       if (over.length) fail(409, `The order needs more than the city has: ${over.map(skill => `${capitalized(skill)} ${usage[skill]} of ${current.skills[skill]}`).join(', ')}.`);
+      const arrivals = newResidents(lines);
+      if (arrivals > freeResidentSlots(city)) fail(409, `The order makes ${arrivals} Pokémon; the city has room for ${Math.max(0, freeResidentSlots(city))} more residents.`);
 
       city.research = research;
       city.inventory ??= [];
-      // Order lines count crafts; each craft makes the recipe's yield.
+      // Order lines count crafts; each craft makes the recipe's yield. Campaign Pokémon join the city
+      // as residents of the member who ordered them; campaign items, moves and abilities are stored as copies.
       const crafted = lines.map(({ item, recipe, quantity }) => ({ itemId: item.id, quantity: quantity * recipe.yield }));
-      for (const { itemId, quantity } of crafted) addToInventory(city.inventory, { itemId }, quantity);
+      for (const { item, recipe, quantity, craft } of lines) {
+        const count = quantity * recipe.yield;
+        if (!craft) addToInventory(city.inventory, { itemId: item.id }, count);
+        else if (craft.kind !== 'pokemon') addCrafted(city.inventory, item, count);
+        else for (let made = 0; made < count; made++) {
+          const species = lookup('pokemon-templates', craft.entryId);
+          const genders = species?.genderType === 'N' ? ['N'] : ['M', 'F'];
+          const resident = newPokemon({ pokemonTemplateId: craft.entryId, cityId: city.id, userId: member,
+            gender: genders[Math.floor(Math.random() * genders.length)] });
+          db.pokemon.push(resident);
+          put('pokemon', resident);
+        }
+      }
       delete orders[member];
       saveOrders(city, orders);
       return reply({ city: hydrate(name, city), member, crafted, researched });
@@ -845,8 +954,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       if (!isLeader(city)) fail(403, 'Only the city leader can edit recipes.');
-      const found = referenceRecipe(body.itemId, city, true);
-      if (!found) fail(400, 'Choose a reference item.');
+      const found = craftRecipe(body.itemId, city, true);
+      if (!found) fail(400, 'Choose something this city can craft.');
       const { item, recipe } = found;
       if (!('recipe' in body)) fail(400, 'Send the recipe changes or null.');
       const checked = checkCityRecipe(recipe, body.recipe);
@@ -856,12 +965,51 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       put(name, city);
       return reply(hydrate(name, city));
     }
+    // What species add to each skill by default, as the grants endpoint compares them; for the overrides wizard.
+    if (name === 'cities' && action && id === 'grant-defaults' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      const ids = body.templateIds;
+      if (!Array.isArray(ids) || ids.length > 100 || ids.some(templateId => typeof templateId !== 'string')) fail(400, 'Send up to 100 species IDs.');
+      return reply(Object.fromEntries((ids as string[]).flatMap(templateId => {
+        const species = lookup('pokemon-templates', templateId) as PokemonTemplate | null;
+        if (!species) return [];
+        const work = speciesWork(species);
+        return [[templateId, defaultGrants(work.bonus, work.profile)]];
+      })));
+    }
+    // The leader overrides what a species adds to each city skill, for every resident of it now or later;
+    // skills left at 0 are closed to it.
+    if (name === 'cities' && action && id === 'grants' && method === 'POST') {
+      const city = find('cities', action);
+      if (!city) fail(404, 'City not found.');
+      if (!isLeader(city)) fail(403, 'Only the city leader can change what Pokémon grant.');
+      const species = typeof body.templateId === 'string' ? lookup('pokemon-templates', body.templateId) as PokemonTemplate | null : null;
+      if (!species) fail(400, 'Choose a Pokémon species.');
+      if (!('grants' in body)) fail(400, 'Send the skill grants or null.');
+      const work = speciesWork(species);
+      const checked = checkGrants(body.grants, defaultGrants(work.bonus, work.profile));
+      if ('error' in checked) fail(400, checked.error);
+      const { [body.templateId]: _previous, ...rest } = (city.grants ?? {}) as Json;
+      city.grants = checked.grants ? { ...rest, [body.templateId]: checked.grants } : rest;
+      // Residents of that species working a skill it no longer grants stop working.
+      const assignments = { ...(city.assignments ?? {}) } as Json;
+      for (const resident of db.pokemon.filter(p => p.cityId === city.id && p.pokemonTemplateId === body.templateId)) {
+        const target = assignments[resident.id];
+        if (typeof target === 'string' && target.startsWith('skill:') && !canAssign(target, city.tags ?? [], effectiveProfile(cityResidentWork(resident, city)))) {
+          delete assignments[resident.id];
+        }
+      }
+      city.assignments = assignments;
+      put(name, city);
+      return reply(hydrate(name, city));
+    }
     if (name === 'cities' && action && id === 'research' && method === 'POST') {
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       if (!isLeader(city)) fail(403, 'Only the city leader can research.');
-      const found = referenceRecipe(body.itemId, city);
-      if (!found) fail(400, 'Choose a reference item.');
+      const found = craftRecipe(body.itemId, city);
+      if (!found) fail(400, 'Choose something this city can craft.');
       const { item, recipe } = found;
       const current = hydrate(name, city) as City;
       const blockers = researchBlockers(recipe, craftingState(current));
@@ -871,7 +1019,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (problem) fail(400, problem);
       const faces: number[] = body.faces ?? rollDice(pool, () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32);
       const successes = countSuccesses(faces);
-      const needed = TIERS[recipe.tier].research!.steps;
+      const needed = researchNeeds(recipe)!.steps;
       const steps = Math.min(needed, (city.research?.[item.id] ?? 0) + successes);
       if (successes) {
         city.research = { ...city.research, [item.id]: steps };
@@ -884,11 +1032,11 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       const city = find('cities', action);
       if (!city) fail(404, 'City not found.');
       if (!isLeader(city)) fail(403, 'Only the city leader can set research steps.');
-      const found = referenceRecipe(body.itemId, city);
-      if (!found) fail(400, 'Choose a reference item.');
+      const found = craftRecipe(body.itemId, city);
+      if (!found) fail(400, 'Choose something this city can craft.');
       const { item, recipe } = found;
       if (!recipe.craftable) fail(409, `${item.name}: ${recipe.note ? `${recipe.note}: not craftable.` : 'This item cannot be crafted.'}`);
-      const needed = TIERS[recipe.tier].research?.steps;
+      const needed = researchNeeds(recipe)?.steps;
       if (!needed) fail(409, `${item.name}: This recipe needs no research.`);
       if (!Number.isInteger(body.steps) || body.steps < 0 || body.steps > needed) fail(400, `Choose from 0 to ${needed} steps.`);
       const { [item.id]: _previous, ...rest } = city.research ?? {};
@@ -973,6 +1121,12 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'cities') {
         const fields = cityFields(body);
         if (!fields.name) fail(400, 'Choose a city name.');
+        if (body.campaignId !== undefined && body.campaignId !== null) {
+          const campaign = db.campaigns.find(entry => entry.id === body.campaignId && partitions.get(entry) === owner);
+          if (!campaign || campaign.isCore) fail(400, 'Choose one of your campaigns.');
+          fields.campaignId = campaign.id;
+          fields.campaignOwner = owner;
+        }
         record = { id: crypto.randomUUID(), userId: owner, rank: 'UNRANKED', tags: [], assignments: {}, inventory: [], research: {}, orders: {}, ...fields };
         writes.push(env.DB.prepare('INSERT INTO city_members (city_id, email) VALUES (?, ?)').bind(record.id, owner));
         members.set(record.id, [owner]);
@@ -983,6 +1137,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'feedback') record.createdAt = new Date().toISOString();
       if (name === 'moves') charmToAllure(Object.assign(record, { category: body.category ?? body.Category }));
       if (name === 'items') record.pmdPrice = body.pmdPrice ?? body.PMDPrice;
+      if (craftCollections.some(([, collection]) => collection === name)) record.craft = craftSettings(body);
       if (referenceNames.includes(name) && !find('campaigns', body.campaignId)) fail(400, 'Choose a local campaign.');
       if (find(name, record.id)) fail(409, 'A record with that ID already exists.');
       db[name].push(record);
@@ -1045,6 +1200,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       }
       if (name === 'campaigns') update.isCore = false;
       if (name === 'items' && body.PMDPrice !== undefined) update.pmdPrice = body.PMDPrice;
+      if ('craft' in body && craftCollections.some(([, collection]) => collection === name)) update.craft = craftSettings(body);
       Object.assign(record, update);
       if (name === 'moves') charmToAllure(record);
       put(name, record);

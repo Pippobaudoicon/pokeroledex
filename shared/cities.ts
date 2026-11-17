@@ -1,5 +1,8 @@
-import { CITY_SKILLS, POKEMON_TYPES, RANKS, type CityAssignment, type CitySkill, type CitySkills, type Evolution, type Pokemon, type PokemonType, type ProfileSkill, type Rank, type WorkProfile } from './types.ts';
+import { CITY_SKILLS, POKEMON_TYPES, RANKS, type CityAssignment, type CitySkill, type CitySkills, type Evolution, type Pokemon, type PokemonType, type ProfileSkill, type Rank, type SkillGrants, type WorkProfile } from './types.ts';
 import { canWork, workBonus } from './crafting.ts';
+
+/** City skills a resident's profile (or grant override) can open; Catalyst takes everyone. */
+export const PROFILE_SKILLS = CITY_SKILLS.filter((skill): skill is ProfileSkill => skill !== 'catalyst');
 
 /** Rank level counts from 1 (Unranked) to 9 (Champion). */
 export function cityLimits(rank: Rank) {
@@ -40,8 +43,47 @@ export function residentBonus(template: EvolutionNode, resolve: (id: string) => 
   return stage;
 }
 
-/** What cityValues needs to know about each resident, keyed by Pokemon ID. */
-export interface ResidentWork { bonus: number; profile: WorkProfile; types: readonly PokemonType[] }
+/** What cityValues needs to know about each resident, keyed by Pokemon ID. `grants` is the city's override, if any. */
+export interface ResidentWork { bonus: number; profile: WorkProfile; types: readonly PokemonType[]; grants?: SkillGrants }
+
+/** The highest value a grant can add: the highest skill cap. */
+export const GRANT_LIMIT = cityLimits('CHAMPION').skill;
+
+/** What a resident adds to a skill: the city's grant if it overrides the resident, else its bonus at its profile's level. */
+export const skillGrant = (resident: Pick<ResidentWork, 'bonus' | 'profile' | 'grants'>, skill: ProfileSkill) =>
+  resident.grants ? resident.grants[skill] ?? 0 : workBonus(resident.bonus, resident.profile[skill]);
+
+/** What a resident adds to each skill by default, from its bonus and species profile. */
+export const defaultGrants = (bonus: number, profile: WorkProfile): SkillGrants =>
+  Object.fromEntries(PROFILE_SKILLS.flatMap(skill => {
+    const amount = workBonus(bonus, profile[skill]);
+    return amount ? [[skill, amount]] : [];
+  }));
+
+/** The skills a grant override opens; they count as full since the grant sets the amount. */
+export const grantsProfile = (grants: SkillGrants): WorkProfile =>
+  Object.fromEntries(PROFILE_SKILLS.filter(skill => (grants[skill] ?? 0) > 0).map(skill => [skill, 'full']));
+
+/** The skills a resident can work in its city: those its grant override opens, else its species profile's. */
+export const effectiveProfile = (resident: Pick<ResidentWork, 'profile' | 'grants'>): WorkProfile =>
+  resident.grants ? grantsProfile(resident.grants) : resident.profile;
+
+/**
+ * Checks the leader's grant override against the resident's defaults. Returns the error, or the override
+ * with only the skills it adds to (`null` when it matches the defaults, i.e. no override).
+ */
+export function checkGrants(input: unknown, defaults: SkillGrants): { error: string } | { grants: SkillGrants | null } {
+  if (input === null) return { grants: null };
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { error: 'Send the skill grants or null.' };
+  const grants: SkillGrants = {};
+  for (const [skill, amount] of Object.entries(input)) {
+    if (!(PROFILE_SKILLS as readonly string[]).includes(skill)) return { error: `${skill} is not a skill a resident can work.` };
+    if (!Number.isInteger(amount) || amount < 0 || amount > GRANT_LIMIT) return { error: `Each skill can get from 0 to ${GRANT_LIMIT}.` };
+    if (amount) grants[skill as ProfileSkill] = amount;
+  }
+  const same = PROFILE_SKILLS.every(skill => (grants[skill] ?? 0) === (defaults[skill] ?? 0));
+  return { grants: same ? null : grants };
+}
 
 /** A target is valid if it is a city skill the resident's profile allows, or one of the city's action tags. */
 export function canAssign(target: unknown, tags: string[], profile: WorkProfile) {
@@ -54,6 +96,7 @@ export function canAssign(target: unknown, tags: string[], profile: WorkProfile)
  * Totals per skill and action tag, each capped at the rank's skill limit. A resident adds its full
  * bonus to actions and to skills its profile has at full, half of it at half. Catalyst residents add
  * no value; they provide their types, each at the strongest bonus, and Catalyst counts those types.
+ * A grant override (`grants`) replaces what the resident adds to each skill.
  */
 export function cityValues(rank: Rank, tags: string[], assignments: Record<string, CityAssignment>, residents: Record<string, ResidentWork>) {
   const totals = new Map<string, number>();
@@ -65,7 +108,7 @@ export function cityValues(rank: Rank, tags: string[], assignments: Record<strin
       for (const type of resident.types) catalysts[type] = Math.max(catalysts[type] ?? 0, resident.bonus);
       continue;
     }
-    const amount = target.startsWith('skill:') ? workBonus(resident.bonus, resident.profile[target.slice(6) as ProfileSkill]) : resident.bonus;
+    const amount = target.startsWith('skill:') ? skillGrant(resident, target.slice(6) as ProfileSkill) : resident.bonus;
     totals.set(target, (totals.get(target) ?? 0) + amount);
   }
   const cap = (target: string) => Math.min(totals.get(target) ?? 0, cityLimits(rank).skill);

@@ -1,523 +1,408 @@
-import {
-  type InvalidateQueryFilters,
-  type QueryClient,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@uidotdev/usehooks";
+import { Compass, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import * as React from "react";
-import {
-  FaCheck,
-  FaCompass,
-  FaPenToSquare,
-  FaTrash,
-  FaXmark,
-} from "react-icons/fa6";
-import { MdStar } from "react-icons/md";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
 import { useAuth } from "@/api/client";
 import {
   useCampaignsControllerCreate,
   useCampaignsControllerFindAll,
   useCampaignsControllerRemove,
+  useCampaignsControllerUpdate,
 } from "@/api/components";
-import { queryKeyFn } from "@/api/context";
-import { AddNewBox } from "@/components/AddNewBox";
-import { Box } from "@/components/Box";
-import { CollapsableButton } from "@/components/CollapsableButton";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MultiSelect } from "@/components/MultiSelect";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { button } from "@/components/kit/button";
+import { Switch } from "@/components/kit/Controls";
+import { Group, Row, RowIcon } from "@/components/kit/List";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
+import { Sheet } from "@/components/kit/Sheet";
 import { useCampaignFilter } from "@/hooks/use-campaign-filter";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { CampaignAbilities } from "@/pages/Campaigns/Abilities";
+import { ConfirmDelete, errorText, field, invalidateEntries, matches, SearchField } from "@/pages/Campaigns/common";
 import { CampaignProvider, useCampaign } from "@/pages/Campaigns/context";
 import { CampaignItems } from "@/pages/Campaigns/Items";
 import { CampaignMoves } from "@/pages/Campaigns/Moves";
 import { CampaignPokemonTemplates } from "@/pages/Campaigns/PokemonTemplates";
-import { useScrollToDetail } from "@/hooks/use-scroll-to-detail";
+import { CampaignCities } from "@/pages/MyCity";
 
-// Passing the bare key (not { queryKey }) means react-query v5 invalidates every query.
-const invalidateCampaigns = (queryClient: QueryClient) =>
-  queryClient.invalidateQueries(
-    queryKeyFn({
-      path: "/campaigns",
-      operationId: "campaignsControllerFindAll",
-      variables: {},
-    }) as InvalidateQueryFilters,
-  );
+const CAMPAIGN_COLOR = "bg-[#047857]";
 
-const CampaignCard = ({
-  name,
-  isCore,
-  className,
-  onClick,
+/** Whether a campaign's entries show up in the Pokédex, indexes and generators. */
+const useShown = () => {
+  const { state, setCampaignIds } = useCampaignFilter();
+  const shown = (id: string) => state.campaignIds.includes(id);
+  const setShown = (id: string, show: boolean) =>
+    setCampaignIds(show ? [...state.campaignIds.filter((entry) => entry !== id), id] : state.campaignIds.filter((entry) => entry !== id));
+  return { shown, setShown };
+};
+
+/** A name form in a sheet, for creating and renaming. */
+const NameSheet = ({
+  open,
+  onOpenChange,
+  title,
+  initialName,
+  submitLabel,
+  isPending,
+  onSubmit,
 }: {
-  name: string;
-  isCore: boolean;
-  className?: string;
-  onClick?: () => void;
-}) => (
-  <Box
-    color="bg-type-grass"
-    className={`${className} flex flex-col items-center justify-center space-y-2 p-3 bg-linear-to-br/srgb from-type-grass-light ${onClick != null ? "hover:bg-type-grass-light hover:from-type-grass-light" : ""}`}
-    onClick={onClick}
-  >
-    <div className="flex flex-row items-center gap-2">
-      <FaCompass size={24} className="text-white" />
-      <Text size="text-3xl" color="text-white">
-        {name}
-      </Text>
-      {isCore && (
-        <MdStar size={20} className="text-yellow-400" title="Core Campaign" />
-      )}
-    </div>
-  </Box>
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  initialName: string;
+  submitLabel: string;
+  isPending: boolean;
+  onSubmit: (name: string) => void;
+}) => {
+  const [name, setName] = React.useState(initialName);
+  React.useEffect(() => {
+    if (open) setName(initialName);
+  }, [open, initialName]);
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={title}>
+      <form
+        className="flex flex-col gap-4 p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim()) onSubmit(name.trim());
+        }}
+      >
+        <label className="flex flex-col gap-1.5 text-subhead font-medium">
+          Name
+          <input required autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} placeholder="Campaign name" className={field} />
+        </label>
+        <button type="submit" disabled={isPending || !name.trim() || name.trim() === initialName} className={button({ variant: "filled" })}>
+          {isPending ? "Saving…" : submitLabel}
+        </button>
+      </form>
+    </Sheet>
+  );
+};
+
+const CreateCampaign = ({ variant = "plain" }: { variant?: "plain" | "tinted" }) => {
+  const [open, setOpen] = React.useState(false);
+  const { user } = useAuth();
+  const { setShown } = useShown();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const { mutate, isPending } = useCampaignsControllerCreate({
+    onSuccess: (campaign) => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      setOpen(false);
+      // A new campaign is shown right away, so what you add to it appears in the Pokédex.
+      setShown(campaign.id, true);
+      navigate(`/campaigns/${campaign.id}`);
+      toast({ title: `${campaign.name} created` });
+    },
+    onError: (error) => toast({ title: "Campaign couldn’t be created", description: errorText(error) }),
+  });
+  return (
+    <>
+      <button type="button" className={button({ variant, size: variant === "plain" ? "sm" : "md" })} onClick={() => setOpen(true)}>
+        <Plus aria-hidden className="size-4" />
+        {variant === "plain" ? "Add" : "New campaign"}
+      </button>
+      <NameSheet
+        open={open}
+        onOpenChange={setOpen}
+        title="New campaign"
+        initialName=""
+        submitLabel="Create campaign"
+        isPending={isPending}
+        onSubmit={(name) => mutate({ body: { name, userId: user.sub } })}
+      />
+    </>
+  );
+};
+
+const CoreMark = () => (
+  <span className="inline-flex items-center gap-1 rounded-full bg-[#f5b301]/15 px-2 py-0.5 text-caption font-semibold text-[#9a6b00]">
+    <Star aria-hidden className="size-3 fill-current" />
+    Core
+  </span>
 );
 
-const CreateCampaignDialog = ({ trigger }: { trigger: React.ReactNode }) => {
-  const [open, setOpen] = React.useState(false);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const [formData, setFormData] = React.useState({
-    name: "",
-    userId: user.sub,
-  });
-  const { mutate: createCampaign } = useCampaignsControllerCreate({
-    onSuccess: () => {
-      toast({
-        title: "Campaign created",
-        description: (
-          <>
-            <span>Your campaign has been created.</span>
-          </>
-        ),
-      });
-      invalidateCampaigns(queryClient);
-      setOpen(false);
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to create campaign",
-        // apiFetch errors carry no payload, so this is always undefined.
-        description: (error as Partial<T.ApiError>)?.payload,
-      });
-    },
-  });
-
-  const handleCreate = () => {
-    if (formData.name === "") {
-      toast({
-        title: "Failed to create campaign",
-        description: "Name is required.",
-      });
-      return;
-    }
-    createCampaign({ body: formData });
-  };
-
+const ShowSettings = ({ campaigns }: { campaigns: T.Campaign[] }) => {
+  const { state, setIncludeCore } = useCampaignFilter();
+  const { shown, setShown } = useShown();
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Create Campaign</DialogTitle>
-          <DialogDescription>
-            Create a new campaign to manage custom Pokemon, moves, items, and
-            abilities.
-          </DialogDescription>
-          <div className="flex flex-row space-x-2 items-center justify-between">
-            <Text className="text-xl flex-grow min-w-20">Name:</Text>
-            <Input
-              placeholder="Campaign name"
-              value={formData.name}
-              onChange={(event) => {
-                setFormData({ ...formData, name: event.target.value });
-              }}
-            />
-          </div>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="green"
-            onClick={() => {
-              handleCreate();
-            }}
-            className="flex-grow"
-          >
-            Create Campaign
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const CampaignFilterSelect = ({ className }: { className?: string }) => {
-  const { data: campaigns } = useCampaignsControllerFindAll({});
-  const { state, setCampaignIds, setIncludeCore } = useCampaignFilter();
-  const [options, setOptions] = React.useState<
-    { label: string; value: string }[]
-  >([]);
-  React.useEffect(() => {
-    if (!campaigns) {
-      setOptions([]);
-      return;
-    }
-    setOptions(
-      campaigns
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((campaign) => ({ label: campaign.name, value: campaign.id })),
-    );
-  }, [campaigns]);
-  const selected = state.campaignIds || [];
-  return (
-    <div className={className}>
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <MultiSelect
-            options={options}
-            selected={selected}
-            onChange={(campaignIds) => setCampaignIds(campaignIds)}
-            placeholder="Select campaigns..."
-          />
-        </div>
-        <div className="flex items-center">
-          <Checkbox
-            id="include-core-toggle"
-            checked={state.includeCore}
-            onCheckedChange={(checked) => setIncludeCore(checked === true)}
-          />
-          <Text className="ml-2" size="text-sm">
-            Show Core
-          </Text>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const CampaignList = ({
-  className,
-  onClick,
-}: {
-  className?: string;
-  onClick?: (id: string) => void;
-}) => {
-  const { data: campaigns, isFetching } = useCampaignsControllerFindAll({});
-  const isInitialLoading = isFetching && campaigns == null;
-  const [search, setSearch] = React.useState("");
-  const filteredCampaigns = React.useMemo(
-    () =>
-      // Sorts the cached query data in place.
-      campaigns
-        ?.sort((a, b) => a.name.localeCompare(b.name))
-        .filter((campaign) =>
-          campaign.name.toLowerCase().includes(search.toLowerCase()),
-        ),
-    [campaigns, search],
-  );
-  const campaignLinks = React.useMemo(
-    () =>
-      filteredCampaigns?.map((campaign) => (
-        <Link
+    <Group title="Show in Pokédex & generators" footer="Turn a campaign on to add its Pokémon, moves, abilities and items across the app.">
+      <Row
+        icon={
+          <RowIcon className="bg-[#f5b301]">
+            <Star />
+          </RowIcon>
+        }
+        title="Core rulebook"
+        value={<Switch aria-label="Show core rulebook" checked={state.includeCore} onChange={setIncludeCore} />}
+      />
+      {campaigns.map((campaign) => (
+        <Row
           key={campaign.id}
-          to={`/campaigns/${campaign.id}`}
-          className="flex flex-col"
-        >
-          <CampaignCard
-            name={campaign.name}
-            isCore={campaign.isCore}
-            onClick={() => onClick?.(campaign.id)}
-            className="flex-grow"
-          />
-        </Link>
-      )),
-    [filteredCampaigns, onClick],
-  );
-  return (
-    <div className={`flex flex-col h-full overflow-hidden ${className}`}>
-      <div className="flex flex-row space-x-2 shrink-0 mb-2">
-        <Input
-          className="rounded-3xl"
-          placeholder="Search..."
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
+          icon={
+            <RowIcon className={CAMPAIGN_COLOR}>
+              <Compass />
+            </RowIcon>
+          }
+          title={campaign.name}
+          value={<Switch aria-label={`Show ${campaign.name}`} checked={shown(campaign.id)} onChange={(show) => setShown(campaign.id, show)} />}
         />
-        <Button className="rounded-3xl">Search</Button>
-      </div>
-      <ScrollArea className="rounded-t-3xl flex-1">
-        <div className="grid grid-cols-2 md:grid-cols-1 2xl:grid-cols-2 gap-2">
-          {isInitialLoading && (
-            <div className="flex col-span-full flex-row flex-grow justify-center items-center h-full w-full">
-              <LoadingSpinner />
-            </div>
-          )}
-          {campaignLinks}
-          {!isInitialLoading && (
-            <div id="create-campaign-button" className="flex">
-              <CreateCampaignDialog
-                trigger={
-                  <AddNewBox
-                    id="campaign-add-button"
-                    className="p-0 flex-grow"
-                  />
-                }
-              />
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-      <Separator className="my-2" />
-      <Box color="bg-pokerole-beige" className="shrink-0 p-3">
-        <div className="flex flex-col">
-          <Text size="text-sm" className="font-semibold mb-2">
-            Campaigns to show:
-          </Text>
-          <div id="campaign-config-selector">
-            <CampaignFilterSelect />
+      ))}
+    </Group>
+  );
+};
+
+const CampaignList = ({ compact = false, selectedId }: { compact?: boolean; selectedId?: string }) => {
+  const { data, isError, refetch } = useCampaignsControllerFindAll({});
+  const { shown } = useShown();
+  const [query, setQuery] = React.useState("");
+  const campaigns = React.useMemo(() => data && [...data].sort((first, second) => first.name.localeCompare(second.name)), [data]);
+  const list = campaigns?.filter((campaign) => matches(query, campaign.name));
+  return (
+    <>
+      <PageHeader title="Campaigns" compact={compact} actions={<CreateCampaign />}>
+        <p className="text-subhead text-label-2">Custom Pokémon, moves, abilities and items for your table.</p>
+        {(campaigns?.length ?? 0) > 3 && (
+          <div className="mt-3 lg:max-w-md">
+            <SearchField value={query} onChange={setQuery} label="Search campaigns" />
           </div>
+        )}
+      </PageHeader>
+      {compact && (campaigns?.length ?? 0) > 3 && (
+        <div className="mx-3 my-3">
+          <SearchField value={query} onChange={setQuery} label="Search campaigns" />
         </div>
-      </Box>
-    </div>
-  );
-};
-
-const DeleteCampaignButton = () => {
-  const [open, setOpen] = React.useState(false);
-  const { toast } = useToast();
-  const { campaign } = useCampaign();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { mutate: removeCampaign } = useCampaignsControllerRemove({
-    onSuccess: () => {
-      toast({
-        title: "Campaign deleted",
-        description: "Your campaign has been deleted.",
-      });
-      invalidateCampaigns(queryClient);
-      navigate("/campaigns");
-      setOpen(false);
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to delete campaign",
-        // apiFetch errors carry no payload, so this is always undefined.
-        description: (error as Partial<T.ApiError>)?.payload,
-      });
-    },
-  });
-
-  const handleDelete = () => {
-    if (campaign === undefined) return;
-    removeCampaign({ pathParams: { id: campaign.id } });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>
-        <CollapsableButton
-          variant="red"
-          icon={<FaTrash size={16} />}
-          text="Delete Campaign"
-        />
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete Campaign</DialogTitle>
-          <DialogDescription>
-            {'Are you sure you want to delete "'}
-            {campaign?.name}
-            {
-              '"? This action cannot be undone. All Pokemon templates, moves, items, and abilities in this campaign will be deleted.'
-            }
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setOpen(false);
-            }}
-          >
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleDelete}>
-            Delete Campaign
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const CampaignHeader = () => {
-  const { campaign, updateCampaign } = useCampaign();
-  const [isEditing, setIsEditing] = React.useState(false);
-  const [draftName, setDraftName] = React.useState(campaign?.name ?? "");
-  if (campaign === undefined) return <div>No campaign selected</div>;
-
-  const confirmEdit = () => {
-    updateCampaign({ name: draftName });
-    setIsEditing(false);
-  };
-  const cancelEdit = () => {
-    setDraftName(campaign.name);
-    setIsEditing(false);
-  };
-
-  return (
-    <Box
-      color="bg-type-grass"
-      className="p-4 bg-linear-to-br/srgb from-type-grass-light"
-    >
-      <div className="flex flex-row items-center justify-between gap-4">
-        <div className="flex flex-row items-center gap-2 flex-grow">
-          {isEditing ? (
-            <>
-              <Input
-                value={draftName}
-                onChange={(event) => {
-                  setDraftName(event.target.value);
-                }}
-                className="text-2xl font-bold max-w-xs"
-              />
-              <Button variant="ghost" size="icon" onClick={confirmEdit}>
-                <FaCheck size={20} />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={cancelEdit}>
-                <FaXmark size={20} />
-              </Button>
-            </>
-          ) : (
-            <>
-              <Text size="text-3xl" color="text-white" className="font-bold">
-                {campaign.name}
-              </Text>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setDraftName(campaign.name);
-                  setIsEditing(true);
-                }}
-              >
-                <FaPenToSquare size={20} className="text-white" />
-              </Button>
-            </>
-          )}
-        </div>
-        <div className="flex flex-row items-center gap-2">
-          {campaign.isCore && (
-            <Text
-              size="text-sm"
-              color="text-white"
-              className="bg-yellow-500 px-2 py-1 rounded"
-            >
-              Core
-            </Text>
-          )}
-          <DeleteCampaignButton />
-        </div>
+      )}
+      <div className={cn("flex flex-col gap-8 px-4 pb-8", compact ? "lg:px-3" : "lg:px-8")}>
+        {isError ? (
+          <div className="rounded-2xl bg-surface p-6 text-center shadow-card">
+            <p className="mb-3 text-body">Campaigns couldn’t be loaded.</p>
+            <button type="button" className={button({ variant: "tinted" })} onClick={() => refetch()}>
+              Try again
+            </button>
+          </div>
+        ) : !campaigns || !list ? (
+          <div aria-hidden className="skeleton h-40 rounded-2xl" />
+        ) : campaigns.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-8 text-center shadow-card">
+            <Compass aria-hidden className="size-12 text-[#047857]" />
+            <h2 className="text-title-3 font-semibold">No campaigns yet</h2>
+            <p className="max-w-sm text-subhead text-label-2">Create a campaign to add your own Pokémon, moves, abilities and items.</p>
+            <CreateCampaign variant="tinted" />
+          </div>
+        ) : (
+          <section>
+            {list.length === 0 ? (
+              <div className="rounded-2xl bg-surface p-6 text-center shadow-card">
+                <p className="text-body">No campaigns named “{query}”.</p>
+                <button type="button" onClick={() => setQuery("")} className={cn(button({ variant: "tinted" }), "mt-3")}>
+                  Clear search
+                </button>
+              </div>
+            ) : compact ? (
+              <div className="overflow-hidden rounded-xl bg-surface shadow-card">
+                {list.map((campaign) => (
+                  <Row
+                    key={campaign.id}
+                    to={`/campaigns/${campaign.id}`}
+                    replace
+                    icon={
+                      <RowIcon className={CAMPAIGN_COLOR}>
+                        <Compass />
+                      </RowIcon>
+                    }
+                    title={campaign.name}
+                    subtitle={shown(campaign.id) ? "Shown in the Pokédex" : "Hidden"}
+                    className={campaign.id === selectedId ? "bg-tint/10" : undefined}
+                  />
+                ))}
+              </div>
+            ) : (
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(240px,1fr))] sm:gap-4">
+                {list.map((campaign) => (
+                  <li key={campaign.id}>
+                    <Link
+                      to={`/campaigns/${campaign.id}`}
+                      className="flex h-full items-center gap-4 rounded-2xl bg-surface p-4 shadow-card transition-colors hover:bg-raised sm:flex-col sm:p-5 sm:text-center"
+                    >
+                      <span className={cn("grid size-12 shrink-0 place-items-center rounded-2xl text-white sm:size-16", CAMPAIGN_COLOR)}>
+                        <Compass aria-hidden className="size-6 sm:size-8" />
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col gap-1 sm:items-center">
+                        <span className="line-clamp-2 text-body font-semibold">{campaign.name}</span>
+                        <span className="flex flex-wrap items-center gap-2 text-footnote text-label-2 sm:justify-center">
+                          {campaign.isCore && <CoreMark />}
+                          {shown(campaign.id) ? "Shown in the Pokédex" : "Hidden"}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+        {!compact && campaigns && <ShowSettings campaigns={campaigns} />}
       </div>
-    </Box>
+    </>
   );
 };
+
+const TABS = [
+  { value: "pokemon", label: "Pokémon" },
+  { value: "moves", label: "Moves" },
+  { value: "abilities", label: "Abilities" },
+  { value: "items", label: "Items" },
+  { value: "cities", label: "Cities" },
+] as const;
+type Tab = (typeof TABS)[number]["value"];
 
 const CampaignDetail = () => {
-  const { campaign, isLoading, isError } = useCampaign();
+  const { campaign, isLoading, isError, refetch } = useCampaign();
+  const [params, setParams] = useSearchParams();
+  // Core campaigns cannot own cities.
+  const tabs = TABS.filter((entry) => entry.value !== "cities" || (campaign && !campaign.isCore));
+  const tab: Tab = tabs.find((entry) => entry.value === params.get("tab"))?.value ?? "pokemon";
+  const [renaming, setRenaming] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const { shown, setShown } = useShown();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const rename = useCampaignsControllerUpdate({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      // Entries show their campaign's name in pickers and the Pokédex.
+      invalidateEntries(queryClient, "pokemon-templates", "moves", "abilities", "items", "dex", "move-index", "item-index");
+      setRenaming(false);
+      toast({ title: "Campaign renamed" });
+    },
+    onError: (error) => toast({ title: "Campaign couldn’t be renamed", description: errorText(error) }),
+  });
+  const remove = useCampaignsControllerRemove({
+    onSuccess: () => {
+      if (campaign) setShown(campaign.id, false);
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      invalidateEntries(queryClient, "pokemon-templates", "moves", "abilities", "items", "dex", "move-index", "item-index", "learners");
+      navigate("/campaigns");
+      toast({ title: `${campaign?.name} deleted` });
+    },
+    onError: (error) => toast({ title: "Campaign couldn’t be deleted", description: errorText(error) }),
+  });
+  const back = { to: "/campaigns", label: "Campaigns" };
+
   if (isLoading)
     return (
-      <div className="flex items-center justify-center h-full">
-        <LoadingSpinner />
-      </div>
-    );
-  if (isError || campaign === undefined)
-    return (
-      <div className="flex items-center justify-center h-full">
-        Error loading campaign
-      </div>
-    );
-  return (
-    <Box color="bg-pokerole-beige" className="p-3 h-full">
-      <ScrollArea className="md:h-[calc(100vh-1.5rem)] h-full">
-        <div className="flex flex-col gap-3">
-          <CampaignHeader />
-          <Tabs defaultValue="pokemon-templates" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="pokemon-templates">Pokemon</TabsTrigger>
-              <TabsTrigger value="abilities">Abilities</TabsTrigger>
-              <TabsTrigger value="moves">Moves</TabsTrigger>
-              <TabsTrigger value="items">Items</TabsTrigger>
-            </TabsList>
-            <TabsContent value="pokemon-templates">
-              <CampaignPokemonTemplates />
-            </TabsContent>
-            <TabsContent value="moves">
-              <CampaignMoves />
-            </TabsContent>
-            <TabsContent value="items">
-              <CampaignItems />
-            </TabsContent>
-            <TabsContent value="abilities">
-              <CampaignAbilities />
-            </TabsContent>
-          </Tabs>
+      <>
+        <PageHeader title="" back={back} />
+        <div aria-hidden className="flex flex-col gap-4 px-4 lg:px-8">
+          <div className="skeleton h-10 w-2/3 rounded-xl" />
+          <div className="skeleton h-10 rounded-xl" />
+          <div className="skeleton h-48 rounded-2xl" />
         </div>
-      </ScrollArea>
-    </Box>
+      </>
+    );
+  if (isError || !campaign)
+    return (
+      <>
+        <PageHeader title="Campaign" back={back} />
+        <div className="px-4 lg:px-8">
+          <div className="rounded-2xl bg-surface p-6 text-center shadow-card">
+            <p className="mb-3 text-body">This campaign couldn’t be loaded.</p>
+            <button type="button" className={button({ variant: "tinted" })} onClick={refetch}>
+              Try again
+            </button>
+          </div>
+        </div>
+      </>
+    );
+
+  return (
+    <>
+      <PageHeader title={campaign.name} back={back}>
+        {campaign.isCore && (
+          <div className="mt-1">
+            <CoreMark />
+          </div>
+        )}
+        {!campaign.isCore && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={button({ variant: "gray" })} onClick={() => setRenaming(true)}>
+              <Pencil aria-hidden className="size-4" />
+              Rename
+            </button>
+            <button type="button" aria-label="Delete campaign" className={button({ variant: "destructive", size: "icon" })} onClick={() => setDeleting(true)}>
+              <Trash2 aria-hidden className="size-4" />
+            </button>
+          </div>
+        )}
+      </PageHeader>
+      <div className={cn("flex flex-col gap-6 px-4 pb-10 lg:px-8", tab === "cities" ? "max-w-6xl" : "max-w-3xl")}>
+        <Group footer="Adds this campaign’s Pokémon, moves, abilities and items to the Pokédex, indexes and generators on this device.">
+          <Row
+            title="Show in Pokédex & generators"
+            value={<Switch aria-label="Show in Pokédex and generators" checked={shown(campaign.id)} onChange={(show) => setShown(campaign.id, show)} />}
+          />
+        </Group>
+        <div className="flex flex-col gap-4">
+          <Segmented
+            label="Campaign content"
+            idPrefix="campaign"
+            options={tabs.map((entry) => ({ value: entry.value, label: entry.label }))}
+            value={tab}
+            onChange={(next) => setParams(next === "pokemon" ? {} : { tab: next }, { replace: true })}
+          />
+          <div {...segmentPanelProps("campaign", tab)}>
+            {tab === "pokemon" && <CampaignPokemonTemplates />}
+            {tab === "moves" && <CampaignMoves />}
+            {tab === "abilities" && <CampaignAbilities />}
+            {tab === "items" && <CampaignItems />}
+            {tab === "cities" && <CampaignCities campaignId={campaign.id} />}
+          </div>
+        </div>
+      </div>
+      <NameSheet
+        open={renaming}
+        onOpenChange={setRenaming}
+        title="Rename campaign"
+        initialName={campaign.name}
+        submitLabel="Save"
+        isPending={rename.isPending}
+        onSubmit={(name) => rename.mutate({ body: { id: campaign.id, name } })}
+      />
+      <ConfirmDelete
+        open={deleting}
+        onOpenChange={setDeleting}
+        name={campaign.name}
+        description="Its Pokémon, moves, abilities and items are deleted too. This action cannot be undone."
+        confirmLabel="Delete campaign"
+        isPending={remove.isPending}
+        onConfirm={() => remove.mutate({ pathParams: { id: campaign.id } })}
+      />
+    </>
   );
 };
 
 export const CampaignsPage = () => {
   const { id } = useParams();
-  const [selectedId, setSelectedId] = React.useState(id);
-  const detailRef = useScrollToDetail(selectedId);
-  const isDesktop = useMediaQuery("(min-width: 768px)");
-  React.useEffect(() => {
-    setSelectedId(id);
-  }, [id]);
-  const DetailContainer = isDesktop ? ScrollArea : "div";
+  const desktop = useMediaQuery("(min-width: 1024px)");
+  if (!id) return <CampaignList />;
+  const detail = (
+    <CampaignProvider key={id} id={id}>
+      <CampaignDetail />
+    </CampaignProvider>
+  );
+  if (!desktop) return detail;
   return (
-    <div className="sheet-layout grid grid-cols-4 gap-4 pl-2 pt-2 pr-2 md:h-[calc(100vh-1rem)] md:grid-rows-1">
-      <CampaignList
-        className="md:col-span-1 col-span-full max-md:min-h-[15vh] max-md:max-h-[35vh]"
-        onClick={(campaignId) => {
-          setSelectedId(campaignId);
-        }}
-      />
-      <DetailContainer ref={detailRef} className="md:col-span-3 col-span-full h-full">
-        {selectedId === undefined ? (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="md:h-[80%] max-md:w-1/2">
-              <FaCompass size="100%" color="#5f5c54" />
-            </div>
-          </div>
-        ) : (
-          <CampaignProvider id={selectedId}>
-            <CampaignDetail />
-          </CampaignProvider>
-        )}
-      </DetailContainer>
+    <div className="flex">
+      <aside aria-label="Campaigns" className="sticky top-0 h-dvh w-80 shrink-0 overflow-y-auto border-r border-hairline xl:w-88">
+        <CampaignList compact selectedId={id} />
+      </aside>
+      <div className="min-w-0 flex-1">{detail}</div>
     </div>
   );
 };

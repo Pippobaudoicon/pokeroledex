@@ -1,32 +1,27 @@
-import { FaPlus, FaTrash } from "react-icons/fa6";
+import { Plus, Trash2 } from "lucide-react";
+import type * as React from "react";
+import { HABITAT_MACROS, habitatMacros } from "../../../../shared/habitats";
+import { defaultCraft } from "../../../../shared/crafting";
 import { ATTRIBUTES } from "../../../../shared/types";
-import { HABITAT_MACROS, habitatMacros, habitatName } from "../../../../shared/habitats";
 import type * as T from "../../../../shared/types";
-import {
-  EvolutionDirection,
-  EvolutionKind,
-  Habitat,
-  PokemonType,
-  Rank,
-} from "@/api/schemas";
-import { Combobox } from "@/components/Combobox";
-import { MultiSelect } from "@/components/MultiSelect";
-import { RankSelect } from "@/components/RankSelect";
-import { Text } from "@/components/Text";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
-import { formatEnumName } from "@/lib/utils";
-import { GenderTypeSelect } from "@/pages/Campaigns/templates/GenderTypeSelect";
+import { EvolutionDirection, EvolutionKind, type Habitat, PokemonType, Rank } from "@/api/schemas";
+import { HabitatPicker } from "@/components/HabitatPicker";
+import { button } from "@/components/kit/button";
+import { Chip, Stepper, Switch } from "@/components/kit/Controls";
+import { Group, Row } from "@/components/kit/List";
+import { Picker, type PickerItem } from "@/components/kit/Picker";
+import { TypeDot, typeColor, typeText } from "@/components/kit/Pills";
+import { Sprite } from "@/components/kit/Sprite";
+import { cn, formatEnumName } from "@/lib/utils";
+import { Field, field, textArea } from "@/pages/Campaigns/common";
+import { CraftFields } from "@/pages/Campaigns/CraftFields";
 
 export interface FormMove {
   moveId: string;
   rank: Rank;
 }
 
-/** An evolution row as edited: its comboboxes yield "" when re-picked and speed is free text. */
+/** An evolution row as edited: direction and kind may be unset, and speed is free text. */
 export type FormEvolution = T.EvolutionBody;
 
 /** Optional ids and texts are "" while unset. */
@@ -55,6 +50,7 @@ export interface TemplateFormData {
   moves: FormMove[];
   evolutions: FormEvolution[];
   description: string;
+  craft: T.CraftSettings | null;
 }
 
 export const emptyTemplateForm = (): TemplateFormData => ({
@@ -81,598 +77,419 @@ export const emptyTemplateForm = (): TemplateFormData => ({
   moves: [],
   evolutions: [],
   description: "",
+  craft: null,
 });
 
-/** The first missing required field, as a toast description; undefined when the form can be submitted. */
+/** The first missing required field; undefined when the form can be submitted. */
 export const validationError = (form: TemplateFormData) => {
-  if (form.name.trim() === "") return "Name is required.";
-  if (form.types.length === 0) return "At least one type is required.";
-  if (form.abilityOneId === "") return "Ability 1 is required.";
+  if (form.name.trim() === "") return "Add a name to save.";
+  if (form.types.length === 0) return "Pick at least one type to save.";
+  if (form.abilityOneId === "") return "Pick a first ability to save.";
   return undefined;
 };
 
-const typeOptions = Object.values(PokemonType).map((type) => ({
-  label: formatEnumName(type),
-  value: type,
-}));
-const habitatOptions = Object.values(Habitat)
-  .map((habitat) => ({ label: habitatName(habitat), value: habitat }))
-  .sort((a, b) => a.label.localeCompare(b.label));
-const evolutionDirectionOptions = Object.values(EvolutionDirection).map((direction) => ({
-  label: formatEnumName(direction),
-  value: direction,
-}));
-const evolutionKindOptions = Object.values(EvolutionKind).map((kind) => ({
-  label: formatEnumName(kind),
-  value: kind,
-}));
+export interface TemplateFormOptions {
+  abilities: PickerItem[];
+  moves: PickerItem[];
+  templates: PickerItem[];
+  loading: boolean;
+}
+
+const GENDERS: { value: T.GenderType; label: string }[] = [
+  { value: "", label: "Male or female" },
+  { value: "M", label: "Male only" },
+  { value: "F", label: "Female only" },
+  { value: "N", label: "Genderless" },
+];
+const SPEEDS = ["Slow", "Medium", "Fast", "Unknown"];
+const RANKS = Object.values(Rank);
+
+const Section = ({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) => (
+  <section className="flex flex-col gap-3">
+    <div className="flex min-h-8 items-end justify-between gap-2">
+      <h3 className="text-footnote font-semibold uppercase tracking-wide text-label-2">{title}</h3>
+      {action}
+    </div>
+    {children}
+  </section>
+);
+
+const number = (value: string, fallback: number, parse: (value: string) => number = Number.parseFloat) => {
+  const parsed = parse(value);
+  return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const RemoveButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
+  <button type="button" aria-label={label} onClick={onClick} className={cn(button({ variant: "gray", size: "icon" }), "shrink-0 text-[#d92d20]")}>
+    <Trash2 aria-hidden className="size-4" />
+  </button>
+);
 
 export const PokemonTemplateForm = ({
-  formData,
+  form,
   onChange,
-  abilities,
-  moves,
-  pokemonTemplates,
-  isLoadingData,
+  options,
 }: {
-  formData: TemplateFormData;
-  onChange: (formData: TemplateFormData) => void;
-  abilities: T.Ability[];
-  moves: T.Move[];
-  pokemonTemplates: T.PokemonTemplate[];
-  isLoadingData: boolean;
+  form: TemplateFormData;
+  onChange: (form: TemplateFormData) => void;
+  options: TemplateFormOptions;
 }) => {
-  const update = <K extends keyof TemplateFormData>(key: K, value: TemplateFormData[K]) => {
-    onChange({ ...formData, [key]: value });
+  const update = <K extends keyof TemplateFormData>(key: K, value: TemplateFormData[K]) => onChange({ ...form, [key]: value });
+  const toggleType = (type: PokemonType) => {
+    if (form.types.includes(type)) update("types", form.types.filter((entry) => entry !== type));
+    // A third pick replaces the oldest, so there are never more than two.
+    else update("types", [...form.types, type].slice(-2));
   };
-  const updateBaseStat = (attribute: T.Attribute, value: number) => {
-    onChange({ ...formData, baseStats: { ...formData.baseStats, [attribute]: value } });
-  };
-  const updateMaxStat = (attribute: T.Attribute, value: number) => {
-    onChange({ ...formData, maxStats: { ...formData.maxStats, [attribute]: value } });
-  };
-  const addMove = () => {
-    onChange({ ...formData, moves: [...formData.moves, { moveId: "", rank: Rank.STARTER }] });
-  };
-  const removeMove = (index: number) => {
-    const nextMoves = [...formData.moves];
-    nextMoves.splice(index, 1);
-    onChange({ ...formData, moves: nextMoves });
-  };
-  const updateMove = <K extends keyof FormMove>(index: number, key: K, value: FormMove[K]) => {
-    const nextMoves = [...formData.moves];
-    nextMoves[index] = { ...nextMoves[index], [key]: value };
-    onChange({ ...formData, moves: nextMoves });
-  };
-  const addEvolution = () => {
-    onChange({
-      ...formData,
-      evolutions: [
-        ...formData.evolutions,
-        {
-          type: EvolutionDirection.FROM,
-          kind: EvolutionKind.LEVEL,
-          targetId: "",
-          speed: "Medium",
-        },
-      ],
-    });
-  };
-  const removeEvolution = (index: number) => {
-    const nextEvolutions = [...formData.evolutions];
-    nextEvolutions.splice(index, 1);
-    onChange({ ...formData, evolutions: nextEvolutions });
-  };
-  const updateEvolution = <K extends keyof FormEvolution>(
-    index: number,
-    key: K,
-    value: FormEvolution[K],
-  ) => {
-    const nextEvolutions = [...formData.evolutions];
-    nextEvolutions[index] = { ...nextEvolutions[index], [key]: value };
-    onChange({ ...formData, evolutions: nextEvolutions });
-  };
-
-  const abilityOptions = abilities.map((ability) => ({
-    label: ability.name,
-    value: ability.id,
-  }));
-  const moveOptions = moves.map((move) => ({
-    label: `${move.name} (${formatEnumName(move.type)})`,
-    value: move.id,
-  }));
-  const templateOptions = pokemonTemplates.map((template) => ({
-    label: template.name,
-    value: template.id,
-  }));
-
-  if (isLoadingData)
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Text>Loading form data...</Text>
-      </div>
+  const setStat = (key: "baseStats" | "maxStats", attribute: T.Attribute, value: number) =>
+    onChange({ ...form, [key]: { ...form[key], [attribute]: value } });
+  const setMove = (index: number, changes: Partial<FormMove>) =>
+    update(
+      "moves",
+      form.moves.map((move, moveIndex) => (moveIndex === index ? { ...move, ...changes } : move)),
     );
+  const setEvolution = (index: number, changes: Partial<FormEvolution>) =>
+    update(
+      "evolutions",
+      form.evolutions.map((evolution, evolutionIndex) => (evolutionIndex === index ? { ...evolution, ...changes } : evolution)),
+    );
+  const abilityPicker = (key: "abilityOneId" | "abilityTwoId" | "hiddenAbilityId" | "eventAbilityId", label: string, required = false) => (
+    <Field as="div" label={label} required={required}>
+      <Picker label={label} items={options.abilities} loading={options.loading} value={form[key]} onChange={(id) => update(key, id)} />
+    </Field>
+  );
+  const macros = habitatMacros(form.habitats);
+
   return (
-    <ScrollArea className="max-h-[70vh] pr-4">
-      <div className="flex flex-col gap-6 p-1">
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Basic Identity
-          </Text>
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-            <div className="col-span-1 md:col-span-3">
-              <Text font="font-move" className="text-sm font-medium">
-                Name *
-              </Text>
-              <Input
-                placeholder="Pokemon name"
-                value={formData.name}
-                onChange={(event) => {
-                  update("name", event.target.value);
-                }}
-              />
-            </div>
-            <div className="col-span-1 md:col-span-2">
-              <Text font="font-move" className="text-sm font-medium">
-                Dex ID
-              </Text>
-              <Input
-                placeholder="0001"
-                value={formData.dexID}
-                onChange={(event) => {
-                  update("dexID", event.target.value);
-                }}
-              />
-            </div>
-            <div className="col-span-1 md:col-span-1">
-              <Text font="font-move" className="text-sm font-medium">
-                #
-              </Text>
-              <Input
-                type="number"
-                placeholder="1"
-                value={formData.number}
-                onChange={(event) => {
-                  const value = parseInt(event.target.value, 10);
-                  update("number", Number.isNaN(value) ? 0 : value);
-                }}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Types *
-              </Text>
-              <MultiSelect
-                options={typeOptions}
-                selected={formData.types}
-                onChange={(types) => {
-                  update("types", types);
-                }}
-                placeholder="Select types..."
-                maxSelected={2}
-                exceedMessage="You can select at most 2 types."
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Recommended Rank *
-              </Text>
-              <RankSelect
-                rank={formData.recommendedRank}
-                onSelect={(rank) => {
-                  if (rank !== undefined) update("recommendedRank", rank);
-                }}
-                comboBoxClassName="w-full"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Dex Category
-              </Text>
-              <Input
-                placeholder="e.g., Seed Pokémon"
-                value={formData.dexCategory}
-                onChange={(event) => {
-                  update("dexCategory", event.target.value);
-                }}
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Image URL
-              </Text>
-              <Input
-                placeholder="pokemon.png"
-                value={formData.image}
-                onChange={(event) => {
-                  update("image", event.target.value);
-                }}
-              />
-            </div>
-          </div>
+    <>
+      <Section title="Identity">
+        <div className="flex items-end gap-3">
+          <Sprite image={form.image} set="book" className="size-20 shrink-0 rounded-2xl bg-fill" />
+          <Field label="Name" required className="flex-1">
+            <input value={form.name} onChange={(event) => update("name", event.target.value)} autoComplete="off" placeholder="Pokémon name" className={field} />
+          </Field>
         </div>
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Characteristics
-          </Text>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="legendary"
-                checked={formData.legendary}
-                onCheckedChange={(checked) => {
-                  update("legendary", checked === true);
-                }}
-              />
-              <Text font="font-move" className="text-sm">
-                Legendary
-              </Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="goodStarter"
-                checked={formData.goodStarter}
-                onCheckedChange={(checked) => {
-                  update("goodStarter", checked === true);
-                }}
-              />
-              <Text font="font-move" className="text-sm">
-                Good Starter
-              </Text>
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Gender Type
-              </Text>
-              <GenderTypeSelect
-                value={formData.genderType}
-                onChange={(genderType) => {
-                  update("genderType", genderType);
-                }}
-                className="ml-2"
-              />
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Number">
+            <input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={form.number}
+              onChange={(event) => update("number", number(event.target.value, 0, (value) => Number.parseInt(value, 10)))}
+              className={field}
+            />
+          </Field>
+          <Field label="Dex ID">
+            <input
+              value={form.dexID}
+              onChange={(event) => update("dexID", event.target.value)}
+              placeholder={form.number.toString().padStart(4, "0")}
+              className={field}
+            />
+          </Field>
         </div>
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Physical Stats
-          </Text>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Base HP *
-              </Text>
-              <Input
-                type="number"
-                min={1}
-                value={formData.baseHp}
-                onChange={(event) => {
-                  const value = parseInt(event.target.value, 10);
-                  update("baseHp", Number.isNaN(value) ? 1 : value);
-                }}
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Height (m)
-              </Text>
-              <Input
-                type="number"
-                step="0.1"
-                min={0}
-                value={formData.height}
-                onChange={(event) => {
-                  const value = parseFloat(event.target.value);
-                  update("height", Number.isNaN(value) ? 0 : value);
-                }}
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Weight (kg)
-              </Text>
-              <Input
-                type="number"
-                step="0.1"
-                min={0}
-                value={formData.weight}
-                onChange={(event) => {
-                  const value = parseFloat(event.target.value);
-                  update("weight", Number.isNaN(value) ? 0 : value);
-                }}
-              />
-            </div>
-          </div>
+        <Field label="Category">
+          <input value={form.dexCategory} onChange={(event) => update("dexCategory", event.target.value)} placeholder="e.g. Seed Pokémon" className={field} />
+        </Field>
+        <Field label="Image file" hint="A sprite file name, e.g. 001.png, or a full image URL.">
+          <input value={form.image} onChange={(event) => update("image", event.target.value)} autoComplete="off" placeholder="Optional" className={field} />
+        </Field>
+      </Section>
+
+      <Section title="Type & rank">
+        <div role="group" aria-label="Types, pick up to two" className="flex flex-wrap gap-2">
+          {Object.values(PokemonType).map((type) => {
+            const pressed = form.types.includes(type);
+            return (
+              <Chip
+                key={type}
+                pressed={pressed}
+                onClick={() => toggleType(type)}
+                style={pressed ? { backgroundColor: typeColor(type) } : undefined}
+                className={pressed ? typeText(type) : undefined}
+              >
+                <TypeDot type={type} className="-ml-1.5 size-5 lg:-ml-1 lg:size-4.5" />
+                {formatEnumName(type)}
+              </Chip>
+            );
+          })}
         </div>
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Attributes
-          </Text>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <Text font="font-move" className="text-md">
-              Stat
-            </Text>
-            <Text font="font-move" className="font-medium text-md text-center">
-              Base
-            </Text>
-            <Text font="font-move" className="font-medium text-md text-center">
-              Max
-            </Text>
-            {ATTRIBUTES.map((attribute) => (
-              // Unkeyed fragment (dev-only missing-key warning).
-              <>
-                <Text
-                  key={`${attribute}-label`}
-                  font="font-move"
-                  className="text-sm flex items-center capitalize"
-                >
-                  {attribute}
-                </Text>
-                <Input
-                  key={`${attribute}-base`}
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={formData.baseStats[attribute]}
-                  onChange={(event) => {
-                    const value = parseInt(event.target.value, 10);
-                    updateBaseStat(attribute, Number.isNaN(value) ? 0 : value);
-                  }}
-                  className="text-center"
-                />
-                <Input
-                  key={`${attribute}-max`}
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={formData.maxStats[attribute]}
-                  onChange={(event) => {
-                    const value = parseInt(event.target.value, 10);
-                    updateMaxStat(attribute, Number.isNaN(value) ? 0 : value);
-                  }}
-                  className="text-center"
-                />
-              </>
+        <p className="text-footnote text-label-2">Pick one or two types.</p>
+        <Field label="Recommended rank">
+          <select value={form.recommendedRank} onChange={(event) => update("recommendedRank", event.target.value as Rank)} className={field}>
+            {RANKS.map((rank) => (
+              <option key={rank} value={rank}>
+                {formatEnumName(rank)}
+              </option>
             ))}
-          </div>
-        </div>
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Abilities
-          </Text>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Ability 1 *
-              </Text>
-              <Combobox
-                items={abilityOptions}
-                value={formData.abilityOneId}
-                onChange={(id) => {
-                  update("abilityOneId", id);
-                }}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Ability 2
-              </Text>
-              <Combobox
-                items={abilityOptions}
-                value={formData.abilityTwoId}
-                onChange={(id) => {
-                  update("abilityTwoId", id);
-                }}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Hidden Ability
-              </Text>
-              <Combobox
-                items={abilityOptions}
-                value={formData.hiddenAbilityId}
-                onChange={(id) => {
-                  update("hiddenAbilityId", id);
-                }}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <Text font="font-move" className="text-sm font-medium">
-                Event Ability
-              </Text>
-              <Combobox
-                items={abilityOptions}
-                value={formData.eventAbilityId}
-                onChange={(id) => {
-                  update("eventAbilityId", id);
-                }}
-                className="w-full"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Habitats
-          </Text>
-          <MultiSelect
-            options={habitatOptions}
-            selected={formData.habitats}
-            onChange={(habitats) => {
-              update("habitats", habitats);
-            }}
-            placeholder="Select habitats..."
+          </select>
+        </Field>
+      </Section>
+
+      <Section title="Profile">
+        <Group>
+          <Row title="Legendary" value={<Switch aria-label="Legendary" checked={form.legendary} onChange={(legendary) => update("legendary", legendary)} />} />
+          <Row
+            title="Good starter"
+            value={<Switch aria-label="Good starter" checked={form.goodStarter} onChange={(goodStarter) => update("goodStarter", goodStarter)} />}
           />
-          <p className="text-sm text-muted-foreground">
-            Macro habitats: {habitatMacros(formData.habitats).map(macro => HABITAT_MACROS[macro].name).join(", ") || "None"}
-          </p>
+          <Row title="Base HP" value={<Stepper label="Base HP" value={form.baseHp} onChange={(baseHp) => update("baseHp", baseHp)} min={1} max={20} />} />
+        </Group>
+        <Field label="Gender">
+          <select value={form.genderType} onChange={(event) => update("genderType", event.target.value as T.GenderType)} className={field}>
+            {GENDERS.map((gender) => (
+              <option key={gender.value} value={gender.value}>
+                {gender.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Height (m)">
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              inputMode="decimal"
+              value={form.height}
+              onChange={(event) => update("height", number(event.target.value, 0))}
+              className={field}
+            />
+          </Field>
+          <Field label="Weight (kg)">
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              inputMode="decimal"
+              value={form.weight}
+              onChange={(event) => update("weight", number(event.target.value, 0))}
+              className={field}
+            />
+          </Field>
         </div>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between border-b pb-1">
-            <Text size="text-lg" className="font-bold">
-              Moves
-            </Text>
-            <div>
-              <Button type="button" variant="green" size="equalPadding" onClick={addMove}>
-                <FaPlus size={16} />
-              </Button>
-            </div>
-          </div>
-          {formData.moves.length === 0 ? (
-            <Text color="text-pokerole-black-light" size="text-sm" className="text-center py-2">
-              No moves added. Click + to add learnable moves.
-            </Text>
-          ) : (
-            <div className="space-y-2">
-              {formData.moves.map((move, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                  <div className="col-span-1 md:col-span-6">
-                    <Combobox
-                      items={moveOptions}
-                      value={move.moveId}
-                      onChange={(id) => {
-                        updateMove(index, "moveId", id);
-                      }}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-5">
-                    <RankSelect
-                      rank={move.rank}
-                      onSelect={(rank) => {
-                        if (rank !== undefined) updateMove(index, "rank", rank);
-                      }}
-                      comboBoxClassName="w-full"
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-1 justify-center flex">
-                    <Button
-                      type="button"
-                      variant="red"
-                      size="equalPadding"
-                      onClick={() => {
-                        removeMove(index);
-                      }}
-                    >
-                      <FaTrash size={16} />
-                    </Button>
-                  </div>
+      </Section>
+
+      <Section title="Attributes">
+        <div className="rounded-xl bg-surface px-3 py-2 shadow-card">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1">
+            <span />
+            <span className="text-center text-footnote font-medium text-label-2">Base</span>
+            <span className="text-center text-footnote font-medium text-label-2">Max</span>
+            {ATTRIBUTES.map((attribute) => {
+              const name = formatEnumName(attribute);
+              return (
+                <div key={attribute} className="contents">
+                  <span className="truncate text-body">{name}</span>
+                  <Stepper
+                    label={`base ${name}`}
+                    value={form.baseStats[attribute]}
+                    onChange={(value) => setStat("baseStats", attribute, value)}
+                    min={0}
+                    max={10}
+                  />
+                  <Stepper
+                    label={`max ${name}`}
+                    value={form.maxStats[attribute]}
+                    onChange={(value) => setStat("maxStats", attribute, value)}
+                    min={0}
+                    max={10}
+                  />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between border-b pb-1">
-            <Text size="text-lg" className="font-bold">
-              Evolutions
-            </Text>
-            <div>
-              <Button type="button" variant="green" size="equalPadding" onClick={addEvolution}>
-                <FaPlus size={16} />
-              </Button>
-            </div>
+              );
+            })}
           </div>
-          {formData.evolutions.length === 0 ? (
-            <Text color="text-pokerole-black-light" size="text-sm" className="text-center py-2">
-              No evolutions added. Click + to add evolution paths.
-            </Text>
-          ) : (
-            <div className="space-y-2">
-              {formData.evolutions.map((evolution, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                  <div className="col-span-1 md:col-span-3">
-                    <Combobox
-                      // The current target is appended as an extra item.
-                      items={[
-                        ...templateOptions,
-                        { label: evolution.targetId, value: evolution.targetId },
-                      ]}
-                      value={evolution.targetId}
-                      onChange={(id) => {
-                        updateEvolution(index, "targetId", id);
-                      }}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-2">
-                    <Combobox
-                      items={evolutionDirectionOptions}
+        </div>
+      </Section>
+
+      <Section title="Abilities">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {abilityPicker("abilityOneId", "Ability 1", true)}
+          {abilityPicker("abilityTwoId", "Ability 2")}
+          {abilityPicker("hiddenAbilityId", "Hidden ability")}
+          {abilityPicker("eventAbilityId", "Event ability")}
+        </div>
+      </Section>
+
+      <Section title="Habitats">
+        <HabitatPicker
+          selected={form.habitats}
+          onChange={(habitats) => update("habitats", habitats as Habitat[])}
+          collapsible
+          specificOnly
+          description="Where this Pokémon lives. A macro chip picks all of its habitats."
+        />
+        {macros.length > 0 && (
+          <p className="text-footnote text-label-2">Found in: {macros.map((macro) => HABITAT_MACROS[macro].name).join(", ")}</p>
+        )}
+      </Section>
+
+      <Section
+        title={`Moves${form.moves.length ? ` · ${form.moves.length}` : ""}`}
+        action={
+          <button
+            type="button"
+            className={button({ variant: "plain", size: "sm" })}
+            onClick={() => update("moves", [...form.moves, { moveId: "", rank: Rank.STARTER }])}
+          >
+            <Plus aria-hidden className="size-4" />
+            Add move
+          </button>
+        }
+      >
+        {form.moves.length === 0 ? (
+          <p className="rounded-xl bg-surface p-4 text-center text-subhead text-label-2 shadow-card">No learnable moves yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {form.moves.map((move, index) => (
+              // Rows have no stable id until saved; the index keeps each row's pickers in place.
+              <li key={index} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-xl bg-surface p-2 shadow-card sm:grid-cols-[minmax(0,1fr)_9rem_auto]">
+                <Picker
+                  label={`Move ${index + 1}`}
+                  items={options.moves}
+                  loading={options.loading}
+                  value={move.moveId}
+                  onChange={(moveId) => setMove(index, { moveId })}
+                  placeholder="Choose a move"
+                  clearable={false}
+                  className="col-span-2 sm:col-span-1"
+                />
+                <select
+                  aria-label={`Rank for move ${index + 1}`}
+                  value={move.rank}
+                  onChange={(event) => setMove(index, { rank: event.target.value as Rank })}
+                  className={field}
+                >
+                  {RANKS.map((rank) => (
+                    <option key={rank} value={rank}>
+                      {formatEnumName(rank)}
+                    </option>
+                  ))}
+                </select>
+                <RemoveButton
+                  label={`Remove move ${index + 1}`}
+                  onClick={() => update("moves", form.moves.filter((_, moveIndex) => moveIndex !== index))}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <Section
+        title="Evolutions"
+        action={
+          <button
+            type="button"
+            className={button({ variant: "plain", size: "sm" })}
+            onClick={() =>
+              update("evolutions", [...form.evolutions, { type: EvolutionDirection.FROM, kind: EvolutionKind.LEVEL, targetId: "", speed: "Medium" }])
+            }
+          >
+            <Plus aria-hidden className="size-4" />
+            Add evolution
+          </button>
+        }
+      >
+        {form.evolutions.length === 0 ? (
+          <p className="rounded-xl bg-surface p-4 text-center text-subhead text-label-2 shadow-card">No evolutions yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {form.evolutions.map((evolution, index) => {
+              // Keep an unknown target (e.g. from a hidden campaign) selectable by its id.
+              const targets = options.templates.some((template) => template.value === evolution.targetId) || !evolution.targetId
+                ? options.templates
+                : [...options.templates, { value: evolution.targetId, label: evolution.targetId }];
+              return (
+                <li key={index} className="flex flex-col gap-2 rounded-xl bg-surface p-3 shadow-card">
+                  <div className="flex gap-2">
+                    <select
+                      aria-label={`Direction of evolution ${index + 1}`}
                       value={evolution.type}
-                      onChange={(direction) => {
-                        updateEvolution(index, "type", direction as EvolutionDirection | "");
-                      }}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-2">
-                    <Combobox
-                      items={evolutionKindOptions}
-                      value={evolution.kind}
-                      onChange={(kind) => {
-                        updateEvolution(index, "kind", kind as EvolutionKind | "");
-                      }}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-2">
-                    <Input
-                      placeholder="Speed"
-                      value={evolution.speed ?? ""}
-                      onChange={(event) => {
-                        updateEvolution(index, "speed", event.target.value);
-                      }}
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-2">
-                    <Input
-                      placeholder="Item"
-                      value={evolution.item ?? ""}
-                      onChange={(event) => {
-                        updateEvolution(index, "item", event.target.value);
-                      }}
-                    />
-                  </div>
-                  <div className="col-span-1 md:col-span-1 justify-center flex">
-                    <Button
-                      type="button"
-                      variant="red"
-                      size="equalPadding"
-                      onClick={() => {
-                        removeEvolution(index);
-                      }}
+                      onChange={(event) => setEvolution(index, { type: event.target.value as FormEvolution["type"] })}
+                      className={cn(field, "w-auto shrink-0")}
                     >
-                      <FaTrash size={16} />
-                    </Button>
+                      <option value="">—</option>
+                      <option value={EvolutionDirection.FROM}>Evolves from</option>
+                      <option value={EvolutionDirection.TO}>Evolves to</option>
+                    </select>
+                    <Picker
+                      label={`Pokémon of evolution ${index + 1}`}
+                      items={targets}
+                      loading={options.loading}
+                      value={evolution.targetId}
+                      onChange={(targetId) => setEvolution(index, { targetId })}
+                      placeholder="Choose a Pokémon"
+                      clearable={false}
+                      className="min-w-0 flex-1"
+                    />
+                    <RemoveButton
+                      label={`Remove evolution ${index + 1}`}
+                      onClick={() => update("evolutions", form.evolutions.filter((_, evolutionIndex) => evolutionIndex !== index))}
+                    />
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="space-y-3">
-          <Text size="text-lg" className="font-bold border-b pb-1">
-            Description
-          </Text>
-          <Textarea
-            placeholder="Enter the Pokédex description..."
-            value={formData.description}
-            onChange={(event) => {
-              update("description", event.target.value);
-            }}
-            rows={4}
-          />
-        </div>
-      </div>
-    </ScrollArea>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <select
+                      aria-label={`Method of evolution ${index + 1}`}
+                      value={evolution.kind}
+                      onChange={(event) => setEvolution(index, { kind: event.target.value as FormEvolution["kind"] })}
+                      className={field}
+                    >
+                      <option value="">Method</option>
+                      {Object.values(EvolutionKind).map((kind) => (
+                        <option key={kind} value={kind}>
+                          {formatEnumName(kind)}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={`Speed of evolution ${index + 1}`}
+                      value={evolution.speed ?? ""}
+                      onChange={(event) => setEvolution(index, { speed: event.target.value })}
+                      className={field}
+                    >
+                      <option value="">Speed</option>
+                      {/* Older entries may hold a speed outside the usual four. */}
+                      {[...SPEEDS, ...(evolution.speed && !SPEEDS.includes(evolution.speed) ? [evolution.speed] : [])].map((speed) => (
+                        <option key={speed} value={speed}>
+                          {speed}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label={`Item for evolution ${index + 1}`}
+                      value={evolution.item ?? ""}
+                      onChange={(event) => setEvolution(index, { item: event.target.value })}
+                      placeholder="Item (optional)"
+                      className={cn(field, "col-span-2 sm:col-span-1")}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Section>
+
+      <Section title="Pokédex entry">
+        <textarea
+          aria-label="Pokédex entry"
+          value={form.description}
+          onChange={(event) => update("description", event.target.value)}
+          rows={4}
+          placeholder="Optional"
+          className={textArea}
+        />
+      </Section>
+
+      <Section title="City crafting">
+        <CraftFields
+          kind="pokemon"
+          base={defaultCraft("pokemon", { id: "", name: form.name, types: form.types as T.PokemonType[], recommendedRank: form.recommendedRank, legendary: form.legendary })}
+          value={form.craft}
+          onChange={(craft) => update("craft", craft)}
+        />
+      </Section>
+    </>
   );
 };

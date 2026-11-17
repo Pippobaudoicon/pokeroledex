@@ -1,630 +1,305 @@
-import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { Plus, Swords } from "lucide-react";
 import * as React from "react";
-import { FaPenToSquare, FaPlus, FaTrash } from "react-icons/fa6";
 import { v4 } from "uuid";
 import type * as T from "../../../shared/types";
-import {
-  fetchMovesControllerFindAllByCampaign,
-  useMovesControllerCreate,
-  useMovesControllerRemove,
-  useMovesControllerUpdate,
-} from "@/api/components";
-import { useApiContext } from "@/api/context";
+import { defaultCraft } from "../../../shared/crafting";
+import { useMovesControllerCreate, useMovesControllerRemove, useMovesControllerUpdate } from "@/api/components";
 import { MoveCategory, MoveTarget, PokemonType } from "@/api/schemas";
-import { Combobox } from "@/components/Combobox";
-import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MoveCategoryBadge } from "@/components/MoveCategory";
-import { Text } from "@/components/Text";
-import { TypeBadge } from "@/components/TypeBadge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
+import { button } from "@/components/kit/button";
+import { Group, Row } from "@/components/kit/List";
+import { CategoryIcon, categoryName } from "@/components/kit/MoveRow";
+import { TypeDot } from "@/components/kit/Pills";
 import { useToast } from "@/hooks/use-toast";
+import { formatEnumName } from "@/lib/utils";
+import {
+  byName,
+  ConfirmDelete,
+  EditorSheet,
+  EmptyEntries,
+  EntriesState,
+  errorText,
+  Field,
+  field,
+  invalidateEntries,
+  matches,
+  SearchField,
+  textArea,
+  useCampaignEntries,
+} from "@/pages/Campaigns/common";
 import { useCampaign } from "@/pages/Campaigns/context";
+import { CraftFields } from "@/pages/Campaigns/CraftFields";
 
-interface MoveFormData {
+interface MoveForm {
   name: string;
   type: PokemonType;
   category: MoveCategory;
   target: MoveTarget;
+  damagePower: string;
   damage1: string;
   damage2: string;
-  damagePower: string;
   accuracy1: string;
   accuracy2: string;
-  effect: string;
   description: string;
+  effect: string;
+  craft: T.CraftSettings | null;
 }
 
-const emptyMove = (): MoveFormData => ({
-  name: "",
-  type: PokemonType.NORMAL,
-  category: MoveCategory.PHYSICAL,
-  target: MoveTarget.FOE,
-  damage1: "",
-  damage2: "",
-  damagePower: "0",
-  accuracy1: "",
-  accuracy2: "",
-  effect: "",
-  description: "",
+const toForm = (move?: T.Move): MoveForm => ({
+  name: move?.name ?? "",
+  type: (move?.type as PokemonType | undefined) ?? PokemonType.NORMAL,
+  category: move?.category ?? MoveCategory.PHYSICAL,
+  target: move?.target ?? MoveTarget.FOE,
+  damagePower: move?.damagePower?.toString() ?? "0",
+  damage1: move?.damage1 ?? "",
+  damage2: move?.damage2 ?? "",
+  accuracy1: move?.accuracy1 ?? "",
+  accuracy2: move?.accuracy2 ?? "",
+  description: move?.description ?? "",
+  effect: move?.effect ?? "",
+  craft: move?.craft ?? null,
 });
 
-/** The first required field that is blank, if any. */
-const missingField = (form: MoveFormData) => {
-  if (form.name.trim() === "") return "Name";
-  if (form.description.trim() === "") return "Description";
-  if (form.effect.trim() === "") return "Effect";
-  return undefined;
-};
+const isComplete = (form: MoveForm) => [form.name, form.description, form.effect].every((value) => value.trim() !== "");
 
-const invalidateMoves = (queryClient: QueryClient) =>
-  queryClient.invalidateQueries({
-    predicate: (query) => {
-      const key = query.queryKey[0];
-      return typeof key === "string" && key.includes("moves");
-    },
-  });
+const refresh = (queryClient: ReturnType<typeof useQueryClient>) => invalidateEntries(queryClient, "moves", "move-index", "learners", "dex");
 
-const typeItems = Object.values(PokemonType).map((type) => ({
-  label: type,
-  value: type.toLowerCase(),
-}));
-const categoryItems = Object.values(MoveCategory).map((category) => ({
-  label: category,
-  value: category.toLowerCase(),
-}));
-const targetItems = Object.values(MoveTarget).map((target) => ({
-  label: target.replace(/_/g, " "),
-  value: target.toLowerCase(),
-}));
+/** "Strength + Brawl", leaving out blanks. */
+const pool = (...parts: string[]) => parts.filter((part) => part.trim() !== "").join(" + ");
 
-const MoveForm = ({
-  formData,
-  onChange,
-}: {
-  formData: MoveFormData;
-  onChange: (formData: MoveFormData) => void;
-}) => {
-  const setField = <K extends keyof MoveFormData>(
-    key: K,
-    value: MoveFormData[K],
-  ) => {
-    onChange({ ...formData, [key]: value });
-  };
-  // The Combobox reports "" when the current value is picked again; that "" is stored as-is.
-  return (
-    <ScrollArea className="max-h-[70vh] pr-4">
-      <div className="flex flex-col gap-4 p-1">
-        <div className="space-y-2">
-          <Text font="font-move" className="text-sm font-medium">
-            Name *
-          </Text>
-          <Input
-            placeholder="Enter move name"
-            value={formData.name}
-            onChange={(event) => {
-              setField("name", event.target.value);
-            }}
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
-              Type *
-            </Text>
-            <Combobox
-              items={typeItems}
-              value={formData.type.toLowerCase()}
-              onChange={(value) => {
-                setField("type", value.toUpperCase() as PokemonType);
-              }}
-              placeholder="Select type"
-            />
-          </div>
-          <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
-              Category *
-            </Text>
-            <Combobox
-              items={categoryItems}
-              value={formData.category.toLowerCase()}
-              onChange={(value) => {
-                setField("category", value.toUpperCase() as MoveCategory);
-              }}
-              placeholder="Select category"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Text font="font-move" className="text-sm font-medium">
-            Target *
-          </Text>
-          <Combobox
-            items={targetItems}
-            value={formData.target.toLowerCase()}
-            onChange={(value) => {
-              setField("target", value.toUpperCase() as MoveTarget);
-            }}
-            placeholder="Select target"
-          />
-        </div>
-        <div className="space-y-2">
-          <Text font="font-move" className="text-sm font-medium">
-            Power
-          </Text>
-          <Input
-            placeholder="0"
-            value={formData.damagePower}
-            onChange={(event) => {
-              setField("damagePower", event.target.value);
-            }}
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
-              Damage 1
-            </Text>
-            <Input
-              placeholder="e.g., Strength"
-              value={formData.damage1}
-              onChange={(event) => {
-                setField("damage1", event.target.value);
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
-              Damage 2
-            </Text>
-            <Input
-              placeholder="E.g., Brawl"
-              value={formData.damage2}
-              onChange={(event) => {
-                setField("damage2", event.target.value);
-              }}
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
-              Accuracy 1
-            </Text>
-            <Input
-              placeholder="e.g., Dexterity"
-              value={formData.accuracy1}
-              onChange={(event) => {
-                setField("accuracy1", event.target.value);
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Text font="font-move" className="text-sm font-medium">
-              Accuracy 2
-            </Text>
-            <Input
-              placeholder="e.g., Brawl"
-              value={formData.accuracy2}
-              onChange={(event) => {
-                setField("accuracy2", event.target.value);
-              }}
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Text font="font-move" className="text-sm font-medium">
-            Description *
-          </Text>
-          <Textarea
-            placeholder="Enter move description"
-            value={formData.description}
-            onChange={(event) => {
-              setField("description", event.target.value);
-            }}
-            rows={3}
-          />
-        </div>
-        <div className="space-y-2">
-          <Text font="font-move" className="text-sm font-medium">
-            Effect *
-          </Text>
-          <Textarea
-            placeholder="Enter move effect"
-            value={formData.effect}
-            onChange={(event) => {
-              setField("effect", event.target.value);
-            }}
-            rows={4}
-          />
-        </div>
-      </div>
-    </ScrollArea>
-  );
-};
-
-const CreateMoveDialog = ({ trigger }: { trigger: React.ReactNode }) => {
-  const [open, setOpen] = React.useState(false);
-  const [formData, setFormData] = React.useState(emptyMove());
-  const { campaign } = useCampaign();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { mutate: createMove, isPending } = useMovesControllerCreate({
-    onSuccess: () => {
-      toast({
-        title: "Move Created",
-        description: `${formData.name} has been created successfully.`,
-      });
-      invalidateMoves(queryClient);
-      setOpen(false);
-      setFormData(emptyMove());
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to create Move",
-        // apiFetch errors carry no payload, so this always falls back.
-        description:
-          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
-        variant: "destructive",
-      });
-    },
-  });
-  const isValid = missingField(formData) === undefined;
-
-  const handleCreate = () => {
-    if (campaign === undefined) return;
-    const missing = missingField(formData);
-    if (missing !== undefined) {
-      toast({
-        title: "Validation Error",
-        description: `${missing} is required.`,
-        variant: "destructive",
-      });
-      return;
-    }
-    // Sent with `_id` and capitalised `Category`
-    // (the Worker maps `Category` to `category`). A non-literal body skips
-    // TypeScript's excess-property check for those two keys.
-    const body = {
-      _id: v4(),
-      campaignId: campaign.id,
-      name: formData.name.trim(),
-      type: formData.type,
-      Category: formData.category,
-      target: formData.target as T.MoveTarget,
-      damage1: formData.damage1.trim(),
-      damage2: formData.damage2.trim(),
-      damagePower: formData.damagePower.trim(),
-      accuracy1: formData.accuracy1.trim(),
-      accuracy2: formData.accuracy2.trim(),
-      effect: formData.effect.trim(),
-      description: formData.description.trim(),
-      attributes: {},
-      addedEffects: {},
-    };
-    createMove({ body });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Add Move</DialogTitle>
-          <DialogDescription>
-            Create a new custom move for this campaign.
-          </DialogDescription>
-        </DialogHeader>
-        <MoveForm formData={formData} onChange={setFormData} />
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setOpen(false);
-            }}
-            disabled={isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="green"
-            onClick={handleCreate}
-            disabled={isPending || !isValid}
-          >
-            {isPending ? "Creating..." : "Create"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const EditMoveDialog = ({
-  trigger,
+const MoveEditor = ({
+  campaignId,
   move,
+  open,
+  onOpenChange,
 }: {
-  trigger: React.ReactNode;
-  move: T.Move;
+  campaignId: string;
+  /** Undefined adds a new move. */
+  move?: T.Move;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) => {
-  const [open, setOpen] = React.useState(false);
-  const [formData, setFormData] = React.useState(emptyMove());
-  const { toast } = useToast();
+  const [form, setForm] = React.useState(() => toForm(move));
+  const [confirming, setConfirming] = React.useState(false);
   const queryClient = useQueryClient();
-  const { mutate: updateMove, isPending } = useMovesControllerUpdate({
-    onSuccess: () => {
-      toast({
-        title: "Move Updated",
-        description: `${formData.name} updated successfully.`,
-      });
-      invalidateMoves(queryClient);
-      setOpen(false);
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to update Move",
-        // apiFetch errors carry no payload, so this always falls back.
-        description:
-          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
-        variant: "destructive",
-      });
-    },
-  });
-
+  const { toast } = useToast();
   React.useEffect(() => {
-    if (!open) return;
-    setFormData({
-      name: move.name,
-      type: move.type,
-      category: move.category,
-      target: move.target,
-      damage1: move.damage1,
-      damage2: move.damage2,
-      damagePower: move.damagePower?.toString() ?? "0",
-      accuracy1: move.accuracy1,
-      accuracy2: move.accuracy2,
-      effect: move.effect,
-      description: move.description,
-    });
+    if (open) setForm(toForm(move));
   }, [open, move]);
-
-  const handleUpdate = () => {
-    const missing = missingField(formData);
-    if (missing !== undefined) {
-      toast({
-        title: "Validation Error",
-        description: `${missing} is required.`,
-        variant: "destructive",
-      });
+  const set =
+    (key: keyof MoveForm) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm((current) => ({ ...current, [key]: event.target.value }));
+  const fail = (title: string) => (error: unknown) => toast({ title, description: errorText(error) });
+  const create = useMovesControllerCreate({
+    onSuccess: () => {
+      refresh(queryClient);
+      onOpenChange(false);
+      toast({ title: `${form.name.trim()} added` });
+    },
+    onError: fail("Move couldn’t be added"),
+  });
+  const update = useMovesControllerUpdate({
+    onSuccess: () => {
+      refresh(queryClient);
+      onOpenChange(false);
+      toast({ title: "Move saved" });
+    },
+    onError: fail("Move couldn’t be saved"),
+  });
+  const remove = useMovesControllerRemove({
+    onSuccess: () => {
+      refresh(queryClient);
+      setConfirming(false);
+      onOpenChange(false);
+      toast({ title: `${move?.name} deleted` });
+    },
+    onError: fail("Move couldn’t be deleted"),
+  });
+  const fields = {
+    name: form.name.trim(),
+    type: form.type,
+    target: form.target as T.MoveTarget,
+    damage1: form.damage1.trim(),
+    damage2: form.damage2.trim(),
+    damagePower: form.damagePower.trim(),
+    accuracy1: form.accuracy1.trim(),
+    accuracy2: form.accuracy2.trim(),
+    effect: form.effect.trim(),
+    description: form.description.trim(),
+    craft: form.craft,
+  };
+  const submit = () => {
+    if (move) {
+      update.mutate({ body: { id: move.id, category: form.category, ...fields } });
       return;
     }
-    updateMove({
-      body: {
-        id: move.id,
-        name: formData.name.trim(),
-        type: formData.type,
-        category: formData.category,
-        target: formData.target as T.MoveTarget,
-        damage1: formData.damage1.trim(),
-        damage2: formData.damage2.trim(),
-        damagePower: formData.damagePower.trim(),
-        accuracy1: formData.accuracy1.trim(),
-        accuracy2: formData.accuracy2.trim(),
-        effect: formData.effect.trim(),
-        description: formData.description.trim(),
-      },
-    });
+    // New moves need an `_id` and a capitalised `Category` (the Worker maps it to `category`).
+    // A non-literal body skips TypeScript's excess-property check for those two keys.
+    const body = { _id: v4(), campaignId, Category: form.category, attributes: {}, addedEffects: {}, ...fields };
+    create.mutate({ body });
   };
-  const isValid = missingField(formData) === undefined;
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit Move</DialogTitle>
-          <DialogDescription>Update the move details.</DialogDescription>
-        </DialogHeader>
-        <MoveForm formData={formData} onChange={setFormData} />
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setOpen(false);
-            }}
-            disabled={isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="green"
-            onClick={handleUpdate}
-            disabled={isPending || !isValid}
-          >
-            {isPending ? "Updating..." : "Update"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const DeleteMoveDialog = ({
-  children,
-  move,
-}: {
-  children: React.ReactNode;
-  move: T.Move;
-}) => {
-  const [open, setOpen] = React.useState(false);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { mutate: removeMove, isPending } = useMovesControllerRemove({
-    onSuccess: () => {
-      toast({
-        title: "Move deleted",
-        description: `${move.name} has been deleted.`,
-      });
-      invalidateMoves(queryClient);
-      setOpen(false);
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to delete Move",
-        // apiFetch errors carry no payload, so this always falls back.
-        description:
-          (error as Partial<T.ApiError>)?.payload ?? "An error occurred",
-        variant: "destructive",
-      });
-    },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild={true}>{children}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {"Are you sure you want to delete "}
-            {move.name}?
-          </DialogTitle>
-          <DialogDescription>This action cannot be undone.</DialogDescription>
-        </DialogHeader>
-        <Button
-          variant="red"
-          onClick={() => {
-            removeMove({ pathParams: { id: move.id } });
-          }}
-          disabled={isPending}
-        >
-          {isPending ? "Deleting..." : "Delete"}
-        </Button>
-      </DialogContent>
-    </Dialog>
+    <>
+      <EditorSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={move ? "Edit move" : "New move"}
+        submitLabel={move ? "Save" : "Add move"}
+        canSubmit={isComplete(form)}
+        isPending={create.isPending || update.isPending}
+        onSubmit={submit}
+        onDelete={move ? () => setConfirming(true) : undefined}
+        deleteLabel="Delete move"
+      >
+        <Field label="Name" required>
+          <input value={form.name} onChange={set("name")} autoComplete="off" placeholder="Move name" className={field} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Type">
+            <span className="relative flex items-center">
+              <TypeDot type={form.type} className="pointer-events-none absolute left-2.5 size-5" />
+              <select value={form.type} onChange={set("type")} className={`${field} pl-9`}>
+                {Object.values(PokemonType).map((type) => (
+                  <option key={type} value={type}>
+                    {formatEnumName(type)}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </Field>
+          <Field label="Category">
+            <select value={form.category} onChange={set("category")} className={field}>
+              {Object.values(MoveCategory).map((category) => (
+                <option key={category} value={category}>
+                  {categoryName(category)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Target">
+            <select value={form.target} onChange={set("target")} className={field}>
+              {Object.values(MoveTarget).map((target) => (
+                <option key={target} value={target}>
+                  {formatEnumName(target)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Power">
+            <input value={form.damagePower} onChange={set("damagePower")} inputMode="numeric" placeholder="0" className={field} />
+          </Field>
+        </div>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-subhead font-medium">Damage pool</legend>
+          <div className="grid grid-cols-2 gap-3">
+            <input aria-label="Damage 1" value={form.damage1} onChange={set("damage1")} placeholder="e.g. Strength" className={field} />
+            <input aria-label="Damage 2" value={form.damage2} onChange={set("damage2")} placeholder="e.g. Brawl" className={field} />
+          </div>
+        </fieldset>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-subhead font-medium">Accuracy pool</legend>
+          <div className="grid grid-cols-2 gap-3">
+            <input aria-label="Accuracy 1" value={form.accuracy1} onChange={set("accuracy1")} placeholder="e.g. Dexterity" className={field} />
+            <input aria-label="Accuracy 2" value={form.accuracy2} onChange={set("accuracy2")} placeholder="e.g. Brawl" className={field} />
+          </div>
+        </fieldset>
+        <Field label="Description" required>
+          <textarea value={form.description} onChange={set("description")} rows={3} className={textArea} />
+        </Field>
+        <Field label="Effect" required>
+          <textarea value={form.effect} onChange={set("effect")} rows={4} className={textArea} />
+        </Field>
+        <CraftFields
+          kind="move"
+          base={defaultCraft("move", { id: move?.id ?? "", name: fields.name, type: form.type, category: form.category, damagePower: fields.damagePower })}
+          value={form.craft}
+          onChange={(craft) => setForm((current) => ({ ...current, craft }))}
+        />
+      </EditorSheet>
+      {move && (
+        <ConfirmDelete
+          open={confirming}
+          onOpenChange={setConfirming}
+          name={move.name}
+          confirmLabel="Delete move"
+          isPending={remove.isPending}
+          onConfirm={() => remove.mutate({ pathParams: { id: move.id } })}
+        />
+      )}
+    </>
   );
 };
 
 export const CampaignMoves = () => {
   const { campaign } = useCampaign();
-  const { fetcherOptions } = useApiContext();
   const campaignId = campaign?.id ?? "";
-  const { data: moves, isLoading } = useQuery({
-    queryKey: ["moves", "all", campaignId, { includeCore: false }],
-    queryFn: () =>
-      fetchMovesControllerFindAllByCampaign({
-        ...fetcherOptions,
-        pathParams: { id: campaignId },
-        body: { includeCore: false },
-      }),
-    enabled: !!campaign?.id,
-  });
-
-  if (campaign === undefined) return <div>No campaign selected</div>;
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-8">
-        <LoadingSpinner />
-      </div>
-    );
-
-  const sortedMoves = (moves ?? [])
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const { data, isError, refetch } = useCampaignEntries<T.Move>("moves", campaignId);
+  const [query, setQuery] = React.useState("");
+  const [editing, setEditing] = React.useState<T.Move | undefined>();
+  const [open, setOpen] = React.useState(false);
+  const edit = (move?: T.Move) => {
+    setEditing(move);
+    setOpen(true);
+  };
+  const moves = data && byName(data).filter((move) => matches(query, move.name, move.type, move.effect));
   return (
-    <div className="flex flex-col gap-2 mt-2">
-      <div className="flex flex-row items-center justify-between">
-        <Text size="text-2xl" className="font-bold">
-          Moves
-        </Text>
-        <CreateMoveDialog
-          trigger={
-            <Button variant="green" size="sm">
-              <FaPlus size={20} className="mr-1" />
-              Add Move
-            </Button>
+    <div className="flex flex-col gap-4">
+      {!data || !moves ? (
+        <EntriesState isError={isError} onRetry={() => refetch()} noun="moves" />
+      ) : data.length === 0 ? (
+        <EmptyEntries
+          icon={<Swords />}
+          title="No moves yet"
+          text="Moves you add here show up in the Moves index and can be learned by this campaign’s Pokémon."
+          action={
+            <button type="button" className={button({ variant: "tinted" })} onClick={() => edit()}>
+              <Plus aria-hidden className="size-4" />
+              Add move
+            </button>
           }
         />
-      </div>
-      <div className="rounded-2xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Damage</TableHead>
-              <TableHead>Accuracy</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedMoves.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
-                  <Text color="text-pokerole-black-light">
-                    {'No moves yet. Click "Add Move" to create one.'}
-                  </Text>
-                </TableCell>
-              </TableRow>
-            ) : (
-              sortedMoves.map((move) => (
-                <TableRow key={move.id}>
-                  <TableCell>{move.name}</TableCell>
-                  <TableCell>
-                    <TypeBadge type={move.type} />
-                  </TableCell>
-                  <TableCell>
-                    <MoveCategoryBadge category={move.category} />
-                  </TableCell>
-                  <TableCell>
-                    {move.damage1}
-                    {move.damage2 !== "" ? ` / ${move.damage2}` : ""}
-                  </TableCell>
-                  <TableCell>
-                    {move.accuracy1}
-                    {move.accuracy2 !== "" ? ` / ${move.accuracy2}` : ""}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-row justify-end">
-                      <EditMoveDialog
-                        trigger={
-                          <Button variant="ghost" size="icon">
-                            <FaPenToSquare size={16} />
-                          </Button>
-                        }
-                        move={move}
-                      />
-                      <DeleteMoveDialog move={move}>
-                        <Button variant="ghost" size="icon">
-                          <FaTrash size={16} />
-                        </Button>
-                      </DeleteMoveDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      ) : (
+        <>
+          {data.length > 6 && <SearchField value={query} onChange={setQuery} label="Search moves" />}
+          <Group
+            title={`${moves.length} ${moves.length === 1 ? "move" : "moves"}`}
+            action={
+              <button type="button" className={button({ variant: "plain", size: "sm" })} onClick={() => edit()}>
+                <Plus aria-hidden className="size-4" />
+                Add
+              </button>
+            }
+          >
+            {moves.length === 0 && <Row title={<span className="text-label-2">No moves match “{query}”.</span>} />}
+            {moves.map((move) => {
+              const damage = pool(move.damage1, move.damage2);
+              const accuracy = pool(move.accuracy1, move.accuracy2);
+              return (
+                <Row
+                  key={move.id}
+                  icon={<TypeDot type={move.type} className="size-7 lg:size-6" />}
+                  title={
+                    <span className="flex items-center gap-2">
+                      <span className="truncate">{move.name}</span>
+                      <CategoryIcon category={move.category} className="size-4 shrink-0" />
+                    </span>
+                  }
+                  subtitle={
+                    <span className="line-clamp-1">
+                      {[damage && `Dmg ${damage}`, accuracy && `Acc ${accuracy}`, formatEnumName(move.target)].filter(Boolean).join(" · ")}
+                    </span>
+                  }
+                  value={move.damagePower && move.damagePower !== "0" ? <span className="tabular-nums">{move.damagePower}</span> : undefined}
+                  onClick={() => edit(move)}
+                />
+              );
+            })}
+          </Group>
+        </>
+      )}
+      <MoveEditor campaignId={campaignId} move={editing} open={open} onOpenChange={setOpen} />
     </div>
   );
 };

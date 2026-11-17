@@ -40,7 +40,7 @@ City skills are shown as compact coloured icons. Above each icon is the number o
 
 The skill icon and the ⓘ button in an open skill both explain what it does, how residents increase it, its rank cap and which species can work it. Catalyst explains type coverage and strength instead. Help is available even before you add residents.
 
-City settings below the board edit the name, rank and custom actions, and you save them explicitly. Removing an action or moving a resident out of the city unassigns it.
+The custom actions below the board are edited there and saved explicitly. The city's name and rank are changed on the **Overview**: the pencil next to the name renames it, and the rank picker under it applies straight away (ranks too small for the current residents are unavailable). Removing an action or moving a resident out of the city unassigns it.
 
 City skills are grouped for crafting (see the [crafting plan](crafting-plan.md)):
 
