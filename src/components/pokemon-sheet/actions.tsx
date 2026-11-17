@@ -7,10 +7,12 @@ import { useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
 import { usePokemonControllerCreate, usePokemonControllerRemove, usePokemonControllerSend } from "@/api/components";
 import { Rank } from "@/api/schemas";
+import { FriendTargetSelect, type FriendTarget, targetLabel } from "@/components/FriendTargetSelect";
 import { button } from "@/components/kit/button";
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { EvolutionSheet } from "@/components/pokemon-sheet/EvolutionDialog";
 import { type StatCategory, StatPointsCheckDialog } from "@/components/StatPointsCheck";
+import { useFriends } from "@/hooks/use-friends";
 import { useToast } from "@/hooks/use-toast";
 import { POKEMON_ATTRIBUTES, POKEMON_SKILLS, SOCIALS } from "@/lib/stats";
 import { cn } from "@/lib/utils";
@@ -82,17 +84,19 @@ export const DeleteAlert = ({ pokemon, open, onOpenChange, onDeleted }: { pokemo
   );
 };
 
-/** Asks for the other player's email, then confirms before giving the Pokémon away. */
+/** Picks a friend, or one of their trainers, then confirms before giving the Pokémon away. */
 const SendAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: boolean; onOpenChange: (open: boolean) => void }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [email, setEmail] = React.useState("");
+  const friends = useFriends({ enabled: open });
+  const [target, setTarget] = React.useState<FriendTarget | null>(null);
   const [confirming, setConfirming] = React.useState(false);
   const name = pokemon.nickname || pokemon.pokemonTemplate.name;
+  const destination = target ? targetLabel(friends.data?.friends ?? [], target) : "";
   const { mutate, isPending, error, reset } = usePokemonControllerSend({
     onSuccess: () => {
-      toast({ title: `${name} was sent to ${email.trim()}` });
+      toast({ title: `${name} was sent to ${destination}` });
       onOpenChange(false);
       navigate("/myPokemon");
       queryClient.invalidateQueries({ queryKey: ["pokemon"] });
@@ -111,7 +115,7 @@ const SendAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: 
       onOpenChange={(open) => {
         onOpenChange(open);
         if (!open) {
-          setEmail("");
+          setTarget(null);
           back();
         }
       }}
@@ -122,27 +126,26 @@ const SendAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: 
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (confirming) mutate({ pathParams: { id: pokemon.id }, body: { email: email.trim() } });
+              if (!target) return;
+              if (confirming) mutate({ pathParams: { id: pokemon.id }, body: target });
               else setConfirming(true);
             }}
           >
             <div className="px-5 pt-5 pb-4">
-              <DialogPrimitive.Title className="text-headline font-semibold break-words">{confirming ? `Send ${name} to ${email.trim()}?` : `Send ${name}`}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="text-headline font-semibold break-words">{confirming ? `Send ${name} to ${destination}?` : `Send ${name}`}</DialogPrimitive.Title>
               <DialogPrimitive.Description className="mt-1 text-footnote text-label-2">
-                {confirming ? "It leaves your Pokémon and trainers and becomes theirs. Only they can send it back." : "Enter the email the other player logs in with."}
+                {confirming ? "It leaves your Pokémon and trainers and becomes your friend's. Only they can send it back." : "Choose a friend, or one of their trainers."}
               </DialogPrimitive.Description>
               {!confirming && (
-                <input
-                  type="email"
-                  required
-                  maxLength={254}
-                  autoFocus
-                  aria-label="Player's email"
-                  placeholder="friend@example.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="mt-3 h-11 w-full min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9"
-                />
+                <div className="mt-3">
+                  {friends.data ? (
+                    <FriendTargetSelect friends={friends.data.friends} value={target} onChange={setTarget} allowAccount />
+                  ) : (
+                    <p role="status" className="text-footnote text-label-2">
+                      {friends.isError ? "Your friends could not be loaded." : "Loading friends..."}
+                    </p>
+                  )}
+                </div>
               )}
               {confirming && message && <p className="mt-2 text-footnote text-[#d92d20]">{message}</p>}
             </div>
@@ -154,7 +157,7 @@ const SendAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: 
               ) : (
                 <DialogPrimitive.Close className="h-11 border-r border-hairline text-body text-tint hover:bg-fill">Cancel</DialogPrimitive.Close>
               )}
-              <button type="submit" disabled={!email.trim() || isPending} className="h-11 text-body font-semibold text-tint hover:bg-fill disabled:opacity-50">
+              <button type="submit" disabled={!target || isPending} className="h-11 text-body font-semibold text-tint hover:bg-fill disabled:opacity-50">
                 {confirming ? "Send" : "Continue"}
               </button>
             </div>
@@ -263,7 +266,7 @@ export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
                   setSending(true);
                 }}
               >
-                Send to another player
+                Send to a friend
               </MenuItem>
             )}
             {!updatedPokemon.cityId && <MenuItem

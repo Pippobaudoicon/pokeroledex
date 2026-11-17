@@ -19,6 +19,7 @@ import { DeleteAlert, MenuItem } from "@/components/pokemon-sheet/actions";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { useToast } from "@/hooks/use-toast";
+import { useFriends } from "@/hooks/use-friends";
 import { useMe } from "@/layout/AppShell";
 import { cn, formatEnumName } from "@/lib/utils";
 import { CityCrafting } from "./Crafting";
@@ -255,10 +256,11 @@ const CityMembers = ({ city }: { city: City }) => {
   const [email, setEmail] = React.useState("");
   const change = useCityChange();
   const me = useMe().data?.email;
+  const suggestions = useFriends().data?.friends.filter(friend => !city.members.includes(friend.email)) ?? [];
   const leader = city.members[0];
   return <section className={`${panel} space-y-4`}>
     <h2 className="text-title-3 font-semibold">Members</h2>
-    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Invite friends with the email they log in with. The leader can delete residents and remove members; a removed member's residents stay in the city.</p>
+    <p className="text-subhead text-label-2">Everyone in the city can see, add and take its residents and edit its skills. Add one of your friends, or invite anyone with the email they log in with. The leader can delete residents and remove members; a removed member's residents stay in the city.</p>
     <ul className="divide-y divide-hairline">
       {city.members.map(member => <li key={member} className="flex items-center gap-2 py-2">
         <span className="flex-1 break-all">{member}{member === leader && <span className="text-label-2"> (leader)</span>}{member === me && <span className="text-label-2"> (you)</span>}</span>
@@ -267,6 +269,19 @@ const CityMembers = ({ city }: { city: City }) => {
         }}>Remove</button>}
       </li>)}
     </ul>
+    {suggestions.length > 0 && <div className="space-y-1">
+      <h3 className="text-footnote font-semibold uppercase tracking-wide text-label-2">Add a friend</h3>
+      <ul className="divide-y divide-hairline">
+        {suggestions.map(friend => <li key={friend.email} className="flex items-center gap-2 py-2">
+          <span className="min-w-0 flex-1">
+            <span className="block break-all">{friend.email}</span>
+            <span className="block text-subhead text-label-2">{friend.trainers.length ? friend.trainers.map(trainer => trainer.name || "Unnamed trainer").join(", ") : "No trainers yet"}</span>
+          </span>
+          <button type="button" disabled={change.isPending} className={button({ variant: "tinted", size: "sm" })}
+            onClick={() => change.mutate({ kind: "invite", id: city.id, email: friend.email })}>Add</button>
+        </li>)}
+      </ul>
+    </div>}
     <form className="flex gap-2" onSubmit={event => {
       event.preventDefault();
       change.mutate({ kind: "invite", id: city.id, email: email.trim() }, { onSuccess: () => setEmail("") });

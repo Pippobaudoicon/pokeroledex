@@ -73,7 +73,7 @@ Mega Evolutions and alternate forms (Rotom Wash, Aegislash Blade) use their base
 
 ## Sharing a city
 
-**Skills & actions → Members** invites friends by the email they log in with. Every member has the same rights as the creator: they see the city, edit its skills and residents' sheets, add their own Pokémon, take residents into their own My Pokémon or trainers, and invite others.
+**Skills & actions → Members** invites friends by the email they log in with. Your [friends](friends.md) who aren't members yet are suggested there, with their trainers' names, so you can add them in one click. Every member has the same rights as the creator: they see the city, edit its skills and residents' sheets, add their own Pokémon, take residents into their own My Pokémon or trainers, and invite others.
 
 There's no email notification. The city appears in your friend's My City the next time they open it. In production, your friend must also be allowed through the Cloudflare Access policy (see [Production login](deployment.md#production-login)).
 

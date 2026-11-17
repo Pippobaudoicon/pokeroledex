@@ -22,6 +22,7 @@ Then open the URL Vite prints. No Cloudflare account? Use `pnpm dev:offline`, wh
 | Topic | What's in it |
 | --- | --- |
 | [Pokémon](docs/pokemon.md) | Nicknames and shiny Pokémon |
+| [Friends](docs/friends.md) | Friend requests, sending Pokémon and items, adding friends to cities |
 | [My City](docs/cities.md) | Residents, ranks, skills and sharing a city with friends |
 | [Crafting](docs/crafting.md) | Crafting orders, research and city storage |
 | [Generators](docs/generators.md) | Rolling encounters and running them at the table |

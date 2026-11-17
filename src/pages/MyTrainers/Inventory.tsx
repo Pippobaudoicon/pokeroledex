@@ -1,9 +1,12 @@
-import { Plus, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Send, Trash2 } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
+import { apiFetch, type ApiFetchError } from "@/api/client";
 import { useItemsControllerFindAll } from "@/api/components";
 import { ItemCategory, ItemPocket } from "@/api/schemas";
 import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
+import { FriendTargetSelect, type FriendTarget, targetLabel } from "@/components/FriendTargetSelect";
 import { ItemCard } from "@/components/ItemCard";
 import { ItemImage } from "@/components/ItemImage";
 import { button } from "@/components/kit/button";
@@ -11,8 +14,11 @@ import { Chip } from "@/components/kit/Controls";
 import { Picker } from "@/components/kit/Picker";
 import { Sheet } from "@/components/kit/Sheet";
 import { RollChip } from "@/components/move-dice";
+import { useFriends } from "@/hooks/use-friends";
+import { useToast } from "@/hooks/use-toast";
 import { formatEnumName } from "@/lib/utils";
 import { type InventoryRow, useTrainer } from "@/pages/MyTrainers/context";
+import { errorText } from "@/pages/MyCity/common";
 
 /** Fixed seal potency from a ball's description, like "Seal potency of 6 dice"; special balls have none. */
 const sealDice = (item: T.Item) => {
@@ -56,6 +62,63 @@ const BallRolls = ({ item }: { item: T.Item }) => {
   );
 };
 
+/** Sends some of a saved bag entry to one of a friend's trainers. */
+const SendItemSheet = ({ entry, open, onOpenChange }: { entry: InventoryRow & { id: string }; open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const { updatedTrainer: trainer } = useTrainer();
+  const friends = useFriends({ enabled: open });
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const [target, setTarget] = React.useState<FriendTarget | null>(null);
+  const [quantity, setQuantity] = React.useState(1);
+  React.useEffect(() => {
+    if (open) setQuantity(1);
+  }, [open]);
+  const send = useMutation({
+    mutationFn: (body: T.SendItemBody) => apiFetch<T.Trainer>({ url: `/trainers/${encodeURIComponent(trainer?.id ?? "")}/send`, method: "post", body }),
+    onSuccess: (_result, body) => {
+      toast({ title: `Sent ${body.quantity} × ${entry.item.name} to ${targetLabel(friends.data?.friends ?? [], body)}` });
+      onOpenChange(false);
+      client.invalidateQueries({ queryKey: ["trainers"] });
+    },
+    onError: (error: ApiFetchError) => toast({ title: "The items could not be sent", description: errorText(error) }),
+  });
+  const valid = target?.trainerId && Number.isInteger(quantity) && quantity >= 1 && quantity <= entry.quantity;
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={`Send ${entry.item.name}`} description="It leaves this bag and goes to your friend's trainer." initialExpanded>
+      <form
+        className="flex flex-col gap-4 p-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (valid && target?.trainerId) send.mutate({ email: target.email, trainerId: target.trainerId, entryId: entry.id, quantity });
+        }}
+      >
+        {friends.data ? (
+          <FriendTargetSelect friends={friends.data.friends} value={target} onChange={setTarget} />
+        ) : (
+          <p role="status" className="text-subhead text-label-2">
+            {friends.isError ? "Your friends could not be loaded." : "Loading friends..."}
+          </p>
+        )}
+        <label className="flex flex-col gap-1.5 text-subhead font-medium">
+          Quantity (you have {entry.quantity})
+          <input
+            type="number"
+            min={1}
+            max={entry.quantity}
+            value={quantity}
+            onChange={(event) => setQuantity(Number.parseInt(event.target.value, 10))}
+            className="h-11 w-full rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-9 lg:rounded-lg"
+          />
+        </label>
+        <button className={button({ variant: "filled" })} disabled={!valid || send.isPending}>
+          <Send aria-hidden className="size-4" />
+          Send
+        </button>
+      </form>
+    </Sheet>
+  );
+};
+
 const InventoryItem = ({
   entry,
   onChange,
@@ -65,8 +128,10 @@ const InventoryItem = ({
   onChange: (quantity: number) => void;
   onDelete: () => void;
 }) => {
+  const { editingMode } = useTrainer();
   const [draft, setDraft] = React.useState(String(entry.quantity));
   const [detail, setDetail] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
   React.useEffect(() => setDraft(String(entry.quantity)), [entry.quantity]);
   const commit = () => {
     const quantity = Number.parseInt(draft, 10);
@@ -96,6 +161,17 @@ const InventoryItem = ({
           onBlur={commit}
           className="h-11 w-16 shrink-0 rounded-lg bg-fill px-2 text-center text-body tabular-nums lg:h-8"
         />
+        {entry.id && editingMode === "view" && (
+          <button
+            type="button"
+            aria-label={`Send ${entry.item.name} to a friend`}
+            title="Send to a friend"
+            onClick={() => setSending(true)}
+            className={button({ variant: "tinted", size: "icon" })}
+          >
+            <Send aria-hidden className="size-4" />
+          </button>
+        )}
         <button
           type="button"
           aria-label={`Remove ${entry.item.name}`}
@@ -111,6 +187,7 @@ const InventoryItem = ({
           <ItemCard item={entry.item} />
         </div>
       </Sheet>
+      {entry.id && <SendItemSheet entry={{ ...entry, id: entry.id }} open={sending} onOpenChange={setSending} />}
     </div>
   );
 };

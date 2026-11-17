@@ -1434,3 +1434,114 @@ test('city storage only resolves reference IDs, so unresolved rows show as unava
     assert.equal((await h.request(`cities/${city.id}`, 'DELETE')).status, 200);
   } finally { h.close(); }
 });
+
+test('friend requests are sent by email, accepted, declined and ended', async () => {
+  const h = harness();
+  const alice = 'alice@example.com', bob = 'bob@example.com', carol = 'carol@example.com';
+  try {
+    const as = owner => (path, method, body) => h.request(path, method, body, owner);
+    for (const email of ['', 'not-an-email', alice]) assert.equal((await as(alice)('friends', 'POST', { email })).status, 400, email);
+    let result = await as(alice)('friends', 'POST', { email: ' Bob@Example.com ' });
+    assert.equal(result.status, 201);
+    assert.deepEqual(result.body, { friends: [], incoming: [], outgoing: [bob] });
+    assert.equal((await as(alice)('friends', 'POST', { email: bob })).status, 409, 'no duplicate requests');
+    assert.deepEqual((await as(bob)('friends')).body, { friends: [], incoming: [alice], outgoing: [] });
+    assert.equal((await as(alice)(`friends/${bob}/accept`, 'POST')).status, 404, 'only the addressee accepts');
+
+    await as(bob)('trainers', 'POST', { name: 'Blue' });
+    result = await as(bob)(`friends/${alice}/accept`, 'POST');
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.friends.map(friend => friend.email), [alice]);
+    result = await as(alice)('friends');
+    assert.deepEqual(result.body.friends.map(friend => [friend.email, friend.trainers.map(trainer => trainer.name)]), [[bob, ['Blue']]]);
+    assert.equal((await as(bob)('friends', 'POST', { email: alice })).status, 409, 'already friends');
+
+    // A request back to someone who already asked accepts theirs; deleting declines or ends it.
+    await as(carol)('friends', 'POST', { email: alice });
+    result = await as(alice)('friends', 'POST', { email: carol });
+    assert.deepEqual(result.body.friends.map(friend => friend.email), [bob, carol]);
+    result = await as(alice)(`friends/${carol}`, 'DELETE');
+    assert.deepEqual(result.body.friends.map(friend => friend.email), [bob]);
+    assert.deepEqual((await as(carol)('friends')).body, { friends: [], incoming: [], outgoing: [] });
+    assert.equal((await as(alice)(`friends/${carol}`, 'DELETE')).status, 404);
+  } finally { h.close(); }
+});
+
+test('friends send each other Pokemon, optionally to a trainer, and items to a trainer', async () => {
+  const h = harness();
+  const alice = 'alice@example.com', bob = 'bob@example.com', carol = 'carol@example.com';
+  try {
+    const as = owner => (path, method, body) => h.request(path, method, body, owner);
+    const red = (await as(alice)('trainers', 'POST', { name: 'Red' })).body;
+    const blue = (await as(bob)('trainers', 'POST', { name: 'Blue' })).body;
+    const first = (await as(alice)('pokemon', 'POST', { pokemonTemplateId: 'charmander', trainerId: red.id })).body;
+    const second = (await as(alice)('pokemon', 'POST', { pokemonTemplateId: 'charmander' })).body;
+    const charm = { name: 'Lucky Charm', source: 'Homebrew', category: null, pocket: 'TRAINER_ITEMS', description: '', oneUse: false, PMD: false, trainerPrice: null, pmdPrice: null, image: '', quantity: 2 };
+    const [balls, charmEntry] = (await as(alice)('trainers', 'PATCH', { id: red.id, inventory: [{ itemId: 'pokeball', quantity: 3 }, charm] })).body.inventory;
+    const sendItem = (body) => as(alice)(`trainers/${red.id}/send`, 'POST', body);
+
+    // Only friends receive anything.
+    assert.equal((await as(alice)(`pokemon/${first.id}/send`, 'POST', { email: bob })).status, 403);
+    assert.equal((await sendItem({ email: bob, trainerId: blue.id, entryId: balls.id, quantity: 1 })).status, 403);
+    await as(alice)('friends', 'POST', { email: bob });
+    assert.equal((await as(alice)(`pokemon/${first.id}/send`, 'POST', { email: bob })).status, 403, 'a pending request is not enough');
+    await as(bob)(`friends/${alice}/accept`, 'POST');
+    assert.equal((await as(alice)(`pokemon/${first.id}/send`, 'POST', { email: carol })).status, 403);
+
+    // A Pokemon leaves its trainer and joins the friend's account, or one of their trainers.
+    assert.equal((await as(alice)(`pokemon/${first.id}/send`, 'POST', { email: bob, trainerId: red.id })).status, 400, 'only the friend\'s trainers');
+    let result = await as(alice)(`pokemon/${first.id}/send`, 'POST', { email: bob });
+    assert.equal(result.status, 200);
+    let mine = (await as(bob)(`pokemon/${result.body.id}`)).body;
+    assert.equal(mine.trainerId, null);
+    result = await as(alice)(`pokemon/${second.id}/send`, 'POST', { email: bob, trainerId: blue.id });
+    assert.equal(result.status, 200);
+    assert.deepEqual((await as(bob)(`trainers/${blue.id}`)).body.pokemon.map(p => p.id), [result.body.id]);
+    assert.deepEqual((await as(alice)('pokemon')).body, []);
+
+    // Items move between trainers; custom ones arrive as copies, reference ones stack.
+    for (const body of [
+      { email: bob, trainerId: 'missing', entryId: balls.id, quantity: 1 },
+      { email: bob, trainerId: blue.id, entryId: balls.id, quantity: 0 },
+    ]) assert.equal((await sendItem(body)).status, 400, JSON.stringify(body));
+    assert.equal((await sendItem({ email: bob, trainerId: blue.id, entryId: balls.id, quantity: 4 })).status, 409);
+    assert.equal((await sendItem({ email: bob, trainerId: blue.id, entryId: 'missing', quantity: 1 })).status, 404);
+    assert.equal((await as(bob)(`trainers/${red.id}/send`, 'POST', { email: alice, trainerId: red.id, entryId: balls.id, quantity: 1 })).status, 404, 'only your own trainers send');
+    result = await sendItem({ email: bob, trainerId: blue.id, entryId: balls.id, quantity: 2 });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.inventory.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 1], ['Lucky Charm', 2]]);
+    await sendItem({ email: bob, trainerId: blue.id, entryId: balls.id, quantity: 1 });
+    result = await sendItem({ email: bob, trainerId: blue.id, entryId: charmEntry.id, quantity: 2 });
+    assert.deepEqual(result.body.inventory, []);
+    const bag = (await as(bob)(`trainers/${blue.id}`)).body.inventory;
+    assert.deepEqual(bag.map(entry => [entry.item.name, entry.quantity]), [['Pokeball', 3], ['Lucky Charm', 2]]);
+    assert.match(bag[1].item.id, /^custom-/);
+  } finally { h.close(); }
+});
+
+test('simultaneous item sends to different friends cannot spend one stack twice', async () => {
+  const h = harness();
+  const alice = 'alice@example.com', bob = 'bob@example.com', carol = 'carol@example.com';
+  try {
+    const as = owner => (path, method, body) => h.request(path, method, body, owner);
+    const red = (await as(alice)('trainers', 'POST', { name: 'Red' })).body;
+    const blue = (await as(bob)('trainers', 'POST', { name: 'Blue' })).body;
+    const green = (await as(carol)('trainers', 'POST', { name: 'Green' })).body;
+    for (const friend of [bob, carol]) {
+      await as(alice)('friends', 'POST', { email: friend });
+      await as(friend)(`friends/${alice}/accept`, 'POST');
+    }
+    const [balls] = (await as(alice)('trainers', 'PATCH', { id: red.id, inventory: [{ itemId: 'pokeball', quantity: 3 }] })).body.inventory;
+
+    const results = await Promise.all([
+      as(alice)(`trainers/${red.id}/send`, 'POST', { email: bob, trainerId: blue.id, entryId: balls.id, quantity: 3 }),
+      as(alice)(`trainers/${red.id}/send`, 'POST', { email: carol, trainerId: green.id, entryId: balls.id, quantity: 3 }),
+    ]);
+
+    assert.deepEqual(results.map(result => result.status).sort(), [200, 404]);
+    const received = [(await as(bob)(`trainers/${blue.id}`)).body, (await as(carol)(`trainers/${green.id}`)).body]
+      .flatMap(trainer => trainer.inventory ?? []).reduce((total, entry) => total + entry.quantity, 0);
+    assert.equal(received, 3);
+    assert.deepEqual((await as(alice)(`trainers/${red.id}`)).body.inventory, []);
+  } finally { h.close(); }
+});
