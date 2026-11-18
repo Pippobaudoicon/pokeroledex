@@ -69,6 +69,11 @@ const TARGET_CAPTIONS: Record<T.MoveTarget, string> = {
   FOES_BATTLEFIELD: "Foe side",
 };
 
+const TargetGlyph = ({ target, className }: { target: T.MoveTarget; className?: string }) => {
+  const Icon = TARGET_ICONS[target] ?? Crosshair;
+  return <Icon aria-hidden className={className} />;
+};
+
 /** Who the move hits, as an icon with the target name as its tooltip. */
 export const TargetIcon = ({ target, className }: { target: T.MoveTarget; className?: string }) => {
   const Icon = TARGET_ICONS[target] ?? Crosshair;
@@ -159,18 +164,34 @@ export const MoveRow = ({
           aria-controls={panelId}
           onClick={() => setOpen(!open)}
           className={cn(
-            "flex min-h-13 min-w-0 flex-1 items-center gap-3 py-2 text-left transition-[background-color,opacity,filter] duration-150 hover:bg-raised lg:min-h-10",
+            "flex min-h-13 min-w-0 flex-1 items-center gap-2 py-2 text-left transition-[background-color,opacity,filter] duration-150 hover:bg-raised @[26rem]:gap-3 lg:min-h-10",
             onUsedChange ? "pl-1" : "pl-4 lg:pl-3",
             used && "opacity-45 grayscale",
           )}
         >
           <TypeDot type={move.type} />
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5 text-body font-medium">
-              <span className="truncate">{move.name}</span>
-              {rank && <RankBall rank={rank} className="size-3.5" />}
+            <span className="block text-body leading-tight font-medium break-words @[26rem]:flex @[26rem]:items-center @[26rem]:gap-1.5 @[26rem]:leading-normal">
+              <span className="@[26rem]:truncate">
+                {rank ? move.name.slice(0, move.name.lastIndexOf(" ") + 1) : move.name}
+                {rank && (
+                  <span className="whitespace-nowrap @[26rem]:whitespace-normal">
+                    {move.name.slice(move.name.lastIndexOf(" ") + 1)}
+                    <RankBall rank={rank} className="ml-1 inline-block size-3.5 align-[-2px] @[26rem]:hidden" />
+                  </span>
+                )}
+              </span>
+              {rank && <RankBall rank={rank} className="hidden size-3.5 @[26rem]:block" />}
             </span>
-            <span className="flex items-center gap-1.5 text-footnote text-label-2">
+            {pools && (
+              <span className="flex min-w-0 items-center gap-1.5 text-footnote text-label-2 @[26rem]:hidden" title={`${categoryName(move.category)} · Target: ${formatEnumName(move.target)}`}>
+                <CategoryIcon category={move.category} className="size-3.5" />
+                <span className="sr-only">{categoryName(move.category)}</span>
+                <TargetGlyph target={move.target} className="size-3.5 shrink-0" />
+                <span className="truncate">{TARGET_CAPTIONS[move.target] ?? formatEnumName(move.target)}</span>
+              </span>
+            )}
+            <span className={cn("flex items-center gap-1.5 text-footnote text-label-2", pools && "hidden @[26rem]:flex")}>
               <CategoryIcon category={move.category} className="size-3.5" />
               {categoryName(move.category)}
               {!pools && (
@@ -182,24 +203,28 @@ export const MoveRow = ({
           </span>
           {pools && (
             <span className="flex shrink-0 items-center gap-2">
-              <span aria-hidden className="hidden w-14 truncate text-right text-footnote text-label-2 @[22rem]:inline">
+              <span aria-hidden className="hidden w-14 truncate text-right text-footnote text-label-2 @[30rem]:inline">
                 {TARGET_CAPTIONS[move.target] ?? formatEnumName(move.target)}
               </span>
-              <TargetIcon target={move.target} />
+              <TargetIcon target={move.target} className="hidden @[26rem]:grid" />
               {/* Three-character pools plus S.T.A.B. keep the targeting icons aligned. */}
               <span
-                className="flex flex-col items-stretch gap-0.5 text-footnote font-semibold tabular-nums"
+                className="flex flex-col items-stretch gap-0.5 text-caption font-semibold tabular-nums @[26rem]:text-footnote"
                 aria-label={`Accuracy ${pools.accuracy}, damage ${pools.damage}`}
               >
-                <span className="flex justify-between gap-2 rounded-md bg-fill px-1.5 py-px">
-                  <span className="font-normal text-label-2">Acc</span>
-                  <span title={pools.accuracy} className="w-[4ch] overflow-hidden text-right whitespace-nowrap">
+                <span className="flex justify-between gap-1 rounded-md bg-fill px-1 py-px @[26rem]:gap-2 @[26rem]:px-1.5">
+                  <span className="font-normal text-label-2">
+                    A<span className="hidden @[26rem]:inline">cc</span>
+                  </span>
+                  <span title={pools.accuracy} className="w-[3ch] overflow-hidden text-right whitespace-nowrap @[26rem]:w-[4ch]">
                     {pools.accuracy.length > 3 ? "??" : pools.accuracy}
                   </span>
                 </span>
-                <span className="flex justify-between gap-2 rounded-md bg-fill px-1.5 py-px">
-                  <span className="font-normal text-label-2">Dmg</span>
-                  <span title={pools.damage} className="w-[4ch] overflow-hidden text-right whitespace-nowrap">
+                <span className="flex justify-between gap-1 rounded-md bg-fill px-1 py-px @[26rem]:gap-2 @[26rem]:px-1.5">
+                  <span className="font-normal text-label-2">
+                    D<span className="hidden @[26rem]:inline">mg</span>
+                  </span>
+                  <span title={pools.damage} className="w-[3ch] overflow-hidden text-right whitespace-nowrap @[26rem]:w-[4ch]">
                     {pools.damage.length > 3 ? "??" : pools.damage}
                     {pools.stab && "★"}
                   </span>
@@ -209,7 +234,11 @@ export const MoveRow = ({
           )}
           <ChevronDown
             aria-hidden
-            className={cn("mr-3 size-4 shrink-0 text-label-3 transition-transform duration-200 ease-spring", open && "rotate-180", action && "mr-1")}
+            className={cn(
+              "size-4 shrink-0 text-label-3 transition-transform duration-200 ease-spring",
+              open && "rotate-180",
+              action ? "mr-1 hidden @[26rem]:block" : "mr-2 @[26rem]:mr-3",
+            )}
           />
         </button>
         {action && <div className="shrink-0 pr-2">{action}</div>}
@@ -224,6 +253,12 @@ export const MoveRow = ({
       <div id={panelId} hidden={!open} className="border-b border-hairline px-4 pb-3 lg:px-3 lg:pl-12 pl-13">
         <dl>
           <Fact label="Type">{formatEnumName(move.type)}</Fact>
+          <Fact label="Category">
+            <span className="inline-flex items-center gap-1.5">
+              <CategoryIcon category={move.category} className="size-3.5" />
+              {categoryName(move.category)}
+            </span>
+          </Fact>
           <Fact label="Accuracy">
             {accuracyFormula}
             {pools && pools.accuracy !== "—" && (

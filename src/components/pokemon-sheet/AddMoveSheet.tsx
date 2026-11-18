@@ -3,8 +3,8 @@ import * as React from "react";
 import type * as T from "../../../shared/types";
 import { useMovesControllerFindAll } from "@/api/components";
 import { Rank } from "@/api/schemas";
-import { Switch } from "@/components/kit/Controls";
 import { MoveRow } from "@/components/kit/MoveRow";
+import { Segmented, segmentPanelProps } from "@/components/kit/Segmented";
 import { Sheet } from "@/components/kit/Sheet";
 import { usePokemon } from "@/components/pokemon-sheet/context";
 import { fold } from "@/hooks/use-dex";
@@ -13,6 +13,9 @@ import { isTouchScreen } from "@/lib/utils";
 
 const ranks = Object.keys(Rank);
 const LIMIT = 100;
+
+/** Up to its rank, its whole learnset, or every move in the database. */
+type MoveScope = "rank" | "learnset" | "all";
 
 /** All moves in the database; mounted only when edit mode allows moves outside the learnset. */
 const AllMoves = ({ children }: { children: (moves: T.PossibleMove[] | undefined) => React.ReactNode }) => {
@@ -82,22 +85,23 @@ const MoveList = ({
 /** Adds a move with one tap. Rank-up mode only offers the learnset up to the new rank. */
 export const AddMoveSheet = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
   const { updatedPokemon, updatePokemon, editingMode } = usePokemon();
-  const [learnableOnly, setLearnableOnly] = React.useState(true);
+  const [scope, setScope] = React.useState<MoveScope>("rank");
   const [query, setQuery] = React.useState("");
-  const restricted = editingMode === "rankUp" || learnableOnly;
-  // The species' learnset up to the edited rank, each move once at its lowest rank.
+  const activeScope: MoveScope = editingMode === "rankUp" ? "rank" : scope;
+  // The species' learnset (up to the edited rank unless showing all of it), each move once at its lowest rank.
   const learnable = React.useMemo(() => {
     if (!updatedPokemon) return undefined;
+    const moveRank = updatedPokemon.rank === "UNRANKED" ? "STARTER" : updatedPokemon.rank;
+    const maxRank = activeScope === "rank" ? ranks.indexOf(moveRank) : ranks.length - 1;
     const byMove = new Map<string, T.PossibleMove>();
     for (const possible of updatedPokemon.pokemonTemplate.possibleMoves) {
       const rank = ranks.indexOf(possible.rank);
       const known = byMove.get(possible.move.id);
-      const moveRank = updatedPokemon.rank === "UNRANKED" ? "STARTER" : updatedPokemon.rank;
-      if (rank >= 0 && rank <= ranks.indexOf(moveRank) && (known === undefined || rank < ranks.indexOf(known.rank)))
+      if (rank >= 0 && rank <= maxRank && (known === undefined || rank < ranks.indexOf(known.rank)))
         byMove.set(possible.move.id, possible);
     }
     return [...byMove.values()];
-  }, [updatedPokemon?.pokemonTemplate, updatedPokemon?.rank]);
+  }, [updatedPokemon?.pokemonTemplate, updatedPokemon?.rank, activeScope]);
   if (!updatedPokemon) return null;
   const pick = (move: T.Move) => {
     updatePokemon({ moves: [...updatedPokemon.moves, move] });
@@ -120,14 +124,24 @@ export const AddMoveSheet = ({ open, onOpenChange }: { open: boolean; onOpenChan
           />
         </label>
         {editingMode === "edit" && (
-          <label htmlFor="learnable-only" className="flex items-center justify-between gap-3 text-subhead">
-            Only moves it can learn by its rank
-            <Switch id="learnable-only" checked={learnableOnly} onChange={setLearnableOnly} />
-          </label>
+          <Segmented
+            label="Moves to show"
+            idPrefix="add-move-scope"
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: "rank", label: "By rank" },
+              { value: "learnset", label: "Learnset" },
+              { value: "all", label: "All moves" },
+            ]}
+          />
         )}
       </div>
-      <div className="mx-4 overflow-hidden rounded-xl bg-surface shadow-card">
-        {restricted ? (
+      <div
+        className="mx-4 overflow-hidden rounded-xl bg-surface shadow-card"
+        {...(editingMode === "edit" ? segmentPanelProps("add-move-scope", scope) : {})}
+      >
+        {activeScope !== "all" ? (
           <MoveList moves={learnable} query={query} showRank onPick={pick} />
         ) : (
           <AllMoves>{(moves) => <MoveList moves={moves} query={query} showRank={false} onPick={pick} />}</AllMoves>
