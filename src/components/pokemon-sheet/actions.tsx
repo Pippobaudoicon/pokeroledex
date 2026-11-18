@@ -185,7 +185,7 @@ export const MenuItem = ({ icon, children, onClick, destructive = false, disable
   </button>
 );
 
-/** View mode: Fight and Edit, plus a menu with Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
+/** View mode: a menu with Fight, Edit, Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
 export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
   const { updatedPokemon, editingMode, setEditingMode, savePokemon, cancelEdit } = usePokemon();
   const navigate = useNavigate();
@@ -208,16 +208,6 @@ export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
     );
   return (
     <>
-      {onFight && (
-        <button type="button" onClick={onFight} className={button({ variant: "filled" })}>
-          <Swords aria-hidden className="size-4" />
-          Fight
-        </button>
-      )}
-      <button type="button" onClick={() => setEditingMode("edit")} className={button({ variant: "tinted" })}>
-        <Pencil aria-hidden className="size-4" />
-        Edit
-      </button>
       <PopoverPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
         <PopoverPrimitive.Trigger aria-label="More actions" className={button({ variant: "gray", size: "icon" })}>
           <MoreHorizontal className="size-5" />
@@ -228,6 +218,26 @@ export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
             sideOffset={6}
             className="z-50 w-60 overflow-hidden rounded-xl border border-hairline bg-surface/95 shadow-float backdrop-blur-xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [--tw-duration:150ms]"
           >
+            {onFight && (
+              <MenuItem
+                icon={<Swords />}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onFight();
+                }}
+              >
+                Fight
+              </MenuItem>
+            )}
+            <MenuItem
+              icon={<Pencil />}
+              onClick={() => {
+                setMenuOpen(false);
+                setEditingMode("edit");
+              }}
+            >
+              Edit
+            </MenuItem>
             <MenuItem
               icon={<ArrowUpCircle />}
               disabled={updatedPokemon.rank === Rank.CHAMPION}
