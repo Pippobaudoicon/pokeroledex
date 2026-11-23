@@ -62,7 +62,7 @@ While fighting on a saved Pokémon's sheet (**…** → **Fight**), its party ca
 
 During a fight (on a Pokémon's sheet or in an encounter), the **Evasion** and **Clash** pools track their use like moves do:
 
-- Tap **Evasion** to check it as used this round. Tap its number to roll the Evasion dice.
-- Tap **Clash** to pick the move you clash with. Only Physical or Special moves not used yet this round are listed. The chosen move is crossed out in **Moves**, and its name shows under the Clash pool. Tap **Clash** again, or uncheck the move, to clear the clash.
+- Tap **Evasion** to check it as used this round; the pool is crossed out like a used move. Tap its number to roll the Evasion dice.
+- Tap **Clash** to pick the move you clash with. Only Physical or Special moves not used yet this round are listed. The chosen move is crossed out in **Moves** and the Clash pool is crossed out like a used move (hover it to see the move). Tap **Clash** again, or uncheck the move, to clear the clash.
 - Clash shows two numbers, Strength + Clash and Special + Clash. Tap one to roll it. After a clash with a Physical or Special move, the pool that doesn't apply is dimmed.
 - **New round** and **Refresh round** clear Evasion and Clash together with the used moves.

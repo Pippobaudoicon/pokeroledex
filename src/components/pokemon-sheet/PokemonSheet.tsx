@@ -253,12 +253,12 @@ const PoolCheck = ({ label, checked, title, onClick }: { label: string; checked:
     aria-checked={checked}
     title={title}
     onClick={onClick}
-    className="-my-1 flex min-h-8 items-center gap-1 rounded-md px-1 text-caption font-medium text-label-2 hover:bg-fill"
+    className="inline-flex items-center gap-1 rounded-sm text-caption font-medium text-label-2 hover:text-label"
   >
     <span
       aria-hidden
       className={cn(
-        "grid size-3.5 place-items-center rounded-[4px] border-[1.5px] transition-colors duration-150",
+        "grid size-3 place-items-center rounded-[3px] border transition-colors duration-150",
         checked ? "border-tint bg-tint text-on-tint" : "border-label/30",
       )}
     >
@@ -266,6 +266,15 @@ const PoolCheck = ({ label, checked, title, onClick }: { label: string; checked:
     </span>
     {label}
   </button>
+);
+
+/** The diagonal strike used moves get, over a pool cell. */
+const PoolStrike = () => (
+  <span aria-hidden className="pointer-events-none absolute inset-x-2 inset-y-1.5 text-tint">
+    <svg className="size-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+      <line x1="0" y1="100" x2="100" y2="0" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  </span>
 );
 
 /** A pool value that rolls its dice when tapped. */
@@ -277,7 +286,7 @@ const PoolRoll = ({ value, label, changed, dimmed, onRoll }: { value: number; la
     disabled={value <= 0}
     onClick={onRoll}
     className={cn(
-      "rounded-md px-1 text-headline font-semibold tabular-nums underline decoration-dotted decoration-1 underline-offset-4 hover:bg-tint/10 disabled:no-underline",
+      "relative z-10 rounded-sm tabular-nums underline decoration-dotted decoration-1 underline-offset-4 hover:text-tint disabled:no-underline",
       changed ? "text-tint" : "text-label",
       dimmed && "opacity-40",
     )}
@@ -313,11 +322,12 @@ const Pools = ({ pokemon, base = pokemon }: { pokemon: T.Pokemon; base?: T.Pokem
         {poolValues(pokemon).map(([label, value, formula], index) => {
           const changed = value !== before[index][1];
           const cellTitle = changed ? `${formula} (was ${before[index][1]})` : formula;
-          const cellClass = "flex min-w-0 flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0";
+          const cellClass = "relative flex min-w-0 flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0";
+          const usedClass = "opacity-45 grayscale transition-[opacity,filter] duration-150";
           if (tracking && label === "Evasion")
             return (
               <div key={label} title={cellTitle} className={cellClass}>
-                <dt>
+                <dt className={cn("flex", evaded && usedClass)}>
                   <PoolCheck
                     label={label}
                     checked={evaded}
@@ -325,23 +335,25 @@ const Pools = ({ pokemon, base = pokemon }: { pokemon: T.Pokemon; base?: T.Pokem
                     onClick={() => tracking.setUsedMoves(setEvasionUsed(used, !evaded))}
                   />
                 </dt>
-                <dd className={cn(evaded && "opacity-45")}>
+                <dd className={cn("text-headline font-semibold", evaded && usedClass)}>
                   <PoolRoll value={evasion} label="Evasion" changed={changed} onRoll={rollPool("evasion", evasion)} />
                 </dd>
+                {evaded && <PoolStrike />}
               </div>
             );
           if (tracking && label === "Clash")
             return (
               <div key={label} title={clashMove ? `${cellTitle}. Clashed with ${clashMove.name}` : cellTitle} className={cellClass}>
-                <dt>
+                <dt className={cn("flex", clashMove && usedClass)}>
                   <PoolCheck
                     label={label}
                     checked={!!clashMove}
                     title={clashMove ? `Clashed with ${clashMove.name}; tap to clear` : "Clash: pick the move to clash with"}
                     onClick={() => (clashMove ? tracking.setUsedMoves(setClashMove(used, undefined)) : setClashing(true))}
                   />
+                  {clashMove && <span className="sr-only">, with {clashMove.name}</span>}
                 </dt>
-                <dd className={cn("flex items-baseline text-headline font-semibold tabular-nums", changed && "text-tint")}>
+                <dd className={cn("text-headline font-semibold tabular-nums", changed && "text-tint", clashMove && usedClass)}>
                   <PoolRoll
                     value={clashStrength}
                     label="Clash with Strength"
@@ -358,7 +370,7 @@ const Pools = ({ pokemon, base = pokemon }: { pokemon: T.Pokemon; base?: T.Pokem
                     onRoll={rollPool("clash", clashSpecial, "Special")}
                   />
                 </dd>
-                {clashMove && <dd className="max-w-full truncate text-caption text-label-2">{clashMove.name}</dd>}
+                {clashMove && <PoolStrike />}
               </div>
             );
           return (
