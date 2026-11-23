@@ -86,3 +86,4 @@ A city doesn't share its members' campaigns.
 - A resident built from a custom species keeps showing its species, moves, abilities and held item to whoever has it, read-only, but the campaign never appears in their Campaigns list.
 - A sheet can only be pointed at entries its editor can already see.
 - A custom species can't be deleted while a sheet in another account or a shared city still uses it.
+- A campaign's owner can write notes on it and mark each one public or private. When the campaign is linked to a city, every member of that city can read its public notes under **Shared with you** on the Campaigns page. Private notes are only ever sent to the owner.

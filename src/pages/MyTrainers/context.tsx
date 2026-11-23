@@ -76,6 +76,7 @@ function diffTrainer(base: EditableTrainer, updated: EditableTrainer): T.UpdateT
   if (base.money !== updated.money) body.money = updated.money;
   if (base.currentHp !== updated.currentHp) body.currentHp = updated.currentHp;
   if (base.currentWill !== updated.currentWill) body.currentWill = updated.currentWill;
+  if (JSON.stringify(base.notes ?? []) !== JSON.stringify(updated.notes ?? [])) body.notes = updated.notes ?? [];
   if (base.nature?.id !== updated.nature?.id) body.natureId = updated.nature?.id;
   if (hasObjectChanges(base.stats, updated.stats))
     body.stats = {

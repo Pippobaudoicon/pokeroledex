@@ -179,6 +179,22 @@ export interface Campaign {
   name: string;
   isCore: boolean;
   allowedUserIds: string[];
+  /** Only the owner gets private notes; missing on older records. */
+  notes?: CampaignNote[];
+}
+
+/** Public notes are readable by members of the campaign's cities; private ones only by the owner. */
+export interface CampaignNote extends Note {
+  isPublic: boolean;
+}
+
+/** A campaign another player runs, linked to one of your cities, with its public notes. */
+export interface SharedCampaign {
+  id: string;
+  name: string;
+  owner: string;
+  cities: string[];
+  notes: CampaignNote[];
 }
 
 /** Custom moves, items, abilities, natures and templates belong to a user campaign. */
@@ -416,7 +432,20 @@ export interface TrainerRecord {
   stats: Stats;
   currentHp: number;
   currentWill: number;
+  /** Player notes; missing on older records. */
+  notes?: Note[];
 }
+
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+}
+
+/** Most notes a trainer or campaign may have, and the longest title and body of each. */
+export const NOTES_MAX = 50;
+export const NOTE_TITLE_LIMIT = 80;
+export const NOTE_BODY_LIMIT = 10000;
 
 /** Custom inventory items get `id: "custom-<entry id>"`. */
 export type HydratedInventoryEntry = InventoryEntry & { item: Item };

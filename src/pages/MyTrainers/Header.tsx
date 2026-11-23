@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, Check, ClipboardCheck, Pencil, Trash2, X } from "lucide-react";
+import { ArrowUp, Check, ClipboardCheck, NotebookPen, Pencil, Trash2, X } from "lucide-react";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useTrainersControllerRemove } from "@/api/components";
@@ -12,6 +12,7 @@ import { type StatCategory, StatPointsCheckDialog } from "@/components/StatPoint
 import { useToast } from "@/hooks/use-toast";
 import { SOCIALS, TRAINER_ATTRIBUTES, TRAINER_SKILLS } from "@/lib/stats";
 import { useTrainer } from "@/pages/MyTrainers/context";
+import { NotesSheet } from "@/components/NotesSheet";
 
 const TRAINER_CATEGORIES: StatCategory[] = [
   { title: "Attributes", budget: "attributePoints", stats: TRAINER_ATTRIBUTES },
@@ -23,6 +24,7 @@ export const TrainerSheetHeader = () => {
   const { updatedTrainer: trainer, editingMode, setEditingMode, saveTrainer, cancelEdit, updateTrainer } = useTrainer();
   const [deleting, setDeleting] = React.useState(false);
   const [checking, setChecking] = React.useState(false);
+  const [notesOpen, setNotesOpen] = React.useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -73,6 +75,11 @@ export const TrainerSheetHeader = () => {
                 <ClipboardCheck aria-hidden className="size-4" />
                 Check stat points
               </button>
+              <button type="button" className={button({ variant: "gray" })} onClick={() => setNotesOpen(true)}>
+                <NotebookPen aria-hidden className="size-4" />
+                Notes
+                {trainer.notes?.length ? <span className="text-label-2">{trainer.notes.length}</span> : null}
+              </button>
               <button
                 type="button"
                 aria-label="Delete trainer"
@@ -107,6 +114,14 @@ export const TrainerSheetHeader = () => {
         skills={TRAINER_SKILLS}
         open={checking}
         onOpenChange={setChecking}
+      />
+      <NotesSheet
+        title={`Notes for ${trainer.name}`}
+        description="Private notes, saved with this trainer."
+        notes={trainer.notes ?? []}
+        open={notesOpen}
+        onOpenChange={setNotesOpen}
+        onSave={(notes) => updateTrainer({ notes })}
       />
       <Sheet open={deleting} onOpenChange={setDeleting} title={`Delete ${trainer.name}?`} description="This action cannot be undone.">
         <div className="flex flex-col gap-3 p-4">

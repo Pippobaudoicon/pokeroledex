@@ -198,6 +198,22 @@ export const useCampaignsControllerFindAll = <TData = T.Campaign[]>(variables: C
   });
 };
 
+export type CampaignsControllerSharedVariables = {} & FetcherExtraProps;
+
+const fetchCampaignsControllerShared = (variables: CampaignsControllerSharedVariables, signal?: AbortSignal) =>
+  apiFetch<T.SharedCampaign[]>({ url: "/campaigns/shared", method: "get", ...variables, signal });
+
+/** Campaigns other players run that are linked to your cities, with only their public notes. */
+export const useCampaignsControllerShared = <TData = T.SharedCampaign[]>(variables: CampaignsControllerSharedVariables, options?: QueryOptions<T.SharedCampaign[], TData>) => {
+  const { fetcherOptions, queryOptions, queryKeyFn } = useApiContext(options);
+  return useQuery<T.SharedCampaign[], ApiFetchError, TData>({
+    queryKey: queryKeyFn({ path: "/campaigns/shared", operationId: "campaignsControllerShared", variables }),
+    queryFn: ({ signal }) => fetchCampaignsControllerShared({ ...fetcherOptions, ...variables }, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type CampaignsControllerUpdateVariables = { body: Partial<T.Campaign> & { id: string } } & FetcherExtraProps;
 
 const fetchCampaignsControllerUpdate = (variables: CampaignsControllerUpdateVariables, signal?: AbortSignal) =>
