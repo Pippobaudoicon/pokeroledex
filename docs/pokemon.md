@@ -34,3 +34,26 @@ The flag is `shiny` on the Pokémon record (and on `/api/pokemon/minimal`). Olde
 - Skills above the current rank's skill limit are listed, and so are Pokémon attributes above the species' maximum.
 
 The check only reports. It never changes the sheet.
+
+## Filtering by trainer
+
+The selector next to the search in **My Pokémon** shows **All trainers**, only **Unassigned** Pokémon, or one trainer's party. The choice is remembered for the browser tab. `/api/pokemon/minimal` includes each Pokémon's `trainerId` for this.
+
+## Teams
+
+A team is a saved group of your Pokémon that you can hand to a trainer in one go. Create and edit teams from **Teams** in **My Pokémon**:
+
+- **New team** creates an empty team; **Start from a party** saves a trainer's current party as a team.
+- Name the team (up to 60 characters), tick its members and **Save team**. **Delete team** removes only the team, never its Pokémon.
+
+To use a team, open a trainer and choose **Use a team** in their **Party**, then pick a team. The team becomes that trainer's whole party. Party members that aren't in the team become unassigned, and team members in another trainer's party move over. A summary lists who moves before you confirm. The team that already matches the party is marked **Current party**.
+
+Teams are stored in the `teams` collection (`/api/teams`) as `{ id, name, pokemonIds }`. Only your own Pokémon can be members. Pokémon that are deleted or moved into a city drop out of the team.
+
+## Fainting and swapping in a fight
+
+While fighting on a saved Pokémon's sheet (**…** → **Fight**), its party can take over:
+
+- **Swap Pokémon** opens the party picker. Choose a party member with HP left and its sheet opens in the same fight, one turn later than the current one. Swapping uses an action, so it's unavailable on turn 5.
+- When the fighting Pokémon reaches 0 HP, a dialog says it fainted and asks whether to send in another Pokémon. **Yes** opens the same picker and **No** keeps the fight open.
+- If no other party member has HP left (or the Pokémon has no trainer), the picker says no Pokémon is available. After a faint, it also warns that the encounter ends for you and offers **End fight**.

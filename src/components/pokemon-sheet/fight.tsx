@@ -10,6 +10,10 @@ import { cn } from "@/lib/utils";
 /** Temporary attribute changes from moves, abilities and items; they last for the fight only. */
 export type Boosts = Partial<Record<T.Attribute, number>>;
 
+/** The Nth action in a round needs N successes, up to 5 actions. */
+export const MIN_TURN = 1;
+export const MAX_TURN = 5;
+
 /** Fight state for one Pokémon: the action this round, temporary stats and the moves already used this round. */
 export interface SheetFight {
   turn: number;
@@ -32,8 +36,8 @@ export const FightProvider = ({ fight, children }: { fight: SheetFight | undefin
 export const useFight = () => React.useContext(FightContext);
 
 /** Fight state kept by the component using it, so it is gone once that component unmounts. */
-export const useLocalFight = (): SheetFight & { reset: () => void } => {
-  const [turn, setTurn] = React.useState(1);
+export const useLocalFight = (initialTurn = 1): SheetFight & { reset: () => void } => {
+  const [turn, setTurn] = React.useState(initialTurn);
   const [boosts, setBoosts] = React.useState<Boosts>({});
   const [usedMoves, setUsedMoves] = React.useState<string[]>([]);
   const [statuses, setStatuses] = React.useState<Statuses>({});

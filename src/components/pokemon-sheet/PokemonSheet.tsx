@@ -1,5 +1,6 @@
-import { Minus, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowLeftRight, Minus, Plus, RotateCcw, X } from "lucide-react";
 import * as React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
 import { Gender } from "@/api/schemas";
 import { button } from "@/components/kit/button";
@@ -14,8 +15,9 @@ import { Sprite } from "@/components/kit/Sprite";
 import { AddMoveSheet, useCanAddMove } from "@/components/pokemon-sheet/AddMoveSheet";
 import { AddToMyPokemon, LockButton, SheetActions } from "@/components/pokemon-sheet/actions";
 import { usePokemon } from "@/components/pokemon-sheet/context";
-import { fightBoosts, FightProvider, type SheetFight, TempStats, useFight, useLocalFight, withBoosts } from "@/components/pokemon-sheet/fight";
+import { fightBoosts, FightProvider, MAX_TURN, MIN_TURN, type SheetFight, TempStats, useFight, useLocalFight, withBoosts } from "@/components/pokemon-sheet/fight";
 import { hasStatuses, NewRoundAlert, nextRoundStatuses, roundEffects, StatusPicker } from "@/components/pokemon-sheet/status";
+import { FaintedAlert, SwapSheet, swapInTurn } from "@/components/pokemon-sheet/swap";
 import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
 import { StatGroups, usePointsLeft } from "@/components/pokemon-sheet/stats";
 import { Hint } from "@/components/move-dice";
@@ -170,9 +172,6 @@ const Vital = ({ property, label, max, color }: { property: "currentHp" | "curre
 };
 
 /** Turn tracking for encounters: the Nth action in a round needs N successes, up to 5 actions. */
-const MIN_TURN = 1;
-const MAX_TURN = 5;
-
 const turnHint = (turn: number) => `Needs ${turn} ${turn === 1 ? "success" : "successes"}`;
 
 /** Sits next to HP and Will: the action this round (1–5), as − value + with one segment per action. */
@@ -399,10 +398,26 @@ export const PokemonSheet = ({
 }) => {
   const { updatedPokemon: pokemon, isLoading, isError, editingMode, updatePokemon } = usePokemon();
   const [section, setSection] = React.useState<Section>("battle");
-  const localFight = useLocalFight();
-  const [fighting, setFighting] = React.useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // A Pokémon swapped in from another sheet opens already fighting, one turn later.
+  const [swappedInTurn] = React.useState(() => (showButtons === "edit" && !externalFight ? swapInTurn(location.state) : undefined));
+  const localFight = useLocalFight(swappedInTurn);
+  const [fighting, setFighting] = React.useState(swappedInTurn !== undefined);
   const [confirmingRound, setConfirmingRound] = React.useState(false);
+  const [faintedOpen, setFaintedOpen] = React.useState(false);
+  const [swap, setSwap] = React.useState<{ fainted: boolean } | null>(null);
   const fight = externalFight ?? (fighting ? localFight : undefined);
+  React.useEffect(() => {
+    // Reloading or going back here shouldn't start the fight again.
+    if (swappedInTurn !== undefined) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, []);
+  const hp = pokemon?.currentHp;
+  const previousHp = React.useRef(hp);
+  React.useEffect(() => {
+    if (fighting && !externalFight && hp === 0 && (previousHp.current ?? 0) > 0) setFaintedOpen(true);
+    previousHp.current = hp;
+  }, [hp, fighting, externalFight]);
   if (!pokemon)
     return isLoading ? (
       <div aria-busy className="flex flex-col gap-4 p-4">
@@ -430,8 +445,22 @@ export const PokemonSheet = ({
     localFight.setUsedMoves([]);
   };
   // Generated Pokémon get "Add to My Pokémon" at the bottom of the sheet instead.
+  const endFight = () => {
+    localFight.reset();
+    setFighting(false);
+  };
   const fightActions = (
     <>
+      <button
+        type="button"
+        disabled={localFight.turn >= MAX_TURN}
+        title={localFight.turn >= MAX_TURN ? "No actions left this round" : "Send in another Pokémon from the party; uses an action"}
+        onClick={() => setSwap({ fainted: false })}
+        className={button({ variant: "gray" })}
+      >
+        <ArrowLeftRight aria-hidden className="size-4" />
+        <span className="max-sm:sr-only">Swap Pokémon</span>
+      </button>
       <button
         type="button"
         disabled={localFight.turn === 1 && localFight.usedMoves.length === 0 && !hasStatuses(localFight.statuses)}
@@ -449,15 +478,21 @@ export const PokemonSheet = ({
       />
       <button
         type="button"
-        onClick={() => {
-          localFight.reset();
-          setFighting(false);
-        }}
+        onClick={endFight}
         className={button({ variant: "filled" })}
       >
         <X aria-hidden className="size-4" />
         End fight
       </button>
+      <FaintedAlert open={faintedOpen} onOpenChange={setFaintedOpen} name={name} onSendIn={() => setSwap({ fainted: true })} />
+      <SwapSheet
+        open={swap !== null}
+        onOpenChange={(open) => !open && setSwap(null)}
+        pokemon={pokemon}
+        turn={localFight.turn}
+        fainted={swap?.fainted ?? false}
+        onEndFight={endFight}
+      />
     </>
   );
   const actions = !showActions

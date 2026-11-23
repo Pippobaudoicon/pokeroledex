@@ -409,7 +409,18 @@ export interface PokemonMinimal {
   types: PokemonType[];
   rank: Rank;
   shiny: boolean;
+  trainerId: string | null;
 }
+
+/** A saved group of your Pokémon that can become a trainer's whole party in one step. */
+export interface Team {
+  id: string;
+  userId: string;
+  name: string;
+  pokemonIds: string[];
+}
+
+export const TEAM_NAME_LIMIT = 60;
 
 /** Inventory entries reference an item, or carry a custom item's fields inline. */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -538,6 +549,8 @@ export type UpdateTrainerBody = Partial<Omit<TrainerRecord, 'inventory'>> & {
   pokemonIds?: string[];
   inventory?: (DistributiveOmit<InventoryEntry, 'id'> & { id?: string })[];
 };
+export type CreateTeamBody = Pick<Team, 'name'> & { pokemonIds?: string[] };
+export type UpdateTeamBody = Partial<Pick<Team, 'name' | 'pokemonIds'>> & { id: string };
 export type CampaignBody = Partial<Campaign> & { name: string };
 export type FeedbackBody = Pick<Feedback, 'name' | 'email' | 'message'>;
 /** Longest title and description an issue report may have. */
