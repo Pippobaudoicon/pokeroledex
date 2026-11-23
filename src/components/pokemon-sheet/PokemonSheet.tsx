@@ -37,6 +37,7 @@ import {
 import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
 import { hasStatuses, NewRoundAlert, nextRoundStatuses, roundEffects, StatusPicker } from "@/components/pokemon-sheet/status";
 import { FaintedAlert, SwapSheet, swapInTurn } from "@/components/pokemon-sheet/swap";
+import { PokeballsGroup } from "@/components/pokemon-sheet/pokeballs";
 import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
 import { StatGroups, usePointsLeft } from "@/components/pokemon-sheet/stats";
 import { Hint } from "@/components/move-dice";
@@ -722,6 +723,7 @@ export const PokemonSheet = ({
             {fight && <StatusPicker pokemon={pokemon} statuses={fight.statuses} setStatuses={fight.setStatuses} />}
             {fight && <TempStats pokemon={pokemon} />}
             <Moves generated={showButtons !== "edit"} />
+            {fighting && !externalFight && <PokeballsGroup pokemon={pokemon} />}
           </div>
           <div
             {...segmentPanelProps(`sheet-${pokemon.id}`, "stats")}

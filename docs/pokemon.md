@@ -58,6 +58,14 @@ While fighting on a saved Pokémon's sheet (**…** → **Fight**), its party ca
 - When the fighting Pokémon reaches 0 HP, a dialog says it fainted and asks whether to send in another Pokémon. **Yes** opens the same picker and **No** keeps the fight open.
 - If no other party member has HP left (or the Pokémon has no trainer), the picker says no Pokémon is available. After a faint, it also warns that the encounter ends for you and offers **End fight**.
 
+## Throwing Poké Balls in a fight
+
+While fighting on a saved Pokémon's sheet, the **Battle** section has a **Poké Balls** group below **Moves** listing every ball in the trainer's inventory (the Poké Balls pocket: Pokeball, Greatball, Ultraball and so on) with how many are left.
+
+- **Throw** takes one ball out of the trainer's bag and rolls the throw accuracy (Dexterity or Strength, whichever is higher, + Throw). Balls with a fixed seal potency then offer to roll the seal.
+- The **Acc** and **Seal** numbers under each ball roll those pools without using a ball.
+- A ball that reaches 0 stays in the inventory at quantity 0 but leaves the list. If the Pokémon has no trainer or the trainer has no balls, the group says so.
+
 ## Evasion and Clash in a fight
 
 During a fight (on a Pokémon's sheet or in an encounter), the **Evasion** and **Clash** pools track their use like moves do:
