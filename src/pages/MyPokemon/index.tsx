@@ -1,9 +1,9 @@
 import { useMediaQuery } from "@uidotdev/usehooks";
-import { ChevronRight, Download, Plus, Search } from "lucide-react";
+import { ChevronRight, Download, Plus, Search, Users } from "lucide-react";
 import * as React from "react";
 import type * as T from "../../../shared/types";
 import { Link, useParams } from "react-router-dom";
-import { usePokemonControllerFindAllMinimal } from "@/api/components";
+import { usePokemonControllerFindAllMinimal, useTrainersControllerFindAll } from "@/api/components";
 import { button } from "@/components/kit/button";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { RankBall, TypePill } from "@/components/kit/Pills";
@@ -14,6 +14,7 @@ import { PokemonProvider } from "@/components/pokemon-sheet/context";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { fold } from "@/hooks/use-dex";
 import { cn, formatEnumName } from "@/lib/utils";
+import { TeamsSheet } from "@/pages/MyPokemon/Teams";
 
 const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected: boolean }) => (
   <li className="group/row">
@@ -84,15 +85,79 @@ const EmptyState = () => (
   </div>
 );
 
+const FILTER_KEY = "myPokemon.trainer";
+const UNASSIGNED = "none";
+
+/** The trainer filter, kept for the tab session so it survives opening a sheet. */
+const useTrainerFilter = () => {
+  const [value, setValue] = React.useState(() => {
+    try {
+      return sessionStorage.getItem(FILTER_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const set = (next: string) => {
+    setValue(next);
+    try {
+      sessionStorage.setItem(FILTER_KEY, next);
+    } catch {
+      // Without storage the filter just resets on navigation.
+    }
+  };
+  return [value, set] as const;
+};
+
 const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: boolean }) => {
   const { data, isFetching, isError, refetch } = usePokemonControllerFindAllMinimal({});
+  const { data: trainers } = useTrainersControllerFindAll({});
   const [query, setQuery] = React.useState("");
+  const [storedTrainer, setTrainer] = useTrainerFilter();
+  const [teamsOpen, setTeamsOpen] = React.useState(false);
+  // A deleted trainer's filter falls back to everyone.
+  const trainer = storedTrainer && storedTrainer !== UNASSIGNED && trainers && !trainers.some((entry) => entry.id === storedTrainer) ? "" : storedTrainer;
+  const trainerName = trainers?.find((entry) => entry.id === trainer)?.name || "This trainer";
   const list = React.useMemo(
     () =>
       data
-        ?.filter((pokemon) => fold(pokemon.name ?? "").includes(fold(query.trim())))
+        ?.filter((pokemon) => !trainer || (trainer === UNASSIGNED ? !pokemon.trainerId : pokemon.trainerId === trainer))
+        .filter((pokemon) => fold(pokemon.name ?? "").includes(fold(query.trim())))
         .sort((first, second) => (first.name ?? "").localeCompare(second.name ?? "")),
-    [data, query],
+    [data, query, trainer],
+  );
+  const filterClass =
+    "h-11 min-w-0 rounded-xl bg-fill px-3 text-body outline-none focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg";
+  const filters = !!data?.length && (
+    <div className={cn("flex gap-2", compact ? "flex-col px-4 pt-2 lg:px-3" : "mt-3 flex-col sm:flex-row lg:max-w-2xl")}>
+      <label className="relative flex min-w-0 flex-1 items-center">
+        <span className="sr-only">Search your Pokémon</span>
+        <Search aria-hidden className="pointer-events-none absolute left-3 size-4.5 text-label-2 lg:left-2.5 lg:size-4" />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search"
+          className="h-11 w-full rounded-xl bg-fill pr-3 pl-10 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg lg:pl-8"
+        />
+      </label>
+      {!!trainers?.length && (
+        <select aria-label="Filter by trainer" value={trainer} onChange={(event) => setTrainer(event.target.value)} className={cn(filterClass, !compact && "sm:w-56")}>
+          <option value="">All trainers</option>
+          <option value={UNASSIGNED}>Unassigned</option>
+          {trainers.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.name || "Unnamed trainer"}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+  const teamsButton = !!data?.length && (
+    <button type="button" onClick={() => setTeamsOpen(true)} className={button({ variant: "plain", size: compact ? "sm" : "md" })}>
+      <Users aria-hidden className="size-5 lg:size-4" />
+      Teams
+    </button>
   );
   return (
     <>
@@ -100,26 +165,19 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
         title="My Pokémon"
         compact={compact}
         actions={
-          <Link to="/pokemon" className={button({ variant: "plain", size: compact ? "sm" : "md" })} aria-label="Add a Pokémon from the Pokédex">
-            <Plus aria-hidden className="size-5 lg:size-4" strokeWidth={2.5} />
-            Add
-          </Link>
+          <>
+            {!compact && teamsButton}
+            <Link to="/pokemon" className={button({ variant: "plain", size: compact ? "sm" : "md" })} aria-label="Add a Pokémon from the Pokédex">
+              <Plus aria-hidden className="size-5 lg:size-4" strokeWidth={2.5} />
+              Add
+            </Link>
+          </>
         }
       >
-        {!!data?.length && (
-          <label className="relative mt-3 flex items-center lg:max-w-md">
-            <span className="sr-only">Search your Pokémon</span>
-            <Search aria-hidden className="pointer-events-none absolute left-3 size-4.5 text-label-2 lg:left-2.5 lg:size-4" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search"
-              className="h-11 w-full rounded-xl bg-fill pr-3 pl-10 text-body outline-none placeholder:text-label-2 focus-visible:outline-2 focus-visible:outline-focus lg:h-8 lg:rounded-lg lg:pl-8"
-            />
-          </label>
-        )}
+        {!compact && filters}
       </PageHeader>
+      {compact && filters}
+      {data && <TeamsSheet open={teamsOpen} onOpenChange={setTeamsOpen} pokemon={data} trainers={trainers ?? []} />}
       <div className={cn("px-4 pb-8", compact ? "pt-2 lg:px-3" : "lg:px-8")}>
         {isError ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-8 text-center shadow-card">
@@ -141,10 +199,25 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
           <EmptyState />
         ) : list?.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-8 text-center shadow-card">
-            <p className="text-body">No Pokémon named “{query}”.</p>
-            <button type="button" onClick={() => setQuery("")} className={button({ variant: "tinted" })}>
-              Clear search
-            </button>
+            <p className="text-body">
+              {query.trim()
+                ? `No Pokémon named “${query}”${trainer ? " here" : ""}.`
+                : trainer === UNASSIGNED
+                  ? "Every Pokémon is in a trainer’s party."
+                  : `${trainerName}’s party is empty.`}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {query && (
+                <button type="button" onClick={() => setQuery("")} className={button({ variant: "tinted" })}>
+                  Clear search
+                </button>
+              )}
+              {trainer && (
+                <button type="button" onClick={() => setTrainer("")} className={button({ variant: "tinted" })}>
+                  Show all trainers
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <>

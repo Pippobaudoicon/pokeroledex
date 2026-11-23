@@ -439,6 +439,54 @@ test('all assignment paths move the original sheet exclusively and preserve its 
   } finally { h.close(); }
 });
 
+test('teams hold your own Pokemon and become a trainer party, unassigning the rest', async () => {
+  const h = harness();
+  try {
+    const city = (await h.request('cities', 'POST', { name: 'Pallet' })).body;
+    const red = (await h.request('trainers', 'POST', { name: 'Red' })).body;
+    const blue = (await h.request('trainers', 'POST', { name: 'Blue' })).body;
+    const make = async (body = {}) => (await h.request('pokemon', 'POST', { pokemonTemplateId: species.id, moveIds: [], ...body })).body;
+    const [a, b, c, d] = [await make({ trainerId: red.id }), await make({ trainerId: red.id }), await make({ trainerId: blue.id }), await make()];
+    const resident = await make({ cityId: city.id });
+
+    const minimal = (await h.request('pokemon/minimal')).body;
+    assert.deepEqual(Object.fromEntries(minimal.map(p => [p.id, p.trainerId])), { [a.id]: red.id, [b.id]: red.id, [c.id]: blue.id, [d.id]: null });
+
+    assert.equal((await h.request('teams', 'POST', { name: '  ' })).status, 400);
+    assert.equal((await h.request('teams', 'POST', { name: 'x'.repeat(61) })).status, 400);
+    assert.equal((await h.request('teams', 'POST', { name: 'Bad', pokemonIds: [resident.id] })).status, 400);
+    assert.equal((await h.request('teams', 'POST', { name: 'Bad', pokemonIds: ['missing'] })).status, 400);
+    const created = await h.request('teams', 'POST', { name: ' Gym team ', pokemonIds: [b.id, c.id, d.id, d.id], userId: 'mallory', extra: 1 });
+    assert.equal(created.status, 201);
+    const team = created.body;
+    assert.equal(team.name, 'Gym team');
+    assert.equal(team.userId, 'alice');
+    assert.equal('extra' in team, false);
+    assert.deepEqual(team.pokemonIds, [b.id, c.id, d.id]);
+
+    const renamed = await h.request('teams', 'PATCH', { id: team.id, name: 'Elite' });
+    assert.equal(renamed.body.name, 'Elite');
+    assert.deepEqual(renamed.body.pokemonIds, [b.id, c.id, d.id]);
+    assert.equal((await h.request('teams', 'PATCH', { id: team.id, pokemonIds: 'nope' })).status, 400);
+    // Teams are private to their owner.
+    assert.equal((await h.request('teams', 'GET', undefined, 'bob')).body.length, 0);
+
+    const party = await h.request('trainers', 'PATCH', { id: red.id, pokemonIds: renamed.body.pokemonIds });
+    assert.deepEqual(party.body.pokemon.map(p => p.id).sort(), [b.id, c.id, d.id].sort());
+    const after = Object.fromEntries((await h.request('pokemon/minimal')).body.map(p => [p.id, p.trainerId]));
+    assert.deepEqual(after, { [a.id]: null, [b.id]: red.id, [c.id]: red.id, [d.id]: red.id });
+    assert.equal((await h.request(`trainers/${blue.id}`)).body.pokemon.length, 0);
+
+    // Members that are deleted or move to a city drop out of the team.
+    await h.request(`pokemon/${d.id}`, 'DELETE');
+    await h.request('pokemon', 'PATCH', { id: c.id, cityId: city.id });
+    assert.deepEqual((await h.request('teams')).body[0].pokemonIds, [b.id]);
+    assert.equal((await h.request(`teams/${team.id}`, 'DELETE')).status, 200);
+    assert.equal((await h.request('teams')).body.length, 0);
+    assert.equal((await h.request(`pokemon/${b.id}`)).body.trainerId, red.id);
+  } finally { h.close(); }
+});
+
 test('invalid and foreign assignments fail without changing the stored Pokemon', async () => {
   const h = harness();
   try {

@@ -649,6 +649,60 @@ export const useTrainersControllerRemove = (options?: MutationOptions<unknown, T
   });
 };
 
+export type TeamsControllerFindAllVariables = {} & FetcherExtraProps;
+
+const fetchTeamsControllerFindAll = (variables: TeamsControllerFindAllVariables, signal?: AbortSignal) =>
+  apiFetch<T.Team[]>({ url: "/teams", method: "get", ...variables, signal });
+
+export const useTeamsControllerFindAll = <TData = T.Team[]>(variables: TeamsControllerFindAllVariables, options?: QueryOptions<T.Team[], TData>) => {
+  const { fetcherOptions, queryOptions, queryKeyFn } = useApiContext(options);
+  return useQuery<T.Team[], ApiFetchError, TData>({
+    queryKey: queryKeyFn({ path: "/teams", operationId: "teamsControllerFindAll", variables }),
+    queryFn: ({ signal }) => fetchTeamsControllerFindAll({ ...fetcherOptions, ...variables }, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type TeamsControllerCreateVariables = { body: T.CreateTeamBody } & FetcherExtraProps;
+
+const fetchTeamsControllerCreate = (variables: TeamsControllerCreateVariables, signal?: AbortSignal) =>
+  apiFetch<T.Team>({ url: "/teams", method: "post", ...variables, signal });
+
+export const useTeamsControllerCreate = (options?: MutationOptions<T.Team, TeamsControllerCreateVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<T.Team, ApiFetchError, TeamsControllerCreateVariables>({
+    mutationFn: (variables) => fetchTeamsControllerCreate({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};
+
+export type TeamsControllerUpdateVariables = { body: T.UpdateTeamBody } & FetcherExtraProps;
+
+const fetchTeamsControllerUpdate = (variables: TeamsControllerUpdateVariables, signal?: AbortSignal) =>
+  apiFetch<T.Team>({ url: "/teams", method: "patch", ...variables, signal });
+
+export const useTeamsControllerUpdate = (options?: MutationOptions<T.Team, TeamsControllerUpdateVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<T.Team, ApiFetchError, TeamsControllerUpdateVariables>({
+    mutationFn: (variables) => fetchTeamsControllerUpdate({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};
+
+export type TeamsControllerRemoveVariables = { pathParams: { id: string } } & FetcherExtraProps;
+
+const fetchTeamsControllerRemove = (variables: TeamsControllerRemoveVariables, signal?: AbortSignal) =>
+  apiFetch<unknown>({ url: "/teams/{id}", method: "delete", ...variables, signal });
+
+export const useTeamsControllerRemove = (options?: MutationOptions<unknown, TeamsControllerRemoveVariables>) => {
+  const { fetcherOptions } = useApiContext();
+  return useMutation<unknown, ApiFetchError, TeamsControllerRemoveVariables>({
+    mutationFn: (variables) => fetchTeamsControllerRemove({ ...fetcherOptions, ...variables }),
+    ...options,
+  });
+};
+
 export type FeedbackControllerCreateVariables = { body: T.FeedbackBody } & FetcherExtraProps;
 
 const fetchFeedbackControllerCreate = (variables: FeedbackControllerCreateVariables, signal?: AbortSignal) =>
