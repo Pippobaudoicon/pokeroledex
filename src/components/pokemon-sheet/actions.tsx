@@ -168,7 +168,22 @@ const SendAlert = ({ pokemon, open, onOpenChange }: { pokemon: T.Pokemon; open: 
   );
 };
 
-export const MenuItem = ({ icon, children, onClick, destructive = false, disabled = false }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void; destructive?: boolean; disabled?: boolean }) => (
+export const MenuItem = ({
+  icon,
+  children,
+  onClick,
+  destructive = false,
+  accent = false,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  onClick: () => void;
+  destructive?: boolean;
+  /** The main action: the app's accent, so it stands out without reading as destructive. */
+  accent?: boolean;
+  disabled?: boolean;
+}) => (
   <button
     type="button"
     disabled={disabled}
@@ -176,6 +191,7 @@ export const MenuItem = ({ icon, children, onClick, destructive = false, disable
     className={cn(
       "flex min-h-11 w-full items-center justify-between gap-6 border-b border-hairline px-4 text-left text-body last:border-b-0 hover:bg-fill disabled:opacity-40 lg:min-h-9 lg:px-3",
       destructive && "text-[#d92d20]",
+      accent && "font-semibold text-tint hover:bg-tint/10",
     )}
   >
     {children}
@@ -221,6 +237,7 @@ export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
             {onFight && (
               <MenuItem
                 icon={<Swords />}
+                accent
                 onClick={() => {
                   setMenuOpen(false);
                   onFight();
