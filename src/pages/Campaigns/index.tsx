@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@uidotdev/usehooks";
-import { Compass, Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { Compass, NotebookPen, Pencil, Plus, Star, Trash2, Users } from "lucide-react";
 import * as React from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type * as T from "../../../shared/types";
@@ -9,8 +9,10 @@ import {
   useCampaignsControllerCreate,
   useCampaignsControllerFindAll,
   useCampaignsControllerRemove,
+  useCampaignsControllerShared,
   useCampaignsControllerUpdate,
 } from "@/api/components";
+import { NotesSheet } from "@/components/NotesSheet";
 import { button } from "@/components/kit/button";
 import { Switch } from "@/components/kit/Controls";
 import { Group, Row, RowIcon } from "@/components/kit/List";
@@ -156,6 +158,50 @@ const ShowSettings = ({ campaigns }: { campaigns: T.Campaign[] }) => {
   );
 };
 
+/** Campaigns other players run in your cities; their public notes open read-only. */
+const SharedCampaigns = ({ compact }: { compact: boolean }) => {
+  const { data } = useCampaignsControllerShared({});
+  const [openId, setOpenId] = React.useState<string>();
+  if (!data?.length) return null;
+  const key = (campaign: T.SharedCampaign) => `${campaign.owner}\0${campaign.id}`;
+  const opened = data.find((campaign) => key(campaign) === openId);
+  const notesLabel = (campaign: T.SharedCampaign) =>
+    campaign.notes.length === 1 ? "1 public note" : `${campaign.notes.length || "No"} public notes`;
+  return (
+    <section className={cn(compact && "mx-3 mb-6")}>
+      <Group
+        title="Shared with you"
+        footer={compact ? undefined : "Campaigns other players run in your cities. Only their public notes are shown."}
+      >
+        {data.map((campaign) => (
+          <Row
+            key={key(campaign)}
+            onClick={() => setOpenId(key(campaign))}
+            icon={
+              <RowIcon className={CAMPAIGN_COLOR}>
+                <Users />
+              </RowIcon>
+            }
+            title={campaign.name}
+            subtitle={`${campaign.owner} · ${campaign.cities.join(", ")}`}
+            value={compact ? undefined : notesLabel(campaign)}
+          />
+        ))}
+      </Group>
+      {opened && (
+        <NotesSheet
+          title={`Notes for ${opened.name}`}
+          description={`Public notes from ${opened.owner}.`}
+          notes={opened.notes}
+          open={!!openId}
+          onOpenChange={(open) => !open && setOpenId(undefined)}
+          emptyText="This campaign has no public notes yet."
+        />
+      )}
+    </section>
+  );
+};
+
 const CampaignList = ({ compact = false, selectedId }: { compact?: boolean; selectedId?: string }) => {
   const { data, isError, refetch } = useCampaignsControllerFindAll({});
   const { shown } = useShown();
@@ -246,8 +292,10 @@ const CampaignList = ({ compact = false, selectedId }: { compact?: boolean; sele
             )}
           </section>
         )}
+        {!compact && <SharedCampaigns compact={false} />}
         {!compact && campaigns && <ShowSettings campaigns={campaigns} />}
       </div>
+      {compact && <SharedCampaigns compact />}
     </>
   );
 };
@@ -268,11 +316,19 @@ const CampaignDetail = () => {
   const tabs = TABS.filter((entry) => entry.value !== "cities" || (campaign && !campaign.isCore));
   const tab: Tab = tabs.find((entry) => entry.value === params.get("tab"))?.value ?? "pokemon";
   const [renaming, setRenaming] = React.useState(false);
+  const [notesOpen, setNotesOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const { shown, setShown } = useShown();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const saveNotes = useCampaignsControllerUpdate({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast({ title: "Notes saved" });
+    },
+    onError: (error) => toast({ title: "Notes couldn’t be saved", description: errorText(error) }),
+  });
   const rename = useCampaignsControllerUpdate({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
@@ -331,6 +387,10 @@ const CampaignDetail = () => {
         )}
         {!campaign.isCore && (
           <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={button({ variant: "gray" })} onClick={() => setNotesOpen(true)}>
+              <NotebookPen aria-hidden className="size-4" />
+              Notes{campaign.notes?.length ? ` (${campaign.notes.length})` : ""}
+            </button>
             <button type="button" className={button({ variant: "gray" })} onClick={() => setRenaming(true)}>
               <Pencil aria-hidden className="size-4" />
               Rename
@@ -365,6 +425,16 @@ const CampaignDetail = () => {
           </div>
         </div>
       </div>
+      <NotesSheet
+        title={`Notes for ${campaign.name}`}
+        description="Private notes are yours alone. Public notes can be read by members of this campaign’s cities."
+        notes={campaign.notes ?? []}
+        open={notesOpen}
+        onOpenChange={setNotesOpen}
+        withVisibility
+        placeholder="Plot hooks, NPCs, session recaps…"
+        onSave={(notes) => saveNotes.mutate({ body: { id: campaign.id, notes } })}
+      />
       <NameSheet
         open={renaming}
         onOpenChange={setRenaming}

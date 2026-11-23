@@ -3,7 +3,7 @@
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
 // records, works on them in memory and writes back only the records it changed; a city
 // changed by someone else meanwhile makes the request run again (migrations/0007).
-import { ATTRIBUTES, CRAFTING_SKILLS, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { ATTRIBUTES, CRAFTING_SKILLS, NOTE_BODY_LIMIT, NOTE_TITLE_LIMIT, NOTES_MAX, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, checkGrants, cityLimits, cityValues, defaultGrants, effectiveProfile, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
 import {
   campaignRecipe, canWork, checkCityRecipe, checkCraftSettings, checkFaces, cityRecipe, countSuccesses, craftBlockers, craftItem, isUnlocked, itemRecipe,
@@ -39,6 +39,26 @@ class HttpError extends Error {
 
 function fail(status: number, message: string): never {
   throw new HttpError(status, message);
+}
+
+/** Validates `body.notes` and replaces it with clean notes, each with an id. Campaign notes also carry `isPublic`. */
+function checkNotes(body: Record<string, unknown>, withVisibility = false) {
+  if (!('notes' in body)) return;
+  const notes = body.notes;
+  if (!Array.isArray(notes)) fail(400, 'Notes must be a list.');
+  if (notes.length > NOTES_MAX) fail(400, `You can have at most ${NOTES_MAX} notes.`);
+  body.notes = notes.map((note: unknown) => {
+    const { id, title, body: text, isPublic } = (note ?? {}) as Record<string, unknown>;
+    if (typeof title !== 'string' || title.length > NOTE_TITLE_LIMIT) fail(400, `Note titles must be text of at most ${NOTE_TITLE_LIMIT} characters.`);
+    if (typeof text !== 'string' || text.length > NOTE_BODY_LIMIT) fail(400, `Notes must be text of at most ${NOTE_BODY_LIMIT} characters.`);
+    const clean = { id: typeof id === 'string' && id ? id : crypto.randomUUID(), title, body: text };
+    return withVisibility ? { ...clean, isPublic: isPublic === true } : clean;
+  });
+}
+
+/** Another player's campaign as others may see it: public notes only. */
+function publicCampaign(record: Row): Row {
+  return { ...record, notes: Array.isArray(record.notes) ? record.notes.filter((note: Row) => note?.isPublic === true) : [] };
 }
 
 // Seeded generators that pick from the reference data and rank point budgets.
@@ -120,6 +140,27 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
     if (name === 'issues' && method === 'POST') return reply(await openIssue(env, owner, body), 201);
     if (name === 'friends') return await friends(method, action, id, body);
+    // Campaigns other players run that are linked to one of your cities, with their public notes.
+    if (name === 'campaigns' && action === 'shared' && !id && method === 'GET') {
+      const { results } = await env.DB.prepare(`SELECT campaign.owner, campaign.data, city.data ->> 'name' AS cityName FROM records city
+        JOIN records campaign ON campaign.collection = 'campaigns'
+          AND campaign.owner = city.data ->> 'campaignOwner' AND campaign.id = city.data ->> 'campaignId'
+        WHERE city.collection = 'cities' AND campaign.owner <> ?
+          AND city.owner IN (SELECT 'city:' || city_id FROM city_members WHERE email = ?)
+        ORDER BY campaign.seq, city.seq`).bind(owner, owner).all<{ owner: string; data: string; cityName: string | null }>();
+      const shared = new Map<string, Row>();
+      for (const row of results) {
+        const record: Row = JSON.parse(row.data);
+        const key = `${row.owner}\0${record.id}`;
+        let entry = shared.get(key);
+        if (!entry) {
+          entry = { id: record.id, name: record.name ?? '', owner: row.owner, cities: [], notes: publicCampaign(record).notes };
+          shared.set(key, entry);
+        }
+        if (row.cityName && !entry.cities.includes(row.cityName)) entry.cities.push(row.cityName);
+      }
+      return reply([...shared.values()]);
+    }
     // Give one of your own Pokemon (not a city resident) to a friend, optionally to one of their
     // trainers. It leaves your trainers; it gets a new id if theirs is taken, as two people can
     // import the same campaign.
@@ -228,6 +269,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (known.has(key)) continue;
         known.add(key);
         if (row.collection === 'moves') charmToAllure(record);
+        if (row.collection === 'campaigns') delete record.notes;
         (foreign[row.collection] ??= []).push(record);
         pending.push({ name: row.collection, record, owner: row.owner });
       }
@@ -256,6 +298,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (known.has(key)) continue;
       known.add(key);
       if (row.collection === 'moves') charmToAllure(record);
+      if (row.collection === 'campaigns') delete record.notes;
       (foreign[row.collection] ??= []).push(record);
     }
   }
@@ -406,12 +449,20 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return find(name, id) ?? foreign[name]?.find(record => record.id === id) ?? null;
     }
 
+    /** The campaign embedded in an entry, without its notes. */
+    function embeddedCampaign(id: unknown): Row | null {
+      const campaign = lookup('campaigns', id);
+      if (!campaign) return null;
+      const { notes: _notes, ...rest } = campaign;
+      return rest as Row;
+    }
+
     function template(record: Row | null): Row | null {
       if (!record) return null;
       const override = record.campaignId ? undefined : habitatOverrides.get(record.id);
       const normalized = { ...record, habitats: normalizeHabitats(override ?? record.habitats ?? []), ...(override && { habitatsEdited: true }) };
       if (!record.campaignId) return normalized;
-      const result: Row = { ...normalized, campaign: lookup('campaigns', record.campaignId) };
+      const result: Row = { ...normalized, campaign: embeddedCampaign(record.campaignId) };
       for (const key of ['abilityOne', 'abilityTwo', 'hiddenAbility', 'eventAbility']) {
         result[key] = lookup('abilities', record[`${key}Id`]);
       }
@@ -423,7 +474,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
     function referenceRecord(name: string, record: Row) {
       if (name === 'pokemon-templates') return template(record);
-      return record?.campaignId ? { ...record, campaign: lookup('campaigns', record.campaignId) } : record;
+      return record?.campaignId ? { ...record, campaign: embeddedCampaign(record.campaignId) } : record;
     }
 
     function selected(name: string, body: Json = {}) {
@@ -461,7 +512,10 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     }
 
     function trainer(record: Row): Trainer {
-      return { ...record, nature: find('natures', record.natureId),
+      // The first version stored notes as a single string.
+      const notes = typeof record.notes === 'string' ? (record.notes.trim() ? [{ id: 'notes', title: 'Notes', body: record.notes }] : [])
+        : record.notes ?? [];
+      return { ...record, notes, nature: find('natures', record.natureId),
         pokemon: db.pokemon.filter(p => p.trainerId === record.id).map(pokemon),
         inventory: inventory(record.inventory),
       } as Trainer;
@@ -1217,6 +1271,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return reply(hydrate(name, record));
     }
     if (method === 'POST' && !action) {
+      if (name === 'trainers' || name === 'campaigns') checkNotes(body, name === 'campaigns');
       let record: Row = { ...body, id: body.id ?? body._id ?? crypto.randomUUID(), userId: owner };
       if (name === 'pokemon-templates' && 'habitats' in body) {
         if (!Array.isArray(body.habitats) || !body.habitats.every(isHabitat)) fail(400, 'Choose valid specific habitats.');
@@ -1260,6 +1315,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'pokemon' && body.pokemonTemplateId && !lookup('pokemon-templates', body.pokemonTemplateId)) fail(400, 'Pokemon template not found.');
       if (name === 'pokemon' && body.rank !== undefined && !(RANKS as readonly unknown[]).includes(body.rank)) fail(400, 'Choose a valid rank.');
       if (name === 'pokemon') checkPokemonReferences(body);
+      if (name === 'trainers' || name === 'campaigns') checkNotes(body, name === 'campaigns');
       const update = { ...body };
       if (name === 'pokemon-templates' && 'habitats' in body) {
         if (!Array.isArray(body.habitats) || !body.habitats.every(isHabitat)) fail(400, 'Choose valid specific habitats.');
