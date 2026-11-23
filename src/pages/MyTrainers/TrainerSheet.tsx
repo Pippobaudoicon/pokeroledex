@@ -14,6 +14,7 @@ import { capitalize, cn, formatEnumName } from "@/lib/utils";
 import { type TrainerStatKey, useTrainer } from "@/pages/MyTrainers/context";
 import { TrainerSheetHeader } from "@/pages/MyTrainers/Header";
 import { InventoryList, InventorySection } from "@/pages/MyTrainers/Inventory";
+import { UseTeam } from "@/pages/MyTrainers/PartyTeams";
 
 type StatType = "attribute" | "social" | "skill";
 const statsByType = { attribute: TRAINER_ATTRIBUTES, social: SOCIALS, skill: TRAINER_SKILLS };
@@ -183,7 +184,7 @@ const Identity = () => {
 };
 
 export const TrainerSheet = () => {
-  const { updatedTrainer: trainer, isError, updateTrainer } = useTrainer();
+  const { updatedTrainer: trainer, isError, updateTrainer, editingMode } = useTrainer();
   if (isError)
     return (
       <>
@@ -215,7 +216,15 @@ export const TrainerSheet = () => {
         <div className="grid items-start gap-6 xl:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-6">
             <Identity />
-            <Group title="Party" action={<span className="text-footnote text-label-2">{trainer.pokemon.length} Pokémon</span>}>
+            <Group
+              title="Party"
+              action={
+                <span className="flex items-center gap-2">
+                  <span className="text-footnote text-label-2">{trainer.pokemon.length} Pokémon</span>
+                  <UseTeam trainer={trainer} disabled={editingMode !== "view"} />
+                </span>
+              }
+            >
               {trainer.pokemon.length ? (
                 <ul className="flex flex-wrap gap-2 p-3">
                   {trainer.pokemon.slice(0, 6).map((pokemon) => (
@@ -232,7 +241,7 @@ export const TrainerSheet = () => {
                 </ul>
               ) : (
                 <p className="p-4 text-subhead text-label-2">
-                  No Pokémon assigned yet. Choose this trainer from a Pokémon’s sheet to add it to the party.
+                  No Pokémon assigned yet. Choose this trainer from a Pokémon’s sheet, or use a team.
                 </p>
               )}
             </Group>

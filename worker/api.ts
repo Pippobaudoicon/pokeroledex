@@ -3,7 +3,7 @@
 // 'city:<id>' and are loaded for every member (city_members). Each request loads these
 // records, works on them in memory and writes back only the records it changed; a city
 // changed by someone else meanwhile makes the request run again (migrations/0007).
-import { ATTRIBUTES, CRAFTING_SKILLS, NOTE_BODY_LIMIT, NOTE_TITLE_LIMIT, NOTES_MAX, RANKS, SKILLS, SOCIALS, TRAINER_SKILLS } from '../shared/types.ts';
+import { ATTRIBUTES, CRAFTING_SKILLS, NOTE_BODY_LIMIT, NOTE_TITLE_LIMIT, NOTES_MAX, RANKS, SKILLS, SOCIALS, TEAM_NAME_LIMIT, TRAINER_SKILLS } from '../shared/types.ts';
 import { canAssign, checkGrants, cityLimits, cityValues, defaultGrants, effectiveProfile, isCitySkill, residentBonus, type ResidentWork } from '../shared/cities.ts';
 import {
   campaignRecipe, canWork, checkCityRecipe, checkCraftSettings, checkFaces, cityRecipe, countSuccesses, craftBlockers, craftItem, isUnlocked, itemRecipe,
@@ -30,7 +30,7 @@ type Recipient = { email: string; record: Row; data: string };
 const referenceNames = ['pokemon-templates', 'moves', 'items', 'abilities', 'natures'];
 /** Campaign entries a campaign city can craft, by the collection they are stored in. */
 const craftCollections: [CraftKind, string][] = [['item', 'items'], ['move', 'moves'], ['ability', 'abilities'], ['pokemon', 'pokemon-templates']];
-const collectionNames = ['pokemon', 'trainers', 'cities', 'campaigns', 'feedback', 'issues', ...referenceNames];
+const collectionNames = ['pokemon', 'trainers', 'teams', 'cities', 'campaigns', 'feedback', 'issues', ...referenceNames];
 const blankStats = () => Object.fromEntries([...ATTRIBUTES, ...SOCIALS, ...SKILLS, ...TRAINER_SKILLS, 'happiness', 'loyalty', 'will'].map(key => [key, 0])) as Stats;
 
 class HttpError extends Error {
@@ -444,6 +444,18 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return db[name]?.find(record => record.id === id) ?? referenceRows[name]?.find(record => record.id === id) ?? null;
     }
 
+    /** Teams only hold your own Pokemon; city residents can't join one. */
+    const ownPokemon = (id: unknown) => db.pokemon.some(p => p.id === id && !p.cityId);
+
+    /** A team's validated name and members, keeping stored values the body leaves out. */
+    function teamFields(body: Json, record?: Row) {
+      const name = 'name' in body ? (typeof body.name === 'string' ? body.name.trim() : '') : record?.name ?? '';
+      if (!name || name.length > TEAM_NAME_LIMIT) fail(400, `Team names must be 1 to ${TEAM_NAME_LIMIT} characters.`);
+      const ids = 'pokemonIds' in body ? body.pokemonIds : record?.pokemonIds ?? [];
+      if (!Array.isArray(ids) || ids.some((id: unknown) => typeof id !== 'string' || !ownPokemon(id))) fail(400, 'Choose your own Pokemon for this team.');
+      return { name, pokemonIds: [...new Set(ids as string[])] };
+    }
+
     /** Like find, but also sees the read-only custom entries that visible Pokemon use. */
     function lookup(name: string, id: unknown): Row | null {
       return find(name, id) ?? foreign[name]?.find(record => record.id === id) ?? null;
@@ -577,6 +589,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     function hydrate(name: string, record: Row) {
       if (name === 'pokemon') return pokemon(record);
       if (name === 'trainers') return trainer(record);
+      // Members deleted, sent away or moved to a city since drop out.
+      if (name === 'teams') return { ...record, pokemonIds: (record.pokemonIds ?? []).filter(ownPokemon) };
       if (name === 'cities') {
         const tags = (record.tags ?? []) as string[];
         const rank = (RANKS as readonly unknown[]).includes(record.rank) ? record.rank : 'UNRANKED';
@@ -1262,7 +1276,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (name === 'pokemon' && action === 'minimal') return reply(records.map(record => {
           const species = lookup('pokemon-templates', record.pokemonTemplateId)!;
           return { id: record.id, name: record.nickname || species.name, number: species.number, dexID: species.dexID,
-            image: species.image, types: species.types, rank: record.rank, shiny: record.shiny === true };
+            image: species.image, types: species.types, rank: record.rank, shiny: record.shiny === true, trainerId: record.trainerId ?? null };
         }));
         return reply(records.map(record => hydrate(name, record)));
       }
@@ -1299,6 +1313,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       if (name === 'trainers') record = { rank: 'UNRANKED', name: '', age: 0, gender: 'N', money: 0,
         natureId: null, inventory: [], ...record, stats: { ...blankStats(), ...body.stats }, currentHp: 5, currentWill: 4 };
       if (name === 'campaigns') record = { allowedUserIds: [], ...record, isCore: false };
+      if (name === 'teams') record = { id: crypto.randomUUID(), userId: owner, ...teamFields(body) };
       if (name === 'feedback') record.createdAt = new Date().toISOString();
       if (name === 'moves') charmToAllure(Object.assign(record, { category: body.category ?? body.Category }));
       if (name === 'items') record.pmdPrice = body.pmdPrice ?? body.PMDPrice;
@@ -1322,6 +1337,11 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         update.habitats = normalizeHabitats(body.habitats);
       }
       delete update.id; delete update.userId;
+      if (name === 'teams') {
+        Object.assign(record, teamFields(body, record));
+        put(name, record);
+        return reply(hydrate(name, record));
+      }
       if (name === 'cities') {
         Object.assign(record, cityFields(body, record));
         delete record.skills;
