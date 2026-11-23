@@ -57,3 +57,12 @@ While fighting on a saved Pokémon's sheet (**…** → **Fight**), its party ca
 - **Swap Pokémon** opens the party picker. Choose a party member with HP left and its sheet opens in the same fight, one turn later than the current one. Swapping uses an action, so it's unavailable on turn 5.
 - When the fighting Pokémon reaches 0 HP, a dialog says it fainted and asks whether to send in another Pokémon. **Yes** opens the same picker and **No** keeps the fight open.
 - If no other party member has HP left (or the Pokémon has no trainer), the picker says no Pokémon is available. After a faint, it also warns that the encounter ends for you and offers **End fight**.
+
+## Evasion and Clash in a fight
+
+During a fight (on a Pokémon's sheet or in an encounter), the **Evasion** and **Clash** pools track their use like moves do:
+
+- Tap **Evasion** to check it as used this round. Tap its number to roll the Evasion dice.
+- Tap **Clash** to pick the move you clash with. Only Physical or Special moves not used yet this round are listed. The chosen move is crossed out in **Moves**, and its name shows under the Clash pool. Tap **Clash** again, or uncheck the move, to clear the clash.
+- Clash shows two numbers, Strength + Clash and Special + Clash. Tap one to roll it. After a clash with a Physical or Special move, the pool that doesn't apply is dimmed.
+- **New round** and **Refresh round** clear Evasion and Clash together with the used moves.
