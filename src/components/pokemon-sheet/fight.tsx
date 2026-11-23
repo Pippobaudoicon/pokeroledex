@@ -3,6 +3,9 @@ import * as React from "react";
 import type * as T from "../../../shared/types";
 import { button } from "@/components/kit/button";
 import { Group } from "@/components/kit/List";
+import { CategoryIcon, categoryName } from "@/components/kit/MoveRow";
+import { TypeDot } from "@/components/kit/Pills";
+import { Sheet } from "@/components/kit/Sheet";
 import { type Statuses, statusBoosts } from "@/components/pokemon-sheet/status";
 import { getTotalStat, POKEMON_ATTRIBUTES } from "@/lib/stats";
 import { cn } from "@/lib/utils";
@@ -25,6 +28,35 @@ export interface SheetFight {
   statuses: Statuses;
   setStatuses: (statuses: Statuses) => void;
 }
+
+// Evasion and Clash are tracked next to the used moves, so they clear with them on a new round.
+export const EVASION_USED = "action:evasion";
+const CLASH_PREFIX = "action:clash:";
+
+/** The move this Pokémon clashed with this round, if it clashed. */
+export const clashMoveId = (used: readonly string[]) => used.find((id) => id.startsWith(CLASH_PREFIX))?.slice(CLASH_PREFIX.length);
+
+/** Used this round, either directly or to clash. */
+export const isMoveUsed = (used: readonly string[], moveId: string) => used.includes(moveId) || clashMoveId(used) === moveId;
+
+/** Marks or clears a move; clearing a move used to clash also clears the clash. */
+export const setMoveUsed = (used: readonly string[], moveId: string, value: boolean) =>
+  value
+    ? [...used, moveId]
+    : used.filter((id) => id !== moveId && id !== `${CLASH_PREFIX}${moveId}`);
+
+export const setEvasionUsed = (used: readonly string[], value: boolean) =>
+  value ? [...used.filter((id) => id !== EVASION_USED), EVASION_USED] : used.filter((id) => id !== EVASION_USED);
+
+/** Clash with `moveId`, or clear the clash with undefined. */
+export const setClashMove = (used: readonly string[], moveId: string | undefined) => {
+  const rest = used.filter((id) => !id.startsWith(CLASH_PREFIX));
+  return moveId ? [...rest, `${CLASH_PREFIX}${moveId}`] : rest;
+};
+
+/** Moves that can still clash this round: damaging moves not used yet. */
+export const clashableMoves = (moves: readonly T.Move[], used: readonly string[]) =>
+  moves.filter((move) => move.category !== "SUPPORT" && !isMoveUsed(used, move.id));
 
 const FightContext = React.createContext<SheetFight | undefined>(undefined);
 
@@ -73,6 +105,44 @@ export const withBoosts = (pokemon: T.Pokemon, boosts: Boosts | undefined): T.Po
   for (const attribute of POKEMON_ATTRIBUTES) stats[attribute] += clampedBoost(pokemon, boosts!, attribute);
   return { ...pokemon, stats };
 };
+
+/** Picks the move to clash with; only moves that can still be used this round are listed. */
+export const ClashSheet = ({
+  open,
+  onOpenChange,
+  moves,
+  onPick,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  moves: readonly T.Move[];
+  onPick: (move: T.Move) => void;
+}) => (
+  <Sheet open={open} onOpenChange={onOpenChange} title="Clash with which move?" description="The move is crossed out for the rest of the round.">
+    {moves.length === 0 ? (
+      <p className="px-4 py-6 text-center text-subhead text-label-2">No Physical or Special move left to clash with this round.</p>
+    ) : (
+      <ul className="m-4 overflow-hidden rounded-2xl bg-surface shadow-card">
+        {moves.map((move) => (
+          <li key={move.id} className="border-b border-hairline last:border-b-0">
+            <button
+              type="button"
+              onClick={() => onPick(move)}
+              className="flex min-h-12 w-full items-center gap-3 px-4 text-left hover:bg-raised lg:min-h-10 lg:px-3"
+            >
+              <TypeDot type={move.type} />
+              <span className="min-w-0 flex-1 truncate text-body font-medium">{move.name}</span>
+              <span className="flex shrink-0 items-center gap-1.5 text-footnote text-label-2">
+                <CategoryIcon category={move.category} className="size-3.5" />
+                {categoryName(move.category)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Sheet>
+);
 
 const LABELS: Record<T.Attribute, string> = {
   strength: "Strength",

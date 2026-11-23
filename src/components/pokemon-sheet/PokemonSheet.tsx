@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowLeftRight, Check, Minus, Plus, RotateCcw, X } from "lucide-react";
 import * as React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
@@ -15,7 +15,26 @@ import { Sprite } from "@/components/kit/Sprite";
 import { AddMoveSheet, useCanAddMove } from "@/components/pokemon-sheet/AddMoveSheet";
 import { AddToMyPokemon, LockButton, SheetActions } from "@/components/pokemon-sheet/actions";
 import { usePokemon } from "@/components/pokemon-sheet/context";
-import { fightBoosts, FightProvider, MAX_TURN, MIN_TURN, type SheetFight, TempStats, useFight, useLocalFight, withBoosts } from "@/components/pokemon-sheet/fight";
+import {
+  ClashSheet,
+  clashableMoves,
+  clashMoveId,
+  EVASION_USED,
+  fightBoosts,
+  FightProvider,
+  isMoveUsed,
+  MAX_TURN,
+  MIN_TURN,
+  setClashMove,
+  setEvasionUsed,
+  setMoveUsed,
+  type SheetFight,
+  TempStats,
+  useFight,
+  useLocalFight,
+  withBoosts,
+} from "@/components/pokemon-sheet/fight";
+import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
 import { hasStatuses, NewRoundAlert, nextRoundStatuses, roundEffects, StatusPicker } from "@/components/pokemon-sheet/status";
 import { FaintedAlert, SwapSheet, swapInTurn } from "@/components/pokemon-sheet/swap";
 import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
@@ -226,25 +245,143 @@ const poolValues = (pokemon: T.Pokemon) => {
   ] as const;
 };
 
-/** Pools rolled every round, worked out from the sheet (corebook p. 51). Values changed by temporary stats are highlighted. */
+/** A pool label that doubles as a "used this round" check in a fight. */
+const PoolCheck = ({ label, checked, title, onClick }: { label: string; checked: boolean; title: string; onClick: () => void }) => (
+  <button
+    type="button"
+    role="checkbox"
+    aria-checked={checked}
+    title={title}
+    onClick={onClick}
+    className="-my-1 flex min-h-8 items-center gap-1 rounded-md px-1 text-caption font-medium text-label-2 hover:bg-fill"
+  >
+    <span
+      aria-hidden
+      className={cn(
+        "grid size-3.5 place-items-center rounded-[4px] border-[1.5px] transition-colors duration-150",
+        checked ? "border-tint bg-tint text-on-tint" : "border-label/30",
+      )}
+    >
+      {checked && <Check className="size-2.5" strokeWidth={3.5} />}
+    </span>
+    {label}
+  </button>
+);
+
+/** A pool value that rolls its dice when tapped. */
+const PoolRoll = ({ value, label, changed, dimmed, onRoll }: { value: number; label: string; changed: boolean; dimmed?: boolean; onRoll: () => void }) => (
+  <button
+    type="button"
+    aria-label={`Roll ${label}: ${value} dice`}
+    title={`Roll ${label} (${value} dice)`}
+    disabled={value <= 0}
+    onClick={onRoll}
+    className={cn(
+      "rounded-md px-1 text-headline font-semibold tabular-nums underline decoration-dotted decoration-1 underline-offset-4 hover:bg-tint/10 disabled:no-underline",
+      changed ? "text-tint" : "text-label",
+      dimmed && "opacity-40",
+    )}
+  >
+    {value}
+  </button>
+);
+
+/**
+ * Pools rolled every round, worked out from the sheet (corebook p. 51). Values changed by temporary stats are highlighted.
+ * In a fight, Evasion and Clash can be checked once used this round and their values roll the dice.
+ */
 const Pools = ({ pokemon, base = pokemon }: { pokemon: T.Pokemon; base?: T.Pokemon }) => {
+  const { editingMode } = usePokemon();
+  const fight = useFight();
+  const tracking = editingMode === "view" ? fight : undefined;
+  const [roll, setRoll] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
+  const [clashing, setClashing] = React.useState(false);
   const before = poolValues(base);
+  const name = pokemon.nickname || pokemon.pokemonTemplate.name;
+  const rollPool = (kind: DiceRollRequest["kind"], dice: number, detail?: string) => () =>
+    setRoll((previous) => ({ title: detail ? `${name} (${detail})` : name, kind, dice, key: (previous?.key ?? 0) + 1 }));
+  const used = tracking?.usedMoves ?? [];
+  const evaded = used.includes(EVASION_USED);
+  const clashMove = pokemon.moves.find((move) => move.id === clashMoveId(used));
+  const evasion = getTotalStat(pokemon, "dexterity") + pokemon.stats.evasion;
+  const clashStrength = getTotalStat(pokemon, "strength") + pokemon.stats.clash;
+  const clashSpecial = getTotalStat(pokemon, "special") + pokemon.stats.clash;
+  const clashSide = clashMove?.category === "PHYSICAL" ? "strength" : clashMove?.category === "SPECIAL" ? "special" : undefined;
   return (
-    <dl className="grid grid-cols-5 overflow-hidden rounded-2xl bg-surface shadow-card">
-      {poolValues(pokemon).map(([label, value, formula], index) => {
-        const changed = value !== before[index][1];
-        return (
-          <div
-            key={label}
-            title={changed ? `${formula} (was ${before[index][1]})` : formula}
-            className="flex flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0"
-          >
-            <dt className="text-caption font-medium text-label-2">{label}</dt>
-            <dd className={cn("text-headline font-semibold tabular-nums", changed && "text-tint")}>{value}</dd>
-          </div>
-        );
-      })}
-    </dl>
+    <>
+      <dl className="grid grid-cols-5 overflow-hidden rounded-2xl bg-surface shadow-card">
+        {poolValues(pokemon).map(([label, value, formula], index) => {
+          const changed = value !== before[index][1];
+          const cellTitle = changed ? `${formula} (was ${before[index][1]})` : formula;
+          const cellClass = "flex min-w-0 flex-col items-center gap-0.5 border-r border-hairline px-1 py-2.5 last:border-r-0";
+          if (tracking && label === "Evasion")
+            return (
+              <div key={label} title={cellTitle} className={cellClass}>
+                <dt>
+                  <PoolCheck
+                    label={label}
+                    checked={evaded}
+                    title={evaded ? "Evaded this round" : "Mark Evasion as used this round"}
+                    onClick={() => tracking.setUsedMoves(setEvasionUsed(used, !evaded))}
+                  />
+                </dt>
+                <dd className={cn(evaded && "opacity-45")}>
+                  <PoolRoll value={evasion} label="Evasion" changed={changed} onRoll={rollPool("evasion", evasion)} />
+                </dd>
+              </div>
+            );
+          if (tracking && label === "Clash")
+            return (
+              <div key={label} title={clashMove ? `${cellTitle}. Clashed with ${clashMove.name}` : cellTitle} className={cellClass}>
+                <dt>
+                  <PoolCheck
+                    label={label}
+                    checked={!!clashMove}
+                    title={clashMove ? `Clashed with ${clashMove.name}; tap to clear` : "Clash: pick the move to clash with"}
+                    onClick={() => (clashMove ? tracking.setUsedMoves(setClashMove(used, undefined)) : setClashing(true))}
+                  />
+                </dt>
+                <dd className={cn("flex items-baseline text-headline font-semibold tabular-nums", changed && "text-tint")}>
+                  <PoolRoll
+                    value={clashStrength}
+                    label="Clash with Strength"
+                    changed={changed}
+                    dimmed={clashSide === "special"}
+                    onRoll={rollPool("clash", clashStrength, "Strength")}
+                  />
+                  /
+                  <PoolRoll
+                    value={clashSpecial}
+                    label="Clash with Special"
+                    changed={changed}
+                    dimmed={clashSide === "strength"}
+                    onRoll={rollPool("clash", clashSpecial, "Special")}
+                  />
+                </dd>
+                {clashMove && <dd className="max-w-full truncate text-caption text-label-2">{clashMove.name}</dd>}
+              </div>
+            );
+          return (
+            <div key={label} title={cellTitle} className={cellClass}>
+              <dt className="text-caption font-medium text-label-2">{label}</dt>
+              <dd className={cn("text-headline font-semibold tabular-nums", changed && "text-tint")}>{value}</dd>
+            </div>
+          );
+        })}
+      </dl>
+      {tracking && (
+        <ClashSheet
+          open={clashing}
+          onOpenChange={setClashing}
+          moves={clashableMoves(pokemon.moves, used)}
+          onPick={(move) => {
+            tracking.setUsedMoves(setClashMove(used, move.id));
+            setClashing(false);
+          }}
+        />
+      )}
+      {roll && <DiceRoll key={roll.key} request={roll} onClose={() => setRoll(null)} />}
+    </>
   );
 };
 
@@ -284,7 +421,7 @@ const Moves = ({ generated }: { generated: boolean }) => {
         changing
           ? "Remove a move, then add its replacement. Changes stay with this generated Pokémon."
           : tracking && pokemon.moves.length > 0
-            ? "Check a move once it’s used this round. Tap a move, then its dice button to roll; pools include temporary stats. ★ is S.T.A.B."
+            ? "Check a move once it’s used this round, and Evasion or Clash above once used. Tap a move, then its dice button to roll; pools include temporary stats. ★ is S.T.A.B."
             : !editing && pokemon.moves.length > 0
               ? "Tap a move, then its dice button to roll. Pools include this Pokémon’s stats; ★ is S.T.A.B."
               : undefined
@@ -301,12 +438,8 @@ const Moves = ({ generated }: { generated: boolean }) => {
             key={move.id}
             move={move}
             pokemon={boosted}
-            used={tracking?.usedMoves.includes(move.id)}
-            onUsedChange={
-              tracking
-                ? (used) => tracking.setUsedMoves(used ? [...tracking.usedMoves, move.id] : tracking.usedMoves.filter((id) => id !== move.id))
-                : undefined
-            }
+            used={tracking ? isMoveUsed(tracking.usedMoves, move.id) : undefined}
+            onUsedChange={tracking ? (used) => tracking.setUsedMoves(setMoveUsed(tracking.usedMoves, move.id, used)) : undefined}
             action={
               editing && (
                 <button
