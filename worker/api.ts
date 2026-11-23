@@ -451,7 +451,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
     function teamFields(body: Json, record?: Row) {
       const name = 'name' in body ? (typeof body.name === 'string' ? body.name.trim() : '') : record?.name ?? '';
       if (!name || name.length > TEAM_NAME_LIMIT) fail(400, `Team names must be 1 to ${TEAM_NAME_LIMIT} characters.`);
-      const ids = 'pokemonIds' in body ? body.pokemonIds : record?.pokemonIds ?? [];
+      // Stored members can go stale (deleted, sent, moved to a city), so only the body's ids are checked strictly.
+      const ids = 'pokemonIds' in body ? body.pokemonIds : (Array.isArray(record?.pokemonIds) ? record.pokemonIds : []).filter(ownPokemon);
       if (!Array.isArray(ids) || ids.some((id: unknown) => typeof id !== 'string' || !ownPokemon(id))) fail(400, 'Choose your own Pokemon for this team.');
       return { name, pokemonIds: [...new Set(ids as string[])] };
     }

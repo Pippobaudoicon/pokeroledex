@@ -481,6 +481,9 @@ test('teams hold your own Pokemon and become a trainer party, unassigning the re
     await h.request(`pokemon/${d.id}`, 'DELETE');
     await h.request('pokemon', 'PATCH', { id: c.id, cityId: city.id });
     assert.deepEqual((await h.request('teams')).body[0].pokemonIds, [b.id]);
+    const renamedAgain = await h.request('teams', 'PATCH', { id: team.id, name: 'Champions' });
+    assert.equal(renamedAgain.status, 200);
+    assert.deepEqual(renamedAgain.body.pokemonIds, [b.id]);
     assert.equal((await h.request(`teams/${team.id}`, 'DELETE')).status, 200);
     assert.equal((await h.request('teams')).body.length, 0);
     assert.equal((await h.request(`pokemon/${b.id}`)).body.trainerId, red.id);
