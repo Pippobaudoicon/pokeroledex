@@ -5,7 +5,7 @@ import type * as T from "../../../shared/types";
 import { apiFetch, type ApiFetchError } from "@/api/client";
 import { useItemsControllerFindAll } from "@/api/components";
 import { ItemCategory, ItemPocket } from "@/api/schemas";
-import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
+import { BallRolls } from "@/components/BallRolls";
 import { FriendTargetSelect, type FriendTarget, targetLabel } from "@/components/FriendTargetSelect";
 import { ItemCard } from "@/components/ItemCard";
 import { ItemImage } from "@/components/ItemImage";
@@ -13,54 +13,11 @@ import { button } from "@/components/kit/button";
 import { Chip } from "@/components/kit/Controls";
 import { Picker } from "@/components/kit/Picker";
 import { Sheet } from "@/components/kit/Sheet";
-import { RollChip } from "@/components/move-dice";
 import { useFriends } from "@/hooks/use-friends";
 import { useToast } from "@/hooks/use-toast";
 import { formatEnumName } from "@/lib/utils";
 import { type InventoryRow, useTrainer } from "@/pages/MyTrainers/context";
 import { errorText } from "@/pages/MyCity/common";
-
-/** Fixed seal potency from a ball's description, like "Seal potency of 6 dice"; special balls have none. */
-const sealDice = (item: T.Item) => {
-  const match = /seal potency (?:of )?(\d+)/i.exec(item.description);
-  return match ? Number(match[1]) : undefined;
-};
-
-/** A Poké Ball's throw (Dexterity/Strength + Throw, corebook p. 100) and seal, rolled like a move's accuracy and damage. */
-const BallRolls = ({ item }: { item: T.Item }) => {
-  const { updatedTrainer: trainer } = useTrainer();
-  const [roll, setRoll] = React.useState<(DiceRollRequest & { key: number }) | null>(null);
-  if (!trainer) return null;
-  // Attributes are stored one below their score; skills are not (see TrainerSheet).
-  const dexterity = trainer.stats.dexterity + 1;
-  const strength = trainer.stats.strength + 1;
-  const formula = `${dexterity >= strength ? "Dexterity" : "Strength"} ${Math.max(dexterity, strength)} + Throw ${trainer.stats.throw}`;
-  const accuracy = Math.max(dexterity, strength) + trainer.stats.throw;
-  const seal = sealDice(item);
-  const rollPool = (kind: DiceRollRequest["kind"], dice: number) => () =>
-    setRoll((previous) => ({ title: item.name, kind, dice, key: (previous?.key ?? 0) + 1 }));
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 pb-2 pl-13 text-footnote text-label-2">
-      <span>
-        Acc {formula} =
-        <RollChip dice={accuracy} label="accuracy" title={formula} onClick={rollPool("accuracy", accuracy)} />
-      </span>
-      <span>
-        Seal
-        {seal ? <RollChip dice={seal} label="seal" title="Seal potency" onClick={rollPool("seal", seal)} /> : " varies, see the item"}
-      </span>
-      {roll && (
-        <DiceRoll
-          key={roll.key}
-          request={roll}
-          onClose={() => setRoll(null)}
-          next={roll.kind === "accuracy" && seal ? `Roll the seal (${seal} dice)` : undefined}
-          onNext={seal ? rollPool("seal", seal) : undefined}
-        />
-      )}
-    </div>
-  );
-};
 
 /** Sends some of a saved bag entry to one of a friend's trainers. */
 const SendItemSheet = ({ entry, open, onOpenChange }: { entry: InventoryRow & { id: string }; open: boolean; onOpenChange: (open: boolean) => void }) => {
@@ -128,7 +85,7 @@ const InventoryItem = ({
   onChange: (quantity: number) => void;
   onDelete: () => void;
 }) => {
-  const { editingMode } = useTrainer();
+  const { editingMode, updatedTrainer: trainer } = useTrainer();
   const [draft, setDraft] = React.useState(String(entry.quantity));
   const [detail, setDetail] = React.useState(false);
   const [sending, setSending] = React.useState(false);
@@ -181,7 +138,7 @@ const InventoryItem = ({
           <Trash2 aria-hidden className="size-4" />
         </button>
       </div>
-      {entry.item.pocket === ItemPocket.POKEBALLS && <BallRolls item={entry.item} />}
+      {entry.item.pocket === ItemPocket.POKEBALLS && trainer && <BallRolls item={entry.item} stats={trainer.stats} />}
       <Sheet open={detail} onOpenChange={setDetail} title={entry.item.name} initialExpanded>
         <div className="p-4">
           <ItemCard item={entry.item} />

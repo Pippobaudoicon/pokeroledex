@@ -41,7 +41,7 @@ const TRAINER_STATS = [...TRAINER_ATTRIBUTES, ...SOCIALS, ...TRAINER_SKILLS];
 function isCustomItem(item: T.Item) {
   return item.id === undefined || item.id === "" ? true : item.id.startsWith("custom-");
 }
-function toInventoryItemDto(entry: InventoryRow): NonNullable<T.UpdateTrainerBody["inventory"]>[number] {
+export function toInventoryItemDto(entry: InventoryRow): NonNullable<T.UpdateTrainerBody["inventory"]>[number] {
   const id = entry.id === "" ? undefined : entry.id;
   return isCustomItem(entry.item)
     ? {
