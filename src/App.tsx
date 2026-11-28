@@ -4,6 +4,7 @@ import { RouterProvider, createBrowserRouter, useLocation } from "react-router-d
 
 import { PokemonType } from "@/api/schemas";
 import { PageHeader } from "@/components/kit/PageHeader";
+import { FightsProvider } from "@/components/pokemon-sheet/fight";
 import { TypeEffectiveness } from "@/components/TypeEffectiveness";
 import { Toaster } from "@/components/ui/toaster";
 import { ErrorPage } from "@/ErrorPage";
@@ -55,8 +56,10 @@ const router = createBrowserRouter([
     element: (
       <QueryClientProvider client={queryClient}>
         <EncounterProvider>
-          <AppShell />
-          <Toaster />
+          <FightsProvider>
+            <AppShell />
+            <Toaster />
+          </FightsProvider>
         </EncounterProvider>
       </QueryClientProvider>
     ),

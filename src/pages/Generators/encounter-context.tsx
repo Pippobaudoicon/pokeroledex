@@ -63,6 +63,9 @@ export const EncounterContext = React.createContext<{
   /** Status ailments per tab key, applied on Refresh round. */
   statuses: Record<string, Statuses>;
   setStatuses: React.Dispatch<React.SetStateAction<Record<string, Statuses>>>;
+  /** Tab open in Encounter details, kept when you leave the page; null when closed. */
+  selectedId: string | null;
+  setSelectedId: (id: string | null) => void;
 }>(null!);
 
 /** Keeps only the keys of `record` that `keep` accepts, returning the same object when nothing is dropped. */
@@ -83,6 +86,7 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
   const [boosts, setBoosts] = React.useState<Record<string, Boosts>>({});
   const [usedMoves, setUsedMoves] = React.useState<Record<string, string[]>>({});
   const [statuses, setStatuses] = React.useState<Record<string, Statuses>>({});
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const encounterEmpty = entries.length === 0;
   React.useEffect(() => {
     // Once the last encounter Pokémon is gone, drop the fight state left behind by removed ones; allies keep theirs.
@@ -118,6 +122,8 @@ export const EncounterProvider = ({ children }: { children: React.ReactNode }) =
         setUsedMoves,
         statuses,
         setStatuses,
+        selectedId,
+        setSelectedId,
       }}
     >
       {children}

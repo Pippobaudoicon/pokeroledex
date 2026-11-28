@@ -8,6 +8,7 @@ import { RankBall } from "@/components/kit/Pills";
 import { Pokeball } from "@/components/kit/Pokeball";
 import { Sprite } from "@/components/kit/Sprite";
 import { shinyRing } from "@/components/kit/Shiny";
+import { AppearanceSelect } from "@/layout/Appearance";
 import { IssueButton } from "@/layout/IssueButton";
 import { navSections } from "@/layout/nav";
 import { useSpotlight } from "@/layout/Spotlight";
@@ -115,7 +116,7 @@ const TrainersGroup = () => {
 
 export const HomePage = () => (
   <div className="mx-auto max-w-6xl pb-10">
-    <PageHeader title="PokéroleDex">
+    <PageHeader title="PokéroleDex" actions={<div className="lg:hidden"><AppearanceSelect compact /></div>}>
       <p className="text-subhead text-label-2">Your Pokérole table companion.</p>
       <SearchField />
     </PageHeader>
