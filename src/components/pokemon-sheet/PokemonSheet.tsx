@@ -32,6 +32,7 @@ import {
   useFight,
   useSavedFight,
   useStartFight,
+  usePartyFight,
   withBoosts,
 } from "@/components/pokemon-sheet/fight";
 import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
@@ -547,6 +548,7 @@ export const PokemonSheet = ({
   const localFight = useSavedFight(showButtons === "edit" && !externalFight ? pokemon?.id : undefined);
   const fighting = localFight !== undefined;
   const startFight = useStartFight();
+  const partyFight = usePartyFight(pokemon?.id, pokemon?.trainerId);
   const [confirmingRound, setConfirmingRound] = React.useState(false);
   const [faintedOpen, setFaintedOpen] = React.useState(false);
   const [swap, setSwap] = React.useState<{ fainted: boolean } | null>(null);
@@ -637,7 +639,10 @@ export const PokemonSheet = ({
     : showButtons === "edit"
       ? fighting && !externalFight
         ? fightActions
-        : <SheetActions onFight={externalFight ? undefined : () => startFight(pokemon.id)} />
+        : <SheetActions
+            onFight={externalFight ? undefined : () => startFight(pokemon.id, pokemon.trainerId)}
+            fightBlocked={partyFight ? "Another Pokémon in this party is in an encounter" : undefined}
+          />
       : showButtons === "addAndLock" && <LockButton />;
   const sectionClass = (name: Section) => cn("flex flex-col gap-6 @3xl:gap-5", section !== name && "@max-3xl:hidden");
   return (

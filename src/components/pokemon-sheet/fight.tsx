@@ -72,12 +72,15 @@ interface FightState {
   boosts: Boosts;
   usedMoves: string[];
   statuses: Statuses;
+  /** The party the Pokémon fought for when the fight started; a party has one encounter at a time. */
+  trainerId: string | null;
 }
 
+// A no-op default keeps sheets working outside the provider (e.g. after a hot reload recreates this context).
 const FightsContext = React.createContext<{
   fights: Record<string, FightState>;
   setFights: React.Dispatch<React.SetStateAction<Record<string, FightState>>>;
-}>(null!);
+}>({ fights: {}, setFights: () => {} });
 
 /** Fights started from a saved Pokémon's sheet, by Pokémon id; they last until End fight, across pages. */
 export const FightsProvider = ({ children }: { children: React.ReactNode }) => {
@@ -85,12 +88,30 @@ export const FightsProvider = ({ children }: { children: React.ReactNode }) => {
   return <FightsContext.Provider value={{ fights, setFights }}>{children}</FightsContext.Provider>;
 };
 
+const partyFightOf = (fights: Record<string, FightState>, id: string, trainerId: string | null | undefined) =>
+  trainerId ? Object.keys(fights).find((other) => other !== id && fights[other].trainerId === trainerId) : undefined;
+
 export const useStartFight = () => {
   const { setFights } = React.useContext(FightsContext);
   return React.useCallback(
-    (id: string, turn = 1) => setFights((fights) => ({ ...fights, [id]: { turn, boosts: {}, usedMoves: [], statuses: {} } })),
+    (id: string, trainerId: string | null, turn = 1) =>
+      setFights((fights) =>
+        partyFightOf(fights, id, trainerId) ? fights : { ...fights, [id]: { turn, boosts: {}, usedMoves: [], statuses: {}, trainerId } },
+      ),
     [setFights],
   );
+};
+
+/** The id of another Pokémon of the same party that is already in an encounter. */
+export const usePartyFight = (id: string | undefined, trainerId: string | null | undefined) => {
+  const { fights } = React.useContext(FightsContext);
+  return id === undefined ? undefined : partyFightOf(fights, id, trainerId);
+};
+
+/** Whether a saved Pokémon is in an active fight. */
+export const useInFight = () => {
+  const { fights } = React.useContext(FightsContext);
+  return React.useCallback((id: string) => id in fights, [fights]);
 };
 
 /** The fight of a saved Pokémon, or undefined when it isn't fighting. */

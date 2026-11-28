@@ -175,7 +175,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
           WHERE copy.owner = ? AND copy.collection = 'pokemon' AND copy.id = records.id) AS taken
         FROM records WHERE owner = ? AND collection = 'pokemon' AND id = ?`).bind(email, owner, action).all<{ data: string; taken: number }>();
       if (!row) fail(404, 'Pokemon not found. City residents must be taken into My Pokemon first.');
-      const record: Row = { ...JSON.parse(row.data), userId: email, trainerId, cityId: null };
+      const record: Row = { ...JSON.parse(row.data), userId: email, trainerId, ownerTrainerId: trainerId, cityId: null };
       if (row.taken) record.id = crypto.randomUUID();
       await env.DB.prepare('UPDATE records SET owner = ?, id = ?, data = ? WHERE owner = ? AND collection = ? AND id = ?')
         .bind(email, record.id, JSON.stringify(record), owner, 'pokemon', action).run();
@@ -446,14 +446,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
 
     /** Teams only hold your own Pokemon; city residents can't join one. */
     const ownPokemon = (id: unknown) => db.pokemon.some(p => p.id === id && !p.cityId);
+    const assignedPokemon = (id: unknown) => db.pokemon.some(p => p.id === id && !p.cityId && ownerOf(p));
 
     /** A team's validated name and members, keeping stored values the body leaves out. */
     function teamFields(body: Json, record?: Row) {
       const name = 'name' in body ? (typeof body.name === 'string' ? body.name.trim() : '') : record?.name ?? '';
       if (!name || name.length > TEAM_NAME_LIMIT) fail(400, `Team names must be 1 to ${TEAM_NAME_LIMIT} characters.`);
-      // Stored members can go stale (deleted, sent, moved to a city), so only the body's ids are checked strictly.
-      const ids = 'pokemonIds' in body ? body.pokemonIds : (Array.isArray(record?.pokemonIds) ? record.pokemonIds : []).filter(ownPokemon);
+      // Stored members can go stale (deleted, sent, moved to a city, unassigned), so only the body's ids are checked strictly.
+      const ids = 'pokemonIds' in body ? body.pokemonIds : (Array.isArray(record?.pokemonIds) ? record.pokemonIds : []).filter(assignedPokemon);
       if (!Array.isArray(ids) || ids.some((id: unknown) => typeof id !== 'string' || !ownPokemon(id))) fail(400, 'Choose your own Pokemon for this team.');
+      if (ids.some((id: string) => !assignedPokemon(id))) fail(400, 'Give every Pokemon in a team to a trainer first.');
       return { name, pokemonIds: [...new Set(ids as string[])] };
     }
 
@@ -503,6 +505,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         pokemonTemplate: template(lookup('pokemon-templates', record.pokemonTemplateId)),
         ability: lookup('abilities', record.abilityId), nature: lookup('natures', record.natureId),
         heldItem: lookup('items', record.heldItemId), trainer: find('trainers', record.trainerId),
+        ownerTrainerId: ownerOf(record),
         moves: (record.moveIds ?? []).map((id: string) => lookup('moves', id)).filter(Boolean),
       } as Pokemon;
     }
@@ -752,17 +755,36 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       return fields;
     }
 
-    function assignment(body: Json): Json {
+    /** The trainer that owns a Pokemon. Older records only had the party, which implied ownership. */
+    function ownerOf(record: Row): string | null {
+      return record.ownerTrainerId !== undefined ? record.ownerTrainerId : record.trainerId ?? null;
+    }
+
+    /** Where a Pokemon goes: a city, or owned by a trainer and maybe in that trainer's party. */
+    function assignment(body: Json, record?: Row): Json {
       const update: Json = {};
-      for (const [key, collection] of [['cityId', 'cities'], ['trainerId', 'trainers']]) {
+      for (const [key, collection] of [['cityId', 'cities'], ['trainerId', 'trainers'], ['ownerTrainerId', 'trainers']]) {
         if (!(key in body)) continue;
         const value = body[key];
         if (value !== null && (typeof value !== 'string' || !db[collection].some(record => record.id === value))) fail(400, `Choose a valid ${collection === 'cities' ? 'city' : 'trainer'}.`);
         update[key] = value;
       }
-      if (update.cityId && update.trainerId) fail(400, 'A Pokemon cannot belong to both a city and a trainer.');
-      if (update.cityId) update.trainerId = null;
-      if (update.trainerId) update.cityId = null;
+      if (update.cityId && (update.trainerId || update.ownerTrainerId)) fail(400, 'A Pokemon cannot belong to both a city and a trainer.');
+      if (update.cityId) {
+        update.trainerId = null;
+        update.ownerTrainerId = null;
+        return update;
+      }
+      if (update.trainerId || update.ownerTrainerId) update.cityId = null;
+      const ownerGiven = 'ownerTrainerId' in update;
+      const owner = ownerGiven ? update.ownerTrainerId : record ? ownerOf(record) : null;
+      const party = 'trainerId' in update ? update.trainerId : record?.trainerId ?? null;
+      if (party && party !== owner) {
+        // A new owner takes it out of the old party.
+        if (!('trainerId' in update)) update.trainerId = null;
+        else fail(400, 'A trainer can only have Pokemon they own in their party.');
+      }
+      update.ownerTrainerId ??= owner;
       return update;
     }
 
@@ -1277,7 +1299,8 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if (name === 'pokemon' && action === 'minimal') return reply(records.map(record => {
           const species = lookup('pokemon-templates', record.pokemonTemplateId)!;
           return { id: record.id, name: record.nickname || species.name, number: species.number, dexID: species.dexID,
-            image: species.image, types: species.types, rank: record.rank, shiny: record.shiny === true, trainerId: record.trainerId ?? null };
+            image: species.image, types: species.types, rank: record.rank, shiny: record.shiny === true, trainerId: record.trainerId ?? null,
+            ownerTrainerId: ownerOf(record) };
         }));
         return reply(records.map(record => hydrate(name, record)));
       }
@@ -1351,14 +1374,15 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         return reply(hydrate(name, record));
       }
       if (name === 'pokemon') {
-        const destination = assignment(body);
+        const destination = assignment(body, record);
         if ('takeOwnership' in body && typeof body.takeOwnership !== 'boolean') fail(400, 'Take ownership must be a boolean.');
         if (body.takeOwnership === true) {
-          if (destination.cityId || destination.trainerId) fail(400, 'Choose either My Pokemon, a trainer, or a city.');
+          if (destination.cityId || destination.trainerId || destination.ownerTrainerId) fail(400, 'Choose either My Pokemon, a trainer, or a city.');
           destination.cityId = null;
           destination.trainerId = null;
+          destination.ownerTrainerId = null;
         }
-        if (record.cityId && destination.cityId === null && !destination.trainerId && body.takeOwnership !== true) {
+        if (record.cityId && destination.cityId === null && !destination.ownerTrainerId && body.takeOwnership !== true) {
           fail(400, 'Move this resident to another city, a trainer, or explicitly take it into My Pokemon.');
         }
         if (destination.cityId && destination.cityId !== record.cityId) checkCapacity(destination.cityId);
@@ -1371,8 +1395,16 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
         if ('pokemonIds' in body) {
           if (!Array.isArray(body.pokemonIds) || body.pokemonIds.some((id: unknown) => typeof id !== 'string' || !db.pokemon.some(p => p.id === id))) fail(400, 'Choose valid Pokemon for this trainer.');
           for (const p of db.pokemon) {
+            const owner = ownerOf(p);
+            if (body.pokemonIds.includes(p.id) && owner !== record.id) {
+              const species = lookup('pokemon-templates', p.pokemonTemplateId);
+              fail(400, `${p.nickname || species?.name || 'A Pokemon'} ${owner ? 'belongs to another trainer' : 'is unassigned'}. Give it to this trainer first.`);
+            }
+          }
+          for (const p of db.pokemon) {
             const trainerId = body.pokemonIds.includes(p.id) ? record.id : p.trainerId === record.id ? null : p.trainerId;
             if (trainerId !== p.trainerId || (trainerId === record.id && p.cityId)) {
+              p.ownerTrainerId = trainerId ?? ownerOf(p);
               p.trainerId = trainerId;
               if (trainerId === record.id && p.cityId) {
                 leaveCity(p);
@@ -1422,7 +1454,7 @@ export async function handleApi(request: Request, env: Env, url: URL, owner: str
       for (const [kind, record] of removed) drop(kind, record);
       for (const p of db.pokemon) {
         let changed = false;
-        for (const key of ['trainerId', 'cityId', 'abilityId', 'heldItemId']) if (removedIds.has(p[key])) { p[key] = null; changed = true; }
+        for (const key of ['trainerId', 'ownerTrainerId', 'cityId', 'abilityId', 'heldItemId']) if (removedIds.has(p[key])) { p[key] = null; changed = true; }
         const moveIds = p.moveIds.filter((id: string) => !removedIds.has(id));
         if (moveIds.length !== p.moveIds.length) { p.moveIds = moveIds; changed = true; }
         if (changed && !removedIds.has(p.id)) put('pokemon', p);

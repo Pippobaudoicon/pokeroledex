@@ -97,21 +97,36 @@ const TrainerPicker = ({ pokemon }: { pokemon: T.Pokemon }) => {
     () => (data ?? []).map((trainer) => ({ value: trainer.id, label: trainer.name })).sort((first, second) => first.label.localeCompare(second.label)),
     [data],
   );
+  const owner = data?.find((trainer) => trainer.id === pokemon.ownerTrainerId);
+  const inParty = !!owner && pokemon.trainer?.id === owner.id;
   return (
-    <div className="flex items-center gap-1">
-      <Picker
-        label="Trainer"
-        className="flex-1"
-        items={items}
-        loading={isFetching}
-        value={pokemon.trainer?.id ?? ""}
-        placeholder="No trainer"
-        onChange={(id) => updatePokemon({ trainer: data?.find((trainer) => trainer.id === id) ?? null })}
-      />
-      {pokemon.trainer && (
-        <Link to={`/myTrainers/${pokemon.trainer.id}`} className="shrink-0 rounded-lg px-2 py-2 text-subhead font-semibold text-tint hover:bg-tint/10">
-          Open
-        </Link>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <Picker
+          label="Trainer"
+          className="flex-1"
+          items={items}
+          loading={isFetching}
+          value={pokemon.ownerTrainerId ?? ""}
+          placeholder="No trainer"
+          onChange={(id) => updatePokemon({ ownerTrainerId: id || null, trainer: id && pokemon.trainer?.id === id ? pokemon.trainer : null })}
+        />
+        {pokemon.ownerTrainerId && (
+          <Link to={`/myTrainers/${pokemon.ownerTrainerId}`} className="shrink-0 rounded-lg px-2 py-2 text-subhead font-semibold text-tint hover:bg-tint/10">
+            Open
+          </Link>
+        )}
+      </div>
+      {owner && (
+        <label className="flex items-center gap-2 text-subhead text-label-2">
+          <input
+            type="checkbox"
+            checked={inParty}
+            onChange={(event) => updatePokemon({ trainer: event.target.checked ? owner : null })}
+            className="size-5 accent-pokerole-yellow lg:size-4"
+          />
+          In {owner.name || "the trainer"}’s party
+        </label>
       )}
     </div>
   );

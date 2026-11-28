@@ -53,6 +53,7 @@ function diffPokemon(base: T.Pokemon, updated: T.Pokemon): T.UpdatePokemonBody {
   if (base.nature?.id !== updated.nature?.id) body.natureId = updated.nature?.id ?? null;
   if (base.heldItem?.id !== updated.heldItem?.id) body.heldItemId = updated.heldItem?.id ?? null;
   if (base.trainer?.id !== updated.trainer?.id) body.trainerId = updated.trainer?.id ?? null;
+  if (base.ownerTrainerId !== updated.ownerTrainerId) body.ownerTrainerId = updated.ownerTrainerId;
   if (hasObjectChanges(base.stats, updated.stats))
     body.stats = {
       ...updated.stats,

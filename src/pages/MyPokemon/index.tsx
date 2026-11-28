@@ -11,12 +11,14 @@ import { Pokeball } from "@/components/kit/Pokeball";
 import { Sprite } from "@/components/kit/Sprite";
 import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
 import { PokemonProvider } from "@/components/pokemon-sheet/context";
+import { useInFight } from "@/components/pokemon-sheet/fight";
+import { FightMark, fightBorder } from "@/components/kit/Fight";
 import { PokemonSheet } from "@/components/pokemon-sheet/PokemonSheet";
 import { fold } from "@/hooks/use-dex";
 import { cn, formatEnumName } from "@/lib/utils";
 import { TeamsSheet } from "@/pages/MyPokemon/Teams";
 
-const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected: boolean }) => (
+const PokemonRow = ({ pokemon, selected, fighting }: { pokemon: T.PokemonMinimal; selected: boolean; fighting: boolean }) => (
   <li className="group/row">
     <Link
       to={`/myPokemon/${pokemon.id}`}
@@ -24,16 +26,17 @@ const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected
       aria-current={selected ? "page" : undefined}
       className="flex items-center gap-3 pl-2 transition-colors duration-150 hover:bg-raised active:bg-fill aria-[current]:bg-tint/10"
     >
-      <Sprite image={pokemon.image} set="box" className={cn("h-14 w-17 rounded-xl", pokemon.shiny && shinyRing)} />
+      <Sprite image={pokemon.image} set="box" className={cn("h-14 w-17 rounded-xl", pokemon.shiny && shinyRing, fighting && fightBorder)} />
       <span className="flex min-h-15 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-2 pr-4 group-last/row:border-b-0 lg:pr-3">
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 text-body font-medium"><span className="truncate">{pokemon.name}</span>{pokemon.shiny && <ShinyMark compact />}</span>
+          <span className="flex items-center gap-1.5 text-body font-medium"><span className="truncate">{pokemon.name}</span>{pokemon.shiny && <ShinyMark compact />}{fighting && <FightMark />}</span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-footnote text-label-2">
             <RankBall rank={pokemon.rank} className="size-3.5" />
             {formatEnumName(pokemon.rank)}
             {pokemon.types.map((type) => (
               <TypePill key={type} type={type} size="sm" />
             ))}
+            {pokemon.trainerId && <span className="font-medium text-tint">Party</span>}
           </span>
         </span>
         <ChevronRight aria-hidden className="size-4 shrink-0 text-label-3" />
@@ -42,19 +45,21 @@ const PokemonRow = ({ pokemon, selected }: { pokemon: T.PokemonMinimal; selected
   </li>
 );
 
-const PokemonCard = ({ pokemon }: { pokemon: T.PokemonMinimal }) => (
+const PokemonCard = ({ pokemon, fighting }: { pokemon: T.PokemonMinimal; fighting: boolean }) => (
   <li className="min-w-0">
     <Link
       to={`/myPokemon/${pokemon.id}`}
       title={pokemon.name}
-      className={cn("flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-3 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill sm:p-4", pokemon.shiny && shinyRing)}
+      className={cn("relative flex h-full flex-col items-center gap-2 rounded-2xl bg-surface p-3 text-center shadow-card transition-colors duration-150 hover:bg-raised active:bg-fill sm:p-4", pokemon.shiny && shinyRing, fighting && fightBorder)}
     >
+      {fighting && <FightMark className="absolute top-2 right-2 [&>svg]:size-5" />}
       <Sprite image={pokemon.image} set="book" className="size-24 lg:size-28" />
       <span className="line-clamp-2 min-h-[2.8em] w-full text-body font-semibold">{pokemon.name}</span>
       <span className="flex items-center justify-center gap-1.5 text-footnote text-label-2">
         <RankBall rank={pokemon.rank} className="size-3.5" />
         {formatEnumName(pokemon.rank)}
         {pokemon.shiny && <ShinyMark compact />}
+        {pokemon.trainerId && <span className="font-medium text-tint">· Party</span>}
       </span>
       <span className="mt-auto flex flex-wrap justify-center gap-1">
         {pokemon.types.map((type) => (
@@ -111,6 +116,7 @@ const useTrainerFilter = () => {
 const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: boolean }) => {
   const { data, isFetching, isError, refetch } = usePokemonControllerFindAllMinimal({});
   const { data: trainers } = useTrainersControllerFindAll({});
+  const inFight = useInFight();
   const [query, setQuery] = React.useState("");
   const [storedTrainer, setTrainer] = useTrainerFilter();
   const [teamsOpen, setTeamsOpen] = React.useState(false);
@@ -120,7 +126,7 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
   const list = React.useMemo(
     () =>
       data
-        ?.filter((pokemon) => !trainer || (trainer === UNASSIGNED ? !pokemon.trainerId : pokemon.trainerId === trainer))
+        ?.filter((pokemon) => !trainer || (trainer === UNASSIGNED ? !pokemon.ownerTrainerId : pokemon.ownerTrainerId === trainer))
         .filter((pokemon) => fold(pokemon.name ?? "").includes(fold(query.trim())))
         .sort((first, second) => (first.name ?? "").localeCompare(second.name ?? "")),
     [data, query, trainer],
@@ -203,8 +209,8 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
               {query.trim()
                 ? `No Pokémon named “${query}”${trainer ? " here" : ""}.`
                 : trainer === UNASSIGNED
-                  ? "Every Pokémon is in a trainer’s party."
-                  : `${trainerName}’s party is empty.`}
+                  ? "Every Pokémon belongs to a trainer."
+                  : `${trainerName} has no Pokémon yet.`}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {query && (
@@ -226,9 +232,9 @@ const PokemonList = ({ selectedId, compact }: { selectedId?: string; compact: bo
             </p>
             <ul className={compact ? "overflow-hidden rounded-xl bg-surface shadow-card" : "grid grid-cols-[repeat(2,minmax(0,220px))] justify-center gap-3 sm:grid-cols-[repeat(auto-fill,220px)] sm:justify-start sm:gap-4"}>
               {list?.map((pokemon) => compact ? (
-                <PokemonRow key={pokemon.id} pokemon={pokemon} selected={pokemon.id === selectedId} />
+                <PokemonRow key={pokemon.id} pokemon={pokemon} selected={pokemon.id === selectedId} fighting={inFight(pokemon.id)} />
               ) : (
-                <PokemonCard key={pokemon.id} pokemon={pokemon} />
+                <PokemonCard key={pokemon.id} pokemon={pokemon} fighting={inFight(pokemon.id)} />
               ))}
             </ul>
           </>

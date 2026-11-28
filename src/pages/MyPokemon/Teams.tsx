@@ -40,21 +40,44 @@ export const TeamSprites =  ({ members }: { members: T.PokemonMinimal[] }) => (
   </span>
 );
 
-const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon: T.PokemonMinimal[]; trainers: T.Trainer[]; onBack: () => void }) => {
+const TeamEditor = ({
+  team,
+  pokemon,
+  trainers,
+  onBack,
+  onCreated,
+}: {
+  team: T.Team;
+  pokemon: T.PokemonMinimal[];
+  trainers: T.Trainer[];
+  onBack: () => void;
+  onCreated: (team: T.Team) => void;
+}) => {
   const { toast } = useToast();
   const client = useQueryClient();
+  // A draft has no id until it is saved.
+  const isNew = !team.id;
+  const assigned = React.useMemo(() => new Set(pokemon.filter((entry) => entry.ownerTrainerId).map((entry) => entry.id)), [pokemon]);
+  const assignedIds = (ids: string[]) => ids.filter((id) => assigned.has(id));
   const [name, setName] = React.useState(team.name);
-  const [ids, setIds] = React.useState(team.pokemonIds);
+  const [ids, setIds] = React.useState(() => assignedIds(team.pokemonIds));
   const [query, setQuery] = React.useState("");
   const [deleting, setDeleting] = React.useState(false);
   React.useEffect(() => {
     setName(team.name);
-    setIds(team.pokemonIds);
-  }, [team]);
+    setIds(assignedIds(team.pokemonIds));
+  }, [team, assigned]);
   const update = useTeamsControllerUpdate({
     onSuccess: () => {
       toast({ title: "Team saved" });
       client.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+  const create = useTeamsControllerCreate({
+    onSuccess: (created) => {
+      toast({ title: "Team saved" });
+      client.invalidateQueries({ queryKey: ["teams"] });
+      onCreated(created);
     },
   });
   const remove = useTeamsControllerRemove({
@@ -70,10 +93,10 @@ const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon
   const dirty = trimmed !== team.name || ids.length !== team.pokemonIds.length || ids.some((id, index) => id !== team.pokemonIds[index]);
   const valid = trimmed.length > 0 && trimmed.length <= TEAM_NAME_LIMIT;
   const list = pokemon
-    .filter((entry) => fold(entry.name).includes(fold(query.trim())))
+    .filter((entry) => entry.ownerTrainerId && fold(entry.name).includes(fold(query.trim())))
     .sort((first, second) => Number(selected.has(second.id)) - Number(selected.has(first.id)) || first.name.localeCompare(second.name));
   const toggle = (id: string) => setIds((previous) => (previous.includes(id) ? previous.filter((entry) => entry !== id) : [...previous, id]));
-  const message = errorMessage(update.error) ?? errorMessage(remove.error);
+  const message = errorMessage(create.error) ?? errorMessage(update.error) ?? errorMessage(remove.error);
   return (
     <div className="flex flex-col gap-5 p-4">
       <button type="button" onClick={onBack} className={cn(button({ variant: "plain", size: "sm" }), "-ml-2 self-start")}>
@@ -106,7 +129,7 @@ const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon
                   <span className="flex min-h-12 min-w-0 flex-1 items-center gap-2 border-b border-hairline py-1.5 pr-4 group-last/row:border-b-0 lg:pr-3">
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 text-body"><span className="truncate">{entry.name}</span>{entry.shiny && <ShinyMark compact />}</span>
-                      <span className="block truncate text-footnote text-label-2">{entry.trainerId ? trainerNames.get(entry.trainerId) ?? "A trainer" : "Unassigned"}</span>
+                      <span className="block truncate text-footnote text-label-2">{trainerNames.get(entry.ownerTrainerId!) ?? "A trainer"}</span>
                     </span>
                     <span
                       aria-hidden
@@ -119,7 +142,7 @@ const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon
               </li>
             );
           })}
-          {list.length === 0 && <li className="p-4 text-center text-subhead text-label-2">No Pokémon match.</li>}
+          {list.length === 0 && <li className="p-4 text-center text-subhead text-label-2">{query.trim() ? "No Pokémon match." : "Give Pokémon to a trainer to add them to a team."}</li>}
         </ul>
       </Group>
       {message && <p className="text-footnote text-[#d92d20]">{message}</p>}
@@ -129,7 +152,7 @@ const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon
           disabled={!dirty}
           onClick={() => {
             setName(team.name);
-            setIds(team.pokemonIds);
+            setIds(assignedIds(team.pokemonIds));
           }}
           className={cn(button({ variant: "gray" }), "flex-1")}
         >
@@ -137,15 +160,19 @@ const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon
         </button>
         <button
           type="button"
-          disabled={!dirty || !valid || update.isPending}
-          onClick={() => update.mutate({ body: { id: team.id, name: trimmed, pokemonIds: ids } })}
+          disabled={isNew ? !valid || create.isPending : !dirty || !valid || update.isPending}
+          onClick={() =>
+            isNew
+              ? create.mutate({ body: { name: trimmed, pokemonIds: ids } })
+              : update.mutate({ body: { id: team.id, name: trimmed, pokemonIds: ids } })
+          }
           className={cn(button({ variant: "filled" }), "flex-1")}
         >
           Save team
         </button>
       </div>
       <p className="text-footnote text-label-2">To make this team a trainer’s party, open the trainer and choose <span className="font-semibold">Use a team</span> in their Party.</p>
-      <Group>
+      {!isNew && <Group>
         {deleting ? (
           <div className="flex flex-col gap-3 p-3">
             <p className="text-subhead">Delete {team.name}? Its Pokémon and trainers aren’t changed.</p>
@@ -166,7 +193,7 @@ const TeamEditor = ({ team, pokemon, trainers, onBack }: { team: T.Team; pokemon
         ) : (
           <Row icon={<Trash2 className="size-4.5 text-[#d92d20]" />} title={<span className="text-[#d92d20]">Delete team</span>} onClick={() => setDeleting(true)} chevron={false} />
         )}
-      </Group>
+      </Group>}
     </div>
   );
 };
@@ -183,32 +210,40 @@ export const TeamsSheet = ({
   pokemon: T.PokemonMinimal[];
   trainers: T.Trainer[];
 }) => {
-  const client = useQueryClient();
-  const { toast } = useToast();
   const { data: teams, isError, refetch } = useTeamsControllerFindAll({});
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState<T.Team | null>(null);
   React.useEffect(() => {
-    if (!open) setSelectedId(null);
+    if (!open) {
+      setSelectedId(null);
+      setDraft(null);
+    }
   }, [open]);
-  const create = useTeamsControllerCreate({
-    onSuccess: (team) => {
-      client.invalidateQueries({ queryKey: ["teams"] });
-      setSelectedId(team.id);
-    },
-    onError: (error) => toast({ title: "Couldn’t create the team", description: errorMessage(error) }),
-  });
-  const byId = new Map(pokemon.map((entry) => [entry.id, entry]));
+  const byId = new Map(pokemon.filter((entry) => entry.ownerTrainerId).map((entry) => [entry.id, entry]));
   const membersOf = (team: T.Team) => team.pokemonIds.flatMap((id) => byId.get(id) ?? []);
-  const selected = teams?.find((team) => team.id === selectedId);
-  const newTeam = (name: string, pokemonIds: string[] = []) => create.mutate({ body: { name: name.slice(0, TEAM_NAME_LIMIT), pokemonIds } });
+  const selected = teams?.find((team) => team.id === selectedId) ?? draft;
+  const newTeam = (name: string, pokemonIds: string[] = []) => setDraft({ id: "", userId: "", name: name.slice(0, TEAM_NAME_LIMIT), pokemonIds });
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} title={selected ? selected.name : "Teams"} initialExpanded>
+    <Sheet open={open} onOpenChange={onOpenChange} title={selected ? selected.name || "New team" : "Teams"} initialExpanded>
       {selected ? (
-        <TeamEditor team={selected} pokemon={pokemon} trainers={trainers} onBack={() => setSelectedId(null)} />
+        <TeamEditor
+          team={selected}
+          pokemon={pokemon}
+          trainers={trainers}
+          onBack={() => {
+            setDraft(null);
+            setSelectedId(null);
+          }}
+          onCreated={(team) => {
+            // Shown until the refetched list includes it.
+            setDraft(team);
+            setSelectedId(team.id);
+          }}
+        />
       ) : (
         <div className="flex flex-col gap-5 p-4">
           <p className="text-subhead text-label-2">
-            A team is a saved group of your Pokémon. Use it from a trainer’s Party to make it their whole party in one step.
+            A team is a saved group of Pokémon that belong to a trainer. Use it from a trainer’s Party to make it their whole party in one step.
           </p>
           {isError ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-6 text-center shadow-card">
@@ -240,7 +275,7 @@ export const TeamsSheet = ({
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              disabled={create.isPending || !teams}
+              disabled={!teams}
               onClick={() => newTeam(`Team ${(teams?.length ?? 0) + 1}`)}
               className={button({ variant: "filled" })}
             >
@@ -256,7 +291,7 @@ export const TeamsSheet = ({
                       key={trainer.id}
                       title={`Save ${trainer.name || "Unnamed trainer"}’s party`}
                       value={plural(trainer.pokemon.length)}
-                      onClick={() => !create.isPending && newTeam(`${trainer.name || "Trainer"}’s party`, trainer.pokemon.map((entry) => entry.id))}
+                      onClick={() => newTeam(`${trainer.name || "Trainer"}’s party`, trainer.pokemon.map((entry) => entry.id))}
                     />
                   ))}
               </Group>

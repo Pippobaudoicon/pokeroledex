@@ -7,14 +7,12 @@ import { Stepper } from "@/components/kit/Controls";
 import { Group, Row } from "@/components/kit/List";
 import { PageHeader } from "@/components/kit/PageHeader";
 import { Picker } from "@/components/kit/Picker";
-import { Sprite } from "@/components/kit/Sprite";
-import { shinyRing } from "@/components/kit/Shiny";
 import { SOCIALS, TRAINER_ATTRIBUTES, TRAINER_SKILLS } from "@/lib/stats";
 import { capitalize, cn, formatEnumName } from "@/lib/utils";
 import { type TrainerStatKey, useTrainer } from "@/pages/MyTrainers/context";
 import { TrainerSheetHeader } from "@/pages/MyTrainers/Header";
 import { InventoryList, InventorySection } from "@/pages/MyTrainers/Inventory";
-import { UseTeam } from "@/pages/MyTrainers/PartyTeams";
+import { TrainerPokemon } from "@/pages/MyTrainers/TrainerPokemon";
 
 type StatType = "attribute" | "social" | "skill";
 const statsByType = { attribute: TRAINER_ATTRIBUTES, social: SOCIALS, skill: TRAINER_SKILLS };
@@ -184,7 +182,7 @@ const Identity = () => {
 };
 
 export const TrainerSheet = () => {
-  const { updatedTrainer: trainer, isError, updateTrainer, editingMode } = useTrainer();
+  const { updatedTrainer: trainer, isError, updateTrainer } = useTrainer();
   if (isError)
     return (
       <>
@@ -216,35 +214,7 @@ export const TrainerSheet = () => {
         <div className="grid items-start gap-6 xl:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-6">
             <Identity />
-            <Group
-              title="Party"
-              action={
-                <span className="flex items-center gap-2">
-                  <span className="text-footnote text-label-2">{trainer.pokemon.length} Pokémon</span>
-                  <UseTeam trainer={trainer} disabled={editingMode !== "view"} />
-                </span>
-              }
-            >
-              {trainer.pokemon.length ? (
-                <ul className="flex flex-wrap gap-2 p-3">
-                  {trainer.pokemon.slice(0, 6).map((pokemon) => (
-                    <li key={pokemon.id}>
-                      <Link
-                        to={`/myPokemon/${pokemon.id}`}
-                        className={cn("flex w-24 flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-raised", pokemon.shiny && shinyRing)}
-                      >
-                        <Sprite image={pokemon.pokemonTemplate.image} set="box" className="h-14 w-17" />
-                        <span className="w-full truncate text-footnote">{pokemon.nickname || pokemon.pokemonTemplate.name}{pokemon.shiny && <span className="sr-only"> (shiny)</span>}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="p-4 text-subhead text-label-2">
-                  No Pokémon assigned yet. Choose this trainer from a Pokémon’s sheet, or use a team.
-                </p>
-              )}
-            </Group>
+            <TrainerPokemon />
             <StatGroup type="attribute" title="Attributes" />
             <StatGroup type="social" title="Socials" />
           </div>
