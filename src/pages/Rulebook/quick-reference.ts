@@ -86,6 +86,21 @@ export const quickReference: QuickReferenceSection[] = [
     ],
   },
   {
+    title: "Training points",
+    pages: [32, 104, 105, 107, 108, 109, 110, 111, 112],
+    points: [
+      "Earn them from daily Training Sessions (Pokémon task roll, then the Trainer's roll; TP = the Trainer's successes), battles, and as a reward for good role-play.",
+      "Battle TP, added at the end and only if it fought a whole Round: vs the strongest foe, Pokémon Rank higher +0, equal +1, one below +2, two or more below +3. Victory +2, defeat +1, won but fainted/switched +1, multiple foes +2.",
+      "Rank Up: Starter→Rookie 5, →Standard 15, →Advanced 25, →Expert 30, →Ace 35, →Master 40, →Champion 50. Never above the Trainer's Rank.",
+      "Evolve: Fast 10, Medium 30, Slow 50 TP, depending on the species. Other methods (stones, trades…) don't need TP.",
+      "New Move when the Pokémon already knows Insight + 3 Moves: current Rank Move costs 2 / 4 / 6 (First / Second / Final stage); lower Rank Move costs 1 / 2 / 3.",
+      "TM or TR: 5 TP for any Pokémon. A pre-evolution Move costs 5 (Second stage) or 10 (Final stage).",
+      "Over-Rank: learn one Move above the current Rank for 5 / 15 / 20 TP per Rank above (First / Second / Final stage). Needs Happiness + Loyalty of at least 7.",
+      "Re-Train: redistribute Rank points in Attributes, Social Attributes and Skills (not Moves). Costs Starter 1, Rookie 10, Standard 20, Advanced 25, Expert 30, Ace 35, Master 40, Champion 45.",
+      "Learning Moves and Over-Ranking is cheaper before evolving.",
+    ],
+  },
+  {
     title: "Common conditions",
     pages: [84, 85, 87],
     points: [
