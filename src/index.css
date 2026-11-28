@@ -451,6 +451,100 @@
   }
 }
 
+/* A Pokémon in an active encounter. Its pseudo-elements replace the shiny ones; the gold ring stays outside. */
+@property --fight-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes fight-orbit {
+  to {
+    --fight-angle: 360deg;
+  }
+}
+
+@keyframes fight-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 2px 0 rgb(217 45 32 / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 10px 2px rgb(239 68 68 / 0.75);
+  }
+}
+
+/* The sheen is the first background layer; at 0% and 100% its transparent ends show, so it sweeps once per cycle. */
+@keyframes fight-sheen {
+  0% {
+    background-position: 100% 0, 0 0;
+  }
+  15%,
+  100% {
+    background-position: 0% 0, 0 0;
+  }
+}
+
+.fight-border {
+  position: relative;
+}
+
+.fight-border::before,
+.fight-border::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* An empty box whose outer shadow pulses around the border. */
+.fight-border::before {
+  z-index: auto;
+  background: none;
+  animation: fight-glow 3s ease-in-out infinite;
+}
+
+/* Masked to the edge, leaving content and pointer interactions untouched. */
+.fight-border::after {
+  z-index: 1;
+  padding: 2px;
+  background:
+    linear-gradient(
+        115deg,
+        transparent calc(50% - 40px),
+        rgb(255 255 255 / 0.3) calc(50% - 18px),
+        rgb(255 255 255 / 0.95) 50%,
+        rgb(255 255 255 / 0.3) calc(50% + 18px),
+        transparent calc(50% + 40px)
+      )
+      100% 0 / 300% 100% no-repeat,
+    conic-gradient(
+      from var(--fight-angle),
+      #7f1d1d 0deg,
+      #d92d20 70deg,
+      #ff6b5b 110deg,
+      #d92d20 150deg,
+      #7f1d1d 180deg,
+      #d92d20 250deg,
+      #ff6b5b 290deg,
+      #d92d20 330deg,
+      #7f1d1d 360deg
+    );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation:
+    fight-orbit 5s linear infinite,
+    fight-sheen 6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fight-border::before,
+  .fight-border::after {
+    animation: none;
+  }
+}
+
 /* tailwindcss-animate's enter/exit transitions (not installed for v4) */
 @keyframes enter {
   0% {

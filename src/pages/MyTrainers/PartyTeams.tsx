@@ -37,9 +37,9 @@ const ConfirmTeam = ({
       onDone();
     },
   });
-  const teamIds = new Set(team.pokemonIds);
+  const teamIds = new Set(members.map((entry) => entry.id));
   const leaving = trainer.pokemon.filter((entry) => !teamIds.has(entry.id));
-  const fromOthers = members.filter((entry) => entry.trainerId && entry.trainerId !== trainer.id);
+  const notOwned = members.filter((entry) => entry.ownerTrainerId !== trainer.id);
   const message = errorMessage(error);
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -58,20 +58,20 @@ const ConfirmTeam = ({
         </p>
         {leaving.length > 0 && (
           <p>
-            <span className="font-semibold text-label">Become unassigned:</span> {leaving.map((entry) => entry.nickname || entry.pokemonTemplate.name).join(", ")}
+            <span className="font-semibold text-label">Leave the party:</span> {leaving.map((entry) => entry.nickname || entry.pokemonTemplate.name).join(", ")}
           </p>
         )}
-        {fromOthers.length > 0 && (
-          <p>
-            <span className="font-semibold text-label">Leave another trainer:</span> {fromOthers.map((entry) => entry.name).join(", ")}
+        {notOwned.length > 0 && (
+          <p className="text-[#d92d20]">
+            <span className="font-semibold">Not owned by {trainer.name || "this trainer"}:</span> {notOwned.map((entry) => entry.name).join(", ")}. Give them to {trainer.name || "this trainer"} first.
           </p>
         )}
       </div>
       {message && <p className="text-footnote text-[#d92d20]">{message}</p>}
       <button
         type="button"
-        disabled={isPending}
-        onClick={() => mutate({ body: { id: trainer.id, pokemonIds: team.pokemonIds } })}
+        disabled={isPending || notOwned.length > 0}
+        onClick={() => mutate({ body: { id: trainer.id, pokemonIds: members.map((entry) => entry.id) } })}
         className={button({ variant: "filled" })}
       >
         <Users aria-hidden className="size-4" />
@@ -90,7 +90,7 @@ export const UseTeam = ({ trainer, disabled }: { trainer: { id: string; name: st
   React.useEffect(() => {
     if (!open) setTeamId(null);
   }, [open]);
-  const byId = new Map((pokemon ?? []).map((entry) => [entry.id, entry]));
+  const byId = new Map((pokemon ?? []).filter((entry) => entry.ownerTrainerId).map((entry) => [entry.id, entry]));
   const membersOf = (team: T.Team) => team.pokemonIds.flatMap((id) => byId.get(id) ?? []);
   const partyIds = trainer.pokemon.map((entry) => entry.id).sort().join();
   const selected = teams?.find((team) => team.id === teamId);
@@ -111,7 +111,7 @@ export const UseTeam = ({ trainer, disabled }: { trainer: { id: string; name: st
           <ConfirmTeam team={selected} members={membersOf(selected)} trainer={trainer} onBack={() => setTeamId(null)} onDone={() => setOpen(false)} />
         ) : (
           <div className="flex flex-col gap-5 p-4">
-            <p className="text-subhead text-label-2">Choose a team to become this trainer’s whole party. Party members that aren’t in it become unassigned.</p>
+            <p className="text-subhead text-label-2">Choose a team to become this trainer’s whole party. Party members that aren’t in it stay with this trainer, out of the party.</p>
             {isError ? (
               <div className="flex flex-col items-center gap-3 rounded-2xl bg-surface p-6 text-center shadow-card">
                 <p className="text-body">Your teams didn’t load.</p>

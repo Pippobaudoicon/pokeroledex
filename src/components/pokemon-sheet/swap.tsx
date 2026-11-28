@@ -82,7 +82,7 @@ export const SwapSheet = ({
     onOpenChange(false);
     toast({ title: `${nameOf(pokemon)}, come back! Go, ${nameOf(next)}!` });
     onEndFight();
-    startFight(next.id, Math.min(MAX_TURN, turn + 1));
+    startFight(next.id, pokemon.trainerId, Math.min(MAX_TURN, turn + 1));
     navigate(`/myPokemon/${next.id}`);
   };
   const nobody = !loading && !isError && available.length === 0;

@@ -202,7 +202,7 @@ export const MenuItem = ({
 );
 
 /** View mode: a menu with Fight, Edit, Rank up, Evolve, Send and Delete. Editing: Cancel and Save. */
-export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
+export const SheetActions = ({ onFight, fightBlocked }: { onFight?: () => void; fightBlocked?: string }) => {
   const { updatedPokemon, editingMode, setEditingMode, savePokemon, cancelEdit } = usePokemon();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -238,12 +238,16 @@ export const SheetActions = ({ onFight }: { onFight?: () => void }) => {
               <MenuItem
                 icon={<Swords />}
                 accent
+                disabled={!!fightBlocked}
                 onClick={() => {
                   setMenuOpen(false);
                   onFight();
                 }}
               >
-                Fight
+                <span className="py-1.5">
+                  Fight
+                  {fightBlocked && <span className="block text-footnote font-normal text-label-2">{fightBlocked}</span>}
+                </span>
               </MenuItem>
             )}
             <MenuItem

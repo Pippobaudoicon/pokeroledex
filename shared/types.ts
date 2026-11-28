@@ -380,7 +380,10 @@ export interface PokemonRecord {
   abilityId: string | null;
   natureId: string | null;
   heldItemId: string | null;
+  /** The trainer whose party the Pokemon is in; always its owner. */
   trainerId: string | null;
+  /** The trainer that owns the Pokemon. Missing on older records, where `trainerId` implied it. */
+  ownerTrainerId?: string | null;
   /** Missing on older records; a Pokemon can belong to a city or a trainer, not both. */
   cityId?: string | null;
   /** Missing (not shiny) on older records. */
@@ -397,6 +400,7 @@ export interface Pokemon extends PokemonRecord {
   nature: Nature | null;
   heldItem: Item | null;
   trainer: TrainerRecord | null;
+  ownerTrainerId: string | null;
   moves: Move[];
 }
 
@@ -410,6 +414,7 @@ export interface PokemonMinimal {
   rank: Rank;
   shiny: boolean;
   trainerId: string | null;
+  ownerTrainerId: string | null;
 }
 
 /** A saved group of your Pokémon that can become a trainer's whole party in one step. */
