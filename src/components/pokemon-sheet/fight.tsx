@@ -67,19 +67,51 @@ export const FightProvider = ({ fight, children }: { fight: SheetFight | undefin
 /** The sheet's fight state, or undefined outside a fight. */
 export const useFight = () => React.useContext(FightContext);
 
-/** Fight state kept by the component using it, so it is gone once that component unmounts. */
-export const useLocalFight = (initialTurn = 1): SheetFight & { reset: () => void } => {
-  const [turn, setTurn] = React.useState(initialTurn);
-  const [boosts, setBoosts] = React.useState<Boosts>({});
-  const [usedMoves, setUsedMoves] = React.useState<string[]>([]);
-  const [statuses, setStatuses] = React.useState<Statuses>({});
-  const reset = React.useCallback(() => {
-    setTurn(1);
-    setBoosts({});
-    setUsedMoves([]);
-    setStatuses({});
-  }, []);
-  return { turn, setTurn, boosts, setBoosts, usedMoves, setUsedMoves, statuses, setStatuses, reset };
+interface FightState {
+  turn: number;
+  boosts: Boosts;
+  usedMoves: string[];
+  statuses: Statuses;
+}
+
+const FightsContext = React.createContext<{
+  fights: Record<string, FightState>;
+  setFights: React.Dispatch<React.SetStateAction<Record<string, FightState>>>;
+}>(null!);
+
+/** Fights started from a saved Pokémon's sheet, by Pokémon id; they last until End fight, across pages. */
+export const FightsProvider = ({ children }: { children: React.ReactNode }) => {
+  const [fights, setFights] = React.useState<Record<string, FightState>>({});
+  return <FightsContext.Provider value={{ fights, setFights }}>{children}</FightsContext.Provider>;
+};
+
+export const useStartFight = () => {
+  const { setFights } = React.useContext(FightsContext);
+  return React.useCallback(
+    (id: string, turn = 1) => setFights((fights) => ({ ...fights, [id]: { turn, boosts: {}, usedMoves: [], statuses: {} } })),
+    [setFights],
+  );
+};
+
+/** The fight of a saved Pokémon, or undefined when it isn't fighting. */
+export const useSavedFight = (id: string | undefined): (SheetFight & { end: () => void }) | undefined => {
+  const { fights, setFights } = React.useContext(FightsContext);
+  const state = id === undefined ? undefined : fights[id];
+  if (id === undefined || !state) return undefined;
+  const update = (changes: Partial<FightState>) =>
+    setFights((fights) => (fights[id] ? { ...fights, [id]: { ...fights[id], ...changes } } : fights));
+  return {
+    ...state,
+    setTurn: (turn) => update({ turn }),
+    setBoosts: (boosts) => update({ boosts }),
+    setUsedMoves: (usedMoves) => update({ usedMoves }),
+    setStatuses: (statuses) => update({ statuses }),
+    end: () =>
+      setFights((fights) => {
+        const { [id]: _, ...rest } = fights;
+        return rest;
+      }),
+  };
 };
 
 /** Temporary stats plus stat changes from statuses (Paralysis). */

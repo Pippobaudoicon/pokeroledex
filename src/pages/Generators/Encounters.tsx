@@ -549,8 +549,7 @@ export const GeneratedEncounterList = ({
   showTyping: boolean;
   onShowTypingChange: (showTyping: boolean) => void;
 }) => {
-  const { entries, status } = React.useContext(EncounterContext);
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const { entries, status, selectedId, setSelectedId } = React.useContext(EncounterContext);
   const resultsRef = useScrollToDetail(entries.map((entry) => entry.pokemon.id).join(",") || undefined);
   const { toast } = useToast();
   const copy = async () => {

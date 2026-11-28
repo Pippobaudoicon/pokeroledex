@@ -10,20 +10,10 @@ import { Pokeball } from "@/components/kit/Pokeball";
 import { Sheet } from "@/components/kit/Sheet";
 import { ShinyMark, shinyRing } from "@/components/kit/Shiny";
 import { Sprite } from "@/components/kit/Sprite";
-import { MAX_TURN } from "@/components/pokemon-sheet/fight";
+import { MAX_TURN, useStartFight } from "@/components/pokemon-sheet/fight";
 import { useToast } from "@/hooks/use-toast";
 import { getTotalStat } from "@/lib/stats";
 import { cn } from "@/lib/utils";
-
-/** Router state that opens a sheet already fighting, for the Pokémon swapped in. */
-export interface SwapInState {
-  swapIn: { turn: number };
-}
-
-export const swapInTurn = (state: unknown): number | undefined => {
-  const turn = (state as Partial<SwapInState> | null)?.swapIn?.turn;
-  return typeof turn === "number" ? turn : undefined;
-};
 
 const nameOf = (pokemon: T.Pokemon) => pokemon.nickname || pokemon.pokemonTemplate.name;
 const maxHp = (pokemon: T.Pokemon) => getTotalStat(pokemon, "vitality") + pokemon.pokemonTemplate.baseHp;
@@ -87,11 +77,13 @@ export const SwapSheet = ({
   const party = trainer?.pokemon.filter((entry) => entry.id !== pokemon.id) ?? [];
   const available = party.filter((entry) => entry.currentHp > 0);
   const loading = !trainers && isFetching && !!pokemon.trainerId;
+  const startFight = useStartFight();
   const swapIn = (next: T.Pokemon) => {
-    const state: SwapInState = { swapIn: { turn: Math.min(MAX_TURN, turn + 1) } };
     onOpenChange(false);
     toast({ title: `${nameOf(pokemon)}, come back! Go, ${nameOf(next)}!` });
-    navigate(`/myPokemon/${next.id}`, { state });
+    onEndFight();
+    startFight(next.id, Math.min(MAX_TURN, turn + 1));
+    navigate(`/myPokemon/${next.id}`);
   };
   const nobody = !loading && !isError && available.length === 0;
   return (

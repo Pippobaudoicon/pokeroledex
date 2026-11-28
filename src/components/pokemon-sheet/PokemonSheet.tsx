@@ -1,6 +1,5 @@
 import { ArrowLeftRight, Check, Minus, Plus, RotateCcw, X } from "lucide-react";
 import * as React from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import type * as T from "../../../shared/types";
 import { Gender } from "@/api/schemas";
 import { button } from "@/components/kit/button";
@@ -31,12 +30,13 @@ import {
   type SheetFight,
   TempStats,
   useFight,
-  useLocalFight,
+  useSavedFight,
+  useStartFight,
   withBoosts,
 } from "@/components/pokemon-sheet/fight";
 import { DiceRoll, type DiceRollRequest } from "@/components/DiceRoll";
 import { hasStatuses, NewRoundAlert, nextRoundStatuses, roundEffects, StatusPicker } from "@/components/pokemon-sheet/status";
-import { FaintedAlert, SwapSheet, swapInTurn } from "@/components/pokemon-sheet/swap";
+import { FaintedAlert, SwapSheet } from "@/components/pokemon-sheet/swap";
 import { PokeballsGroup } from "@/components/pokemon-sheet/pokeballs";
 import { InfoGroups, useNumberDraft } from "@/components/pokemon-sheet/fields";
 import { StatGroups, usePointsLeft } from "@/components/pokemon-sheet/stats";
@@ -544,20 +544,13 @@ export const PokemonSheet = ({
 }) => {
   const { updatedPokemon: pokemon, isLoading, isError, editingMode, updatePokemon } = usePokemon();
   const [section, setSection] = React.useState<Section>("battle");
-  const location = useLocation();
-  const navigate = useNavigate();
-  // A Pokémon swapped in from another sheet opens already fighting, one turn later.
-  const [swappedInTurn] = React.useState(() => (showButtons === "edit" && !externalFight ? swapInTurn(location.state) : undefined));
-  const localFight = useLocalFight(swappedInTurn);
-  const [fighting, setFighting] = React.useState(swappedInTurn !== undefined);
+  const localFight = useSavedFight(showButtons === "edit" && !externalFight ? pokemon?.id : undefined);
+  const fighting = localFight !== undefined;
+  const startFight = useStartFight();
   const [confirmingRound, setConfirmingRound] = React.useState(false);
   const [faintedOpen, setFaintedOpen] = React.useState(false);
   const [swap, setSwap] = React.useState<{ fainted: boolean } | null>(null);
-  const fight = externalFight ?? (fighting ? localFight : undefined);
-  React.useEffect(() => {
-    // Reloading or going back here shouldn't start the fight again.
-    if (swappedInTurn !== undefined) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-  }, []);
+  const fight = externalFight ?? localFight;
   const hp = pokemon?.currentHp;
   const previousHp = React.useRef(hp);
   React.useEffect(() => {
@@ -584,6 +577,7 @@ export const PokemonSheet = ({
 
   const name = pokemon.nickname || pokemon.pokemonTemplate.name;
   const startRound = () => {
+    if (!localFight) return;
     const damage = roundEffects(localFight.statuses).reduce((sum, effect) => sum + effect.damage, 0);
     if (damage > 0) updatePokemon({ currentHp: Math.max(0, pokemon.currentHp - damage) });
     localFight.setStatuses(nextRoundStatuses(localFight.statuses));
@@ -591,11 +585,8 @@ export const PokemonSheet = ({
     localFight.setUsedMoves([]);
   };
   // Generated Pokémon get "Add to My Pokémon" at the bottom of the sheet instead.
-  const endFight = () => {
-    localFight.reset();
-    setFighting(false);
-  };
-  const fightActions = (
+  const endFight = () => localFight?.end();
+  const fightActions = localFight && (
     <>
       <button
         type="button"
@@ -646,7 +637,7 @@ export const PokemonSheet = ({
     : showButtons === "edit"
       ? fighting && !externalFight
         ? fightActions
-        : <SheetActions onFight={externalFight ? undefined : () => setFighting(true)} />
+        : <SheetActions onFight={externalFight ? undefined : () => startFight(pokemon.id)} />
       : showButtons === "addAndLock" && <LockButton />;
   const sectionClass = (name: Section) => cn("flex flex-col gap-6 @3xl:gap-5", section !== name && "@max-3xl:hidden");
   return (
@@ -669,7 +660,8 @@ export const PokemonSheet = ({
               <span className="sr-only">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
             ) : (
               // The bar is too narrow on phones and tablets for the name next to the back link and actions; the card below shows it.
-              <span className="max-lg:sr-only">{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
+              // Fight actions crowd the bar even on desktop.
+              <span className={fighting ? "sr-only" : "max-lg:sr-only"}>{pokemon.nickname || pokemon.pokemonTemplate.name}</span>
             )
           }
           back={editingMode === "view" ? back : undefined}
